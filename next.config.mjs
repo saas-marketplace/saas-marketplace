@@ -1,10 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
- 
-  output: 'export',
-  images: {
-    unoptimized: true,
-  },
+  // Using standard Next.js build for GitHub Actions deployment
 };
 
 export default nextConfig;

@@ -89,7 +89,7 @@ function NavbarContent() {
               }
             }
           );
-          subscription = data;
+          subscription = data.subscription;
         }
       } catch (error) {
         console.error("Auth initialization error:", error);
