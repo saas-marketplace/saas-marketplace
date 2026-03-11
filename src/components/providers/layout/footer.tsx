@@ -2,17 +2,18 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { Sparkles, Heart } from "lucide-react";
+
 import {
-  Sparkles,
-  Facebook,
-  Instagram,
-  Twitter,
-  Youtube,
-  Linkedin,
-  Github,
-  Heart,
-} from "lucide-react";
-import { FaDiscord, FaTiktok, FaSnapchatGhost } from "react-icons/fa";
+  FaFacebook,
+  FaYoutube,
+  FaDiscord,
+  FaXTwitter,
+  FaTiktok,
+  FaGithub,
+  FaLinkedin,
+} from "react-icons/fa6";
+
 import { Separator } from "@/components/ui/separator";
 
 const footerLinks = {
@@ -43,12 +44,13 @@ const footerLinks = {
 };
 
 const socialLinks = [
-  { icon: Facebook, href: "#", label: "Facebook" },
-  { icon: Instagram, href: "#", label: "Instagram" },
-  { icon: Twitter, href: "#", label: "X (Twitter)" },
-  { icon: Youtube, href: "#", label: "YouTube" },
-  { icon: Linkedin, href: "#", label: "LinkedIn" },
-  { icon: Github, href: "#", label: "GitHub" },
+  { icon: FaFacebook, href: "#", label: "Facebook" },
+  { icon: FaYoutube, href: "#", label: "YouTube" },
+  { icon: FaDiscord, href: "#", label: "Discord" },
+  { icon: FaXTwitter, href: "#", label: "X" },
+  { icon: FaTiktok, href: "#", label: "TikTok" },
+  { icon: FaGithub, href: "#", label: "GitHub" },
+  { icon: FaLinkedin, href: "#", label: "LinkedIn" },
 ];
 
 export function Footer() {
@@ -84,28 +86,35 @@ export function Footer() {
               </div>
               <span className="text-xl font-bold gradient-text">NexusHub</span>
             </Link>
+
             <p className="text-muted-foreground text-sm leading-relaxed max-w-xs mb-6">
               The ultimate platform for digital services, products, and
               freelance talent. Build, grow, and scale your business with
               NexusHub.
             </p>
+
             <div className="flex items-center gap-3">
-              {socialLinks.map((social) => (
-                <Link
-                  key={social.label}
-                  href={social.href}
-                  className="w-9 h-9 rounded-lg bg-muted hover:bg-primary/10 hover:text-primary flex items-center justify-center transition-all duration-200"
-                  aria-label={social.label}
-                >
-                  <social.icon className="w-4 h-4" />
-                </Link>
-              ))}
+              {socialLinks.map((social) => {
+                const Icon = social.icon;
+
+                return (
+                  <Link
+                    key={social.label}
+                    href={social.href}
+                    aria-label={social.label}
+                    className="w-9 h-9 rounded-lg bg-muted hover:bg-primary/10 hover:text-primary flex items-center justify-center transition-all duration-200"
+                  >
+                    <Icon className="w-4 h-4" />
+                  </Link>
+                );
+              })}
             </div>
           </motion.div>
 
           {Object.entries(footerLinks).map(([category, links]) => (
             <motion.div key={category} variants={itemVariants}>
               <h3 className="font-semibold text-sm mb-4">{category}</h3>
+
               <ul className="space-y-3">
                 {links.map((link) => (
                   <li key={link.label}>
@@ -128,9 +137,10 @@ export function Footer() {
           <p className="text-sm text-muted-foreground">
             © {new Date().getFullYear()} NexusHub. All rights reserved.
           </p>
+
           <p className="text-sm text-muted-foreground flex items-center gap-1">
-            Made with <Heart className="w-3 h-3 text-red-500 fill-red-500" />{" "}
-            for creators everywhere
+            Made with <Heart className="w-3 h-3 text-red-500 fill-red-500" /> for
+            creators everywhere
           </p>
         </div>
       </div>

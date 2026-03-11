@@ -55,7 +55,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // User is authenticated - fetch their role from database
-  const { data: userData, error: roleError } = await supabase
+  const { data: userData } = await supabase
     .from("users")
     .select("role")
     .eq("id", user.id)

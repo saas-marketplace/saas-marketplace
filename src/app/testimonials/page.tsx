@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronLeft,
@@ -16,7 +16,6 @@ import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { StarRating } from "@/components/ui/star-rating";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
-import { formatDate } from "@/lib/utils";
 import type { ClientReview } from "@/types";
 
 export default function TestimonialsPage() {
@@ -35,12 +34,7 @@ export default function TestimonialsPage() {
   const supabase = createClient();
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchReviews();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function fetchReviews() {
+  const fetchReviews = useCallback(async () => {
     const { data } = await supabase
       .from("client_reviews")
       .select("*")
@@ -48,7 +42,11 @@ export default function TestimonialsPage() {
 
     if (data) setReviews(data);
     setLoading(false);
-  }
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchReviews();
+  }, [fetchReviews]);
 
   const featuredReviews = reviews.filter((r) => r.is_featured);
   const allReviews = reviews;

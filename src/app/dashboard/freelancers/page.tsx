@@ -1,10 +1,9 @@
 "use client";
 
 import { createClient } from '@/lib/supabase/client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { 
   Dialog, 
   DialogContent, 
@@ -19,11 +18,6 @@ import {
   Trash2, 
   Loader2,
   User,
-  Code,
-  MapPin,
-  DollarSign,
-  Briefcase,
-  Link as LinkIcon,
   Folder
 } from 'lucide-react';
 
@@ -82,18 +76,12 @@ export default function FreelancersPage() {
 
   const supabase = createClient();
 
-  useEffect(() => {
-    checkUser();
-    fetchFreelancers();
-    fetchDomains();
-  }, []);
-
-  async function checkUser() {
+  const checkUser = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     setUser(user);
-  }
+  }, [supabase]);
 
-  async function fetchDomains() {
+  const fetchDomains = useCallback(async () => {
     const { data } = await supabase
       .from('domains')
       .select('*')
@@ -102,9 +90,9 @@ export default function FreelancersPage() {
     if (data) {
       setDomains(data);
     }
-  }
+  }, [supabase]);
 
-  async function fetchFreelancers() {
+  const fetchFreelancers = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('freelancers')
@@ -121,7 +109,13 @@ export default function FreelancersPage() {
       setFreelancers(parsedData);
     }
     setLoading(false);
-  }
+  }, [supabase]);
+
+  useEffect(() => {
+    checkUser();
+    fetchFreelancers();
+    fetchDomains();
+  }, [checkUser, fetchFreelancers, fetchDomains]);
 
   function resetForm() {
     setFormData({

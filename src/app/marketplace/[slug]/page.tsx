@@ -1,19 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { motion } from "framer-motion";
-import {
-  ArrowLeft,
-  Heart,
-  ShoppingCart,
-  Download,
-  Star,
-  Check,
-  Share2,
-  FileText,
-  Package,
-} from "lucide-react";
+import { ArrowLeft, Heart, ShoppingCart, Download, Check, Share2, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -43,12 +34,7 @@ export default function ProductDetailPage() {
   const { toast } = useToast();
   const supabase = createClient();
 
-  useEffect(() => {
-    fetchProduct();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.slug]);
-
-  async function fetchProduct() {
+  const fetchProduct = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase
       .from("products")
@@ -72,7 +58,11 @@ export default function ProductDetailPage() {
       }
     }
     setLoading(false);
-  }
+  }, [supabase, params.slug]);
+
+  useEffect(() => {
+    fetchProduct();
+  }, [fetchProduct]);
 
   if (loading) {
     return (
@@ -129,10 +119,11 @@ export default function ProductDetailPage() {
             <div className="relative">
               {product.image_url ? (
                 <div className="w-full aspect-square rounded-3xl overflow-hidden bg-muted">
-                  <img
+                  <Image
                     src={product.image_url}
                     alt={product.title}
-                    className="w-full h-full object-cover"
+                    fill
+                    className="object-cover"
                   />
                 </div>
               ) : (

@@ -28,7 +28,7 @@ interface CheckoutItem {
 }
 
 export default function CartPage() {
-  const { items, removeItem, updateQuantity, getTotal, clearCart } =
+  const { items, removeItem, updateQuantity, getTotal } =
     useCartStore();
   const [loading, setLoading] = useState(false);
   const [stripeError, setStripeError] = useState<string | null>(null);

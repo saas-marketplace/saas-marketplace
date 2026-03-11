@@ -2,34 +2,14 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import {
-  Phone,
-  Mail,
-  MapPin,
-  Send,
-  Clock,
-  Facebook,
-  Instagram,
-  Twitter,
-  Youtube,
-  Linkedin,
-  Github,
-  MessageCircle,
-} from "lucide-react";
-import { IconType } from "react-icons";
-import {
-  FaDiscord,
-  FaTiktok,
-  FaSnapchatGhost,
-} from "react-icons/fa";
+import { Phone, Mail, MapPin, Send, Clock } from "lucide-react";
+import { ScrollReveal } from "@/components/ui/scroll-reveal";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { createClient } from "@/lib/supabase/client";
-import { useToast } from "@/components/ui/use-toast";
-import type { LucideIcon } from "lucide-react";
+import { toast } from "@/components/ui/use-toast";
 
 const contactInfo = [
   {
@@ -62,22 +42,9 @@ const contactInfo = [
   },
 ];
 
-interface SocialLink {
-  icon: LucideIcon | IconType;
-  label: string;
-  href: string;
-  color: string;
-}
-
-const socialLinks: SocialLink[] = [
-  { icon: Facebook, label: "Facebook", href: "#", color: "hover:text-blue-600" },
-  { icon: Instagram, label: "Instagram", href: "#", color: "hover:text-pink-600" },
-  { icon: Twitter, label: "X (Twitter)", href: "#", color: "hover:text-sky-500" },
-  { icon: Youtube, label: "YouTube", href: "#", color: "hover:text-red-600" },
-  { icon: FaSnapchatGhost, label: "Snapchat", href: "#", color: "hover:text-yellow-500" },
-  { icon: FaTiktok, label: "TikTok", href: "#", color: "hover:text-pink-500" },
-  { icon: FaDiscord, label: "Discord", href: "#", color: "hover:text-indigo-500" },
-  { icon: Linkedin, label: "LinkedIn", href: "#", color: "hover:text-blue-700" },
+const socialLinks: { name: string; url: string; label: string; href: string; color: string }[] = [
+  { name: "Facebook", url: "https://facebook.com", label: "Facebook", href: "https://facebook.com", color: "text-blue-500" },
+  { name: "Twitter", url: "https://twitter.com", label: "Twitter", href: "https://twitter.com", color: "text-blue-400" },
 ];
 
 export default function ContactPage() {
@@ -90,7 +57,6 @@ export default function ContactPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const supabase = createClient();
-  const { toast } = useToast();
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -103,14 +69,8 @@ export default function ContactPage() {
         title: "Message sent!",
         description: "We'll get back to you as soon as possible.",
       });
-      setFormData({ name: "", email: "", subject: "", phone: "", message: "" });
-    } else {
-      toast({
-        title: "Error",
-        description: "Something went wrong. Please try again.",
-        variant: "destructive",
-      });
     }
+
     setSubmitting(false);
   }
 
@@ -167,21 +127,19 @@ export default function ContactPage() {
             <ScrollReveal delay={0.4}>
               <div className="glass-card rounded-2xl p-6">
                 <h3 className="font-semibold mb-4">Follow Us</h3>
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   {socialLinks.map((social) => {
-                    const IconComp = social.icon;
                     return (
                       <motion.a
                         key={social.label}
                         href={social.href}
                         target="_blank"
                         rel="noopener noreferrer"
-                        whileHover={{ scale: 1.1, y: -2 }}
+                        whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        className={`w-full aspect-square rounded-xl bg-muted flex items-center justify-center transition-colors ${social.color}`}
-                        title={social.label}
+                        className={`px-4 py-2 rounded-xl bg-muted flex items-center justify-center transition-colors ${social.color}`}
                       >
-                        <IconComp className="w-5 h-5" />
+                        {social.label}
                       </motion.a>
                     );
                   })}

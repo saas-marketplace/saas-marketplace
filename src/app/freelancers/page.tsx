@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -26,11 +26,7 @@ export default function FreelancersPage() {
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
-  useEffect(() => {
-    fetchDomains();
-  }, []);
-
-  async function fetchDomains() {
+  const fetchDomains = useCallback(async () => {
     const { data } = await supabase
       .from("domains")
       .select("*")
@@ -38,7 +34,11 @@ export default function FreelancersPage() {
 
     if (data) setDomains(data);
     setLoading(false);
-  }
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchDomains();
+  }, [fetchDomains]);
 
   return (
     <div className="min-h-screen pt-24 pb-16">

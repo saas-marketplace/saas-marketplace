@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { ShoppingCart, Download, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,10 +33,11 @@ export default function ProductCard({ product }: ProductCardProps) {
     >
       <div className="aspect-video relative bg-muted overflow-hidden">
         {product.image_url ? (
-          <img
+          <Image
             src={product.image_url}
             alt={product.title}
-            className="w-full h-full object-cover"
+            fill
+            className="object-cover"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">

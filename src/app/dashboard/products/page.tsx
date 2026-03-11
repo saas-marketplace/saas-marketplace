@@ -1,7 +1,8 @@
 "use client";
 
 import { createClient } from '@/lib/supabase/client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -83,14 +84,14 @@ export default function ProductsPage() {
   useEffect(() => {
     checkUser();
     fetchProducts();
-  }, []);
+  });
 
-  async function checkUser() {
+  const checkUser = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     setUser(user);
-  }
+  }, [supabase]);
 
-  async function fetchProducts() {
+  const fetchProducts = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('products')
@@ -106,7 +107,7 @@ export default function ProductsPage() {
       setProducts(parsedData);
     }
     setLoading(false);
-  }
+  }, [supabase]);
 
   function generateSlug(title: string) {
     return title
@@ -443,10 +444,11 @@ export default function ProductsPage() {
                   </Button>
                   {imageUrl && (
                     <div className="relative w-16 h-16 rounded overflow-hidden border">
-                      <img 
+                      <Image 
                         src={imageUrl} 
                         alt="Preview" 
-                        className="w-full h-full object-cover"
+                        fill
+                        className="object-cover"
                       />
                     </div>
                   )}

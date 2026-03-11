@@ -1,7 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -49,11 +49,7 @@ export default function DomainsPage() {
 
   const supabase = createClient();
 
-  useEffect(() => {
-    fetchDomains();
-  }, []);
-
-  async function fetchDomains() {
+  const fetchDomains = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("domains")
@@ -62,7 +58,11 @@ export default function DomainsPage() {
 
     if (!error && data) setDomains(data);
     setLoading(false);
-  }
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchDomains();
+  }, [fetchDomains]);
 
   function generateSlug(name: string) {
     return name

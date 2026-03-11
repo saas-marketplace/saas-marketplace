@@ -1,15 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
   MapPin,
-  Star,
   Briefcase,
-  Globe,
   DollarSign,
   CheckCircle2,
 } from "lucide-react";
@@ -27,11 +25,7 @@ export default function DomainFreelancersPage() {
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
-  useEffect(() => {
-    fetchData();
-  }, [params.slug]);
-
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     setLoading(true);
 
     // Get domain
@@ -54,7 +48,11 @@ export default function DomainFreelancersPage() {
       if (freelancerData) setFreelancers(freelancerData);
     }
     setLoading(false);
-  }
+  }, [supabase, params.slug]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   return (
     <div className="min-h-screen pt-24 pb-16">
