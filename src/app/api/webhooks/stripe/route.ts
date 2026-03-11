@@ -1,47 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStripe } from "@/lib/stripe";
+import { stripe } from "@/lib/stripe";
 import { createClient } from "@supabase/supabase-js";
 
 export async function POST(request: NextRequest) {
-  if (
-    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    !process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    !process.env.STRIPE_SECRET_KEY ||
-    !process.env.STRIPE_WEBHOOK_SECRET
-  ) {
-    console.warn("Stripe webhook disabled because environment variables are missing.");
+  // Check if environment variables are configured
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
+  if (!supabaseUrl || !supabaseKey || !stripeWebhookSecret) {
+    console.warn("Stripe webhook disabled because environment variables are missing.");
     return NextResponse.json(
       { message: "Stripe webhook temporarily disabled" },
       { status: 200 }
     );
   }
 
-  const stripe = getStripe();
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  // Create Supabase client inside handler to prevent build failure
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
   const body = await request.text();
-  const signature = request.headers.get("stripe-signature");
+  const sig = request.headers.get("stripe-signature");
 
-  if (!signature) {
+  if (!sig) {
     return NextResponse.json(
-      { error: "Missing Stripe signature" },
+      { error: "Stripe signature header missing" },
       { status: 400 }
     );
   }
 
   let event;
-
   try {
-    event = stripe.webhooks.constructEvent(
-      body,
-      signature,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
+    // TypeScript-safe: sig and stripeWebhookSecret are guaranteed to be strings
+    event = stripe.webhooks.constructEvent(body, sig, stripeWebhookSecret);
   } catch (err: any) {
     return NextResponse.json(
       { error: `Webhook Error: ${err.message}` },
@@ -50,8 +41,9 @@ export async function POST(request: NextRequest) {
   }
 
   if (event.type === "checkout.session.completed") {
-    const session: any = event.data.object;
+    const session = event.data.object as any;
 
+    // Create order in Supabase
     await supabase.from("orders").insert({
       user_id: session.metadata?.user_id || null,
       stripe_session_id: session.id,
@@ -63,6 +55,7 @@ export async function POST(request: NextRequest) {
       customer_email: session.customer_email,
     });
 
+    // Clear user's cart
     if (session.metadata?.user_id) {
       await supabase
         .from("cart")
