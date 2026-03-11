@@ -16,14 +16,14 @@ export function createServerSupabaseClient() {
           try {
             cookieStore.set({ name, value, ...options });
           } catch (error) {
-            // Handle cookie setting in Server Components
+            // Server Component cookie handling
           }
         },
         remove(name: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value: "", ...options });
           } catch (error) {
-            // Handle cookie removal in Server Components
+            // Server Component cookie handling
           }
         },
       },

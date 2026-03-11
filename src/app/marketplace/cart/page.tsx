@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import {
@@ -11,44 +11,85 @@ import {
   ArrowLeft,
   CreditCard,
   ShieldCheck,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { formatPrice } from "@/lib/utils";
 import { useCartStore } from "@/stores/cart-store";
-import { loadStripe } from "@stripe/stripe-js";
-import { createClient } from "@/lib/supabase/client";
+import { loadStripe, Stripe } from "@stripe/stripe-js";
+
+interface CheckoutItem {
+  id: string;
+  title: string;
+  price: number;
+  quantity: number;
+}
 
 export default function CartPage() {
   const { items, removeItem, updateQuantity, getTotal, clearCart } =
     useCartStore();
   const [loading, setLoading] = useState(false);
-  const supabase = createClient();
+  const [stripeError, setStripeError] = useState<string | null>(null);
+  const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
+
+  // Initialize Stripe on mount
+  useEffect(() => {
+    const initStripe = async () => {
+      try {
+        const stripe = loadStripe(
+          process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
+        );
+        setStripePromise(stripe);
+      } catch (error) {
+        console.error("Failed to load Stripe:", error);
+        setStripeError("Failed to load payment system. Please refresh and try again.");
+      }
+    };
+    initStripe();
+  }, []);
 
   const handleCheckout = async () => {
     setLoading(true);
+    setStripeError(null);
     try {
+      const checkoutItems: CheckoutItem[] = items.map((item) => ({
+        id: item.product.id,
+        title: item.product.title,
+        price: item.product.sale_price || item.product.price,
+        quantity: item.quantity,
+      }));
+
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((item) => ({
-            id: item.product.id,
-            title: item.product.title,
-            price: item.product.sale_price || item.product.price,
-            quantity: item.quantity,
-          })),
-        }),
+        body: JSON.stringify({ items: checkoutItems }),
       });
 
+      if (!response.ok) {
+        throw new Error("Failed to create checkout session");
+      }
+
       const { sessionId } = await response.json();
-      const stripe = await loadStripe(
-        process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
-      );
-      await stripe?.redirectToCheckout({ sessionId });
-    } catch (error) {
+      
+      if (!stripePromise) {
+        throw new Error("Payment system not loaded");
+      }
+
+      const stripe = await stripePromise;
+      if (stripe) {
+        const { error } = await stripe.redirectToCheckout({ sessionId });
+        if (error) {
+          console.error("Stripe redirect error:", error);
+          setStripeError(error.message || "Payment failed. Please try again.");
+        }
+      } else {
+        setStripeError("Payment system unavailable. Please try again.");
+      }
+    } catch (error: any) {
       console.error("Checkout error:", error);
+      setStripeError(error.message || "An error occurred during checkout. Please try again.");
     }
     setLoading(false);
   };
@@ -97,7 +138,6 @@ export default function CartPage() {
         </h1>
 
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Cart Items */}
           <div className="lg:col-span-2 space-y-4">
             <AnimatePresence>
               {items.map((item) => (
@@ -109,7 +149,6 @@ export default function CartPage() {
                   exit={{ opacity: 0, x: 20, height: 0 }}
                   className="glass-card rounded-2xl p-4 sm:p-6 flex flex-col sm:flex-row gap-4"
                 >
-                  {/* Product Image */}
                   <div className="w-full sm:w-24 h-32 sm:h-24 rounded-xl gradient-bg flex items-center justify-center flex-shrink-0">
                     <ShoppingBag className="w-8 h-8 text-white/50" />
                   </div>
@@ -139,10 +178,7 @@ export default function CartPage() {
                           size="icon"
                           className="h-8 w-8"
                           onClick={() =>
-                            updateQuantity(
-                              item.product.id,
-                              item.quantity - 1
-                            )
+                            updateQuantity(item.product.id, item.quantity - 1)
                           }
                         >
                           <Minus className="w-3 h-3" />
@@ -155,10 +191,7 @@ export default function CartPage() {
                           size="icon"
                           className="h-8 w-8"
                           onClick={() =>
-                            updateQuantity(
-                              item.product.id,
-                              item.quantity + 1
-                            )
+                            updateQuantity(item.product.id, item.quantity + 1)
                           }
                         >
                           <Plus className="w-3 h-3" />
@@ -169,9 +202,7 @@ export default function CartPage() {
                         {item.product.sale_price ? (
                           <div>
                             <span className="font-bold text-primary">
-                              {formatPrice(
-                                item.product.sale_price * item.quantity
-                              )}
+                              {formatPrice(item.product.sale_price * item.quantity)}
                             </span>
                             <span className="text-sm text-muted-foreground line-through ml-2">
                               {formatPrice(item.product.price * item.quantity)}
@@ -190,7 +221,6 @@ export default function CartPage() {
             </AnimatePresence>
           </div>
 
-          {/* Order Summary */}
           <div className="lg:col-span-1">
             <div className="glass-card rounded-2xl p-6 sticky top-24 space-y-6">
               <h2 className="text-xl font-semibold">Order Summary</h2>
@@ -207,16 +237,14 @@ export default function CartPage() {
                 <Separator />
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total</span>
-                  <span className="gradient-text">
-                    {formatPrice(getTotal())}
-                  </span>
+                  <span className="gradient-text">{formatPrice(getTotal())}</span>
                 </div>
               </div>
 
               <Button
                 className="w-full h-12 gradient-bg text-white border-0 hover:opacity-90 rounded-xl"
                 onClick={handleCheckout}
-                disabled={loading}
+                disabled={loading || !!stripeError}
               >
                 {loading ? (
                   <span className="flex items-center gap-2">
@@ -238,6 +266,13 @@ export default function CartPage() {
                   </span>
                 )}
               </Button>
+
+              {stripeError && (
+                <div className="flex items-center gap-2 text-xs text-destructive justify-center bg-destructive/10 p-2 rounded-lg">
+                  <AlertCircle className="w-4 h-4" />
+                  {stripeError}
+                </div>
+              )}
 
               <div className="flex items-center gap-2 text-xs text-muted-foreground justify-center">
                 <ShieldCheck className="w-4 h-4" />

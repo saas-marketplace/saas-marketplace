@@ -4,11 +4,6 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  Code,
-  Palette,
-  Video,
-  Megaphone,
-  PenTool,
   ArrowRight,
   Users,
 } from "lucide-react";
@@ -16,14 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { createClient } from "@/lib/supabase/client";
 import type { Domain } from "@/types";
-
-const domainIcons: Record<string, any> = {
-  code: Code,
-  palette: Palette,
-  video: Video,
-  megaphone: Megaphone,
-  pencil: PenTool,
-};
+import { getIconComponent } from "@/components/ui/icon-selector";
 
 const domainGradients: Record<string, string> = {
   "web-development": "from-blue-500 to-cyan-500",
@@ -82,7 +70,7 @@ export default function FreelancersPage() {
                   />
                 ))
               : domains.map((domain, index) => {
-                  const Icon = domainIcons[domain.icon || "code"] || Code;
+                  const Icon = getIconComponent(domain.icon);
                   const gradient =
                     domainGradients[domain.slug] || "from-gray-500 to-gray-700";
 

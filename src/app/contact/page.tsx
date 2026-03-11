@@ -16,6 +16,7 @@ import {
   Github,
   MessageCircle,
 } from "lucide-react";
+import { IconType } from "react-icons";
 import {
   FaDiscord,
   FaTiktok,
@@ -28,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import type { LucideIcon } from "lucide-react";
 
 const contactInfo = [
   {
@@ -60,7 +62,14 @@ const contactInfo = [
   },
 ];
 
-const socialLinks = [
+interface SocialLink {
+  icon: LucideIcon | IconType;
+  label: string;
+  href: string;
+  color: string;
+}
+
+const socialLinks: SocialLink[] = [
   { icon: Facebook, label: "Facebook", href: "#", color: "hover:text-blue-600" },
   { icon: Instagram, label: "Instagram", href: "#", color: "hover:text-pink-600" },
   { icon: Twitter, label: "X (Twitter)", href: "#", color: "hover:text-sky-500" },
@@ -83,7 +92,7 @@ export default function ContactPage() {
   const supabase = createClient();
   const { toast } = useToast();
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
 
@@ -121,8 +130,7 @@ export default function ContactPage() {
             </h1>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Have a question, partnership idea, or just want to say hello?
-              We&apos;d love to hear from you. Reach out through any of our
-              channels below.
+              We&apos;d love to hear from you.
             </p>
           </ScrollReveal>
         </div>
@@ -146,10 +154,7 @@ export default function ContactPage() {
                   <div>
                     <h3 className="font-semibold mb-1">{info.title}</h3>
                     {info.details.map((detail) => (
-                      <p
-                        key={detail}
-                        className="text-sm text-muted-foreground"
-                      >
+                      <p key={detail} className="text-sm text-muted-foreground">
                         {detail}
                       </p>
                     ))}
@@ -163,20 +168,23 @@ export default function ContactPage() {
               <div className="glass-card rounded-2xl p-6">
                 <h3 className="font-semibold mb-4">Follow Us</h3>
                 <div className="grid grid-cols-4 gap-3">
-                  {socialLinks.map((social) => (
-                    <motion.a
-                      key={social.label}
-                      href={social.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      whileHover={{ scale: 1.1, y: -2 }}
-                      whileTap={{ scale: 0.95 }}
-                      className={`w-full aspect-square rounded-xl bg-muted flex items-center justify-center transition-colors ${social.color}`}
-                      title={social.label}
-                    >
-                      <social.icon className="w-5 h-5" />
-                    </motion.a>
-                  ))}
+                  {socialLinks.map((social) => {
+                    const IconComp = social.icon;
+                    return (
+                      <motion.a
+                        key={social.label}
+                        href={social.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        whileHover={{ scale: 1.1, y: -2 }}
+                        whileTap={{ scale: 0.95 }}
+                        className={`w-full aspect-square rounded-xl bg-muted flex items-center justify-center transition-colors ${social.color}`}
+                        title={social.label}
+                      >
+                        <IconComp className="w-5 h-5" />
+                      </motion.a>
+                    );
+                  })}
                 </div>
               </div>
             </ScrollReveal>
@@ -188,20 +196,17 @@ export default function ContactPage() {
               <div className="glass-card rounded-3xl p-8">
                 <h2 className="text-2xl font-bold mb-2">Send us a Message</h2>
                 <p className="text-muted-foreground mb-8">
-                  Fill out the form below and we&apos;ll get back to you
-                  within 24 hours.
+                  Fill out the form below and we&apos;ll get back to you within 24 hours.
                 </p>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm font-medium mb-2 block">
-                        Full Name *
-                      </label>
+                      <label className="text-sm font-medium mb-2 block">Full Name *</label>
                       <Input
                         placeholder="John Doe"
                         value={formData.name}
-                        onChange={(e) =>
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                           setFormData({ ...formData, name: e.target.value })
                         }
                         required
@@ -209,14 +214,12 @@ export default function ContactPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-sm font-medium mb-2 block">
-                        Email Address *
-                      </label>
+                      <label className="text-sm font-medium mb-2 block">Email Address *</label>
                       <Input
                         type="email"
                         placeholder="john@example.com"
                         value={formData.email}
-                        onChange={(e) =>
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                           setFormData({ ...formData, email: e.target.value })
                         }
                         required
@@ -227,27 +230,23 @@ export default function ContactPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm font-medium mb-2 block">
-                        Subject
-                      </label>
+                      <label className="text-sm font-medium mb-2 block">Subject</label>
                       <Input
                         placeholder="How can we help?"
                         value={formData.subject}
-                        onChange={(e) =>
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                           setFormData({ ...formData, subject: e.target.value })
                         }
                         className="h-12 rounded-xl"
                       />
                     </div>
                     <div>
-                      <label className="text-sm font-medium mb-2 block">
-                        Phone Number
-                      </label>
+                      <label className="text-sm font-medium mb-2 block">Phone Number</label>
                       <Input
                         type="tel"
                         placeholder="+1 (555) 000-0000"
                         value={formData.phone}
-                        onChange={(e) =>
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                           setFormData({ ...formData, phone: e.target.value })
                         }
                         className="h-12 rounded-xl"
@@ -256,13 +255,11 @@ export default function ContactPage() {
                   </div>
 
                   <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      Message *
-                    </label>
+                    <label className="text-sm font-medium mb-2 block">Message *</label>
                     <Textarea
                       placeholder="Tell us more about your inquiry..."
                       value={formData.message}
-                      onChange={(e) =>
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                         setFormData({ ...formData, message: e.target.value })
                       }
                       rows={6}

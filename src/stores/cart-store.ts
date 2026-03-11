@@ -4,8 +4,6 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { Product } from "@/types";
 
-// Install zustand: npm install zustand
-
 interface CartItem {
   product: Product;
   quantity: number;
@@ -22,33 +20,33 @@ interface CartStore {
 }
 
 export const useCartStore = create<CartStore>()(
-  persist(
-    (set, get) => ({
-      items: [],
+  persist<CartStore>(
+    (set: (fn: (state: CartStore) => Partial<CartStore>) => void, get: () => CartStore) => ({
+      items: [] as CartItem[],
 
       addItem: (product: Product) => {
         const items = get().items;
         const existingItem = items.find(
-          (item) => item.product.id === product.id
+          (item: CartItem) => item.product.id === product.id
         );
 
         if (existingItem) {
-          set({
-            items: items.map((item) =>
+          set(() => ({
+            items: items.map((item: CartItem) =>
               item.product.id === product.id
                 ? { ...item, quantity: item.quantity + 1 }
                 : item
             ),
-          });
+          }));
         } else {
-          set({ items: [...items, { product, quantity: 1 }] });
+          set(() => ({ items: [...items, { product, quantity: 1 }] }));
         }
       },
 
       removeItem: (productId: string) => {
-        set({
-          items: get().items.filter((item) => item.product.id !== productId),
-        });
+        set(() => ({
+          items: get().items.filter((item: CartItem) => item.product.id !== productId),
+        }));
       },
 
       updateQuantity: (productId: string, quantity: number) => {
@@ -56,24 +54,24 @@ export const useCartStore = create<CartStore>()(
           get().removeItem(productId);
           return;
         }
-        set({
-          items: get().items.map((item) =>
+        set(() => ({
+          items: get().items.map((item: CartItem) =>
             item.product.id === productId ? { ...item, quantity } : item
           ),
-        });
+        }));
       },
 
-      clearCart: () => set({ items: [] }),
+      clearCart: () => set(() => ({ items: [] })),
 
       getTotal: () => {
-        return get().items.reduce((total, item) => {
+        return get().items.reduce((total: number, item: CartItem) => {
           const price = item.product.sale_price || item.product.price;
           return total + price * item.quantity;
         }, 0);
       },
 
       getItemCount: () => {
-        return get().items.reduce((count, item) => count + item.quantity, 0);
+        return get().items.reduce((count: number, item: CartItem) => count + item.quantity, 0);
       },
     }),
     {

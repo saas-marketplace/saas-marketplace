@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronLeft,
   ChevronRight,
-  Star,
   Quote,
   MessageSquare,
 } from "lucide-react";
@@ -38,6 +37,7 @@ export default function TestimonialsPage() {
 
   useEffect(() => {
     fetchReviews();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchReviews() {
@@ -65,7 +65,7 @@ export default function TestimonialsPage() {
     );
   };
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
 
@@ -102,7 +102,6 @@ export default function TestimonialsPage() {
 
   return (
     <div className="min-h-screen pt-24 pb-16">
-      {/* Hero */}
       <section className="relative pb-16">
         <div className="absolute inset-0 gradient-bg-subtle" />
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
@@ -114,15 +113,21 @@ export default function TestimonialsPage() {
               What Our Clients{" "}
               <span className="gradient-text">Say About Us</span>
             </h1>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Real stories from real people. See how NexusHub has helped
-              businesses and creators achieve their goals.
-            </p>
+            {reviews.length > 0 ? (
+              <ul>
+                {reviews.map((review) => (
+                  <li key={review.id}>{review.comment}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                No testimonials available.
+              </p>
+            )}
           </ScrollReveal>
         </div>
       </section>
 
-      {/* Featured Carousel */}
       {featuredReviews.length > 0 && (
         <section className="container mx-auto px-4 sm:px-6 lg:px-8 mb-20">
           <div className="relative max-w-4xl mx-auto">
@@ -143,7 +148,7 @@ export default function TestimonialsPage() {
 
                 <div className="flex justify-center mb-4">
                   <StarRating
-                    rating={featuredReviews[currentIndex]?.rating}
+                    rating={featuredReviews[currentIndex]?.rating || 5}
                     size="lg"
                   />
                 </div>
@@ -152,7 +157,7 @@ export default function TestimonialsPage() {
                   <div className="w-16 h-16 rounded-full gradient-bg flex items-center justify-center text-white text-xl font-bold mx-auto mb-3">
                     {featuredReviews[currentIndex]?.reviewer_name
                       .split(" ")
-                      .map((n) => n[0])
+                      .map((n: string) => n[0])
                       .join("")}
                   </div>
                   <p className="font-semibold text-lg">
@@ -169,7 +174,6 @@ export default function TestimonialsPage() {
               </motion.div>
             </AnimatePresence>
 
-            {/* Navigation */}
             <div className="flex items-center justify-center gap-4 mt-8">
               <Button
                 variant="outline"
@@ -207,7 +211,6 @@ export default function TestimonialsPage() {
         </section>
       )}
 
-      {/* All Reviews Grid */}
       <section className="container mx-auto px-4 sm:px-6 lg:px-8 mb-20">
         <ScrollReveal className="mb-8">
           <h2 className="text-2xl font-bold">All Reviews</h2>
@@ -231,7 +234,7 @@ export default function TestimonialsPage() {
                       ? "?"
                       : review.reviewer_name
                           .split(" ")
-                          .map((n) => n[0])
+                          .map((n: string) => n[0])
                           .join("")}
                   </div>
                   <div>
@@ -251,7 +254,6 @@ export default function TestimonialsPage() {
         </div>
       </section>
 
-      {/* Submit Review Form */}
       <section className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="max-w-2xl mx-auto">
           <ScrollReveal>
@@ -270,15 +272,12 @@ export default function TestimonialsPage() {
                     type="checkbox"
                     id="anonymous"
                     checked={formData.is_anonymous}
-                    onChange={(e) =>
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                       setFormData({ ...formData, is_anonymous: e.target.checked })
                     }
                     className="rounded"
                   />
-                  <label
-                    htmlFor="anonymous"
-                    className="text-sm text-muted-foreground"
-                  >
+                  <label htmlFor="anonymous" className="text-sm text-muted-foreground">
                     Submit anonymously
                   </label>
                 </div>
@@ -288,11 +287,8 @@ export default function TestimonialsPage() {
                     <Input
                       placeholder="Your name"
                       value={formData.reviewer_name}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          reviewer_name: e.target.value,
-                        })
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        setFormData({ ...formData, reviewer_name: e.target.value })
                       }
                       required={!formData.is_anonymous}
                     />
@@ -300,21 +296,15 @@ export default function TestimonialsPage() {
                       <Input
                         placeholder="Your title (optional)"
                         value={formData.reviewer_title}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            reviewer_title: e.target.value,
-                          })
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setFormData({ ...formData, reviewer_title: e.target.value })
                         }
                       />
                       <Input
                         placeholder="Company (optional)"
                         value={formData.reviewer_company}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            reviewer_company: e.target.value,
-                          })
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setFormData({ ...formData, reviewer_company: e.target.value })
                         }
                       />
                     </div>
@@ -322,13 +312,11 @@ export default function TestimonialsPage() {
                 )}
 
                 <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Rating
-                  </label>
+                  <label className="text-sm font-medium mb-2 block">Rating</label>
                   <StarRating
                     rating={formData.rating}
                     interactive
-                    onRatingChange={(rating) =>
+                    onRatingChange={(rating: number) =>
                       setFormData({ ...formData, rating })
                     }
                     size="lg"
@@ -338,7 +326,7 @@ export default function TestimonialsPage() {
                 <Textarea
                   placeholder="Tell us about your experience..."
                   value={formData.comment}
-                  onChange={(e) =>
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                     setFormData({ ...formData, comment: e.target.value })
                   }
                   rows={5}

@@ -20,32 +20,15 @@ export default function SignupPage() {
   const supabase = createClient();
   const { toast } = useToast();
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
-
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-        },
-      },
-    });
-
+    const { error } = await supabase.auth.signUp({ email, password });
     if (error) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Signup failed", description: error.message });
     } else {
-      toast({
-        title: "Account created!",
-        description: "Check your email to verify your account.",
-      });
-      router.push("/auth/login");
+      toast({ title: "Signup successful", description: "Welcome!" });
+      router.push("/dashboard");
     }
     setLoading(false);
   }
@@ -72,16 +55,14 @@ export default function SignupPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="text-sm font-medium mb-2 block">
-                Full Name
-              </label>
+              <label className="text-sm font-medium mb-2 block">Full Name</label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   type="text"
                   placeholder="John Doe"
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFullName(e.target.value)}
                   required
                   className="pl-10 h-12 rounded-xl"
                 />
@@ -96,7 +77,7 @@ export default function SignupPage() {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                   required
                   className="pl-10 h-12 rounded-xl"
                 />
@@ -104,16 +85,14 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className="text-sm font-medium mb-2 block">
-                Password
-              </label>
+              <label className="text-sm font-medium mb-2 block">Password</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   type={showPassword ? "text" : "password"}
                   placeholder="Min 6 characters"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                   required
                   minLength={6}
                   className="pl-10 pr-10 h-12 rounded-xl"

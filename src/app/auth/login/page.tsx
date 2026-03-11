@@ -19,25 +19,18 @@ export default function LoginPage() {
   const supabase = createClient();
   const { toast } = useToast();
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
-
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-
     if (error) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Login failed", description: error.message });
     } else {
-      toast({ title: "Welcome back!", description: "You're now signed in." });
-      router.push("/");
-      router.refresh();
+      toast({ title: "Login successful", description: "Welcome back!" });
+      router.push("/dashboard");
     }
     setLoading(false);
   }
@@ -71,7 +64,7 @@ export default function LoginPage() {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                   required
                   className="pl-10 h-12 rounded-xl"
                 />
@@ -79,16 +72,14 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="text-sm font-medium mb-2 block">
-                Password
-              </label>
+              <label className="text-sm font-medium mb-2 block">Password</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                   required
                   className="pl-10 pr-10 h-12 rounded-xl"
                 />

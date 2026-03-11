@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense, useCallback } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "next-themes";
 import {
@@ -16,19 +16,20 @@ import {
   ChevronDown,
   Sparkles,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "../../ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-import { useCartStore } from "@/stores/cart-store";
-import { createClient } from "@/lib/supabase/client";
+} from "../../ui/dropdown-menu";
+import { Sheet, SheetContent, SheetTrigger } from "../../ui/sheet";
+import { Badge } from "../../ui/badge";
+import { cn } from "../../../lib/utils";
+import { useCartStore } from "../../../stores/cart-store";
+import { createClient } from "../../../lib/supabase/client";
+import type { Session, AuthChangeEvent } from "@supabase/supabase-js";
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -38,14 +39,21 @@ const navLinks = [
   { href: "/contact", label: "Contact" },
 ];
 
-export function Navbar() {
+function NavbarContent() {
   const [scrolled, setScrolled] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
-  const itemCount = useCartStore((state) => state.getItemCount());
+  const itemCount = useCartStore((state: { getItemCount: () => number }) => state.getItemCount());
   const supabase = createClient();
+
+  // Prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -56,26 +64,58 @@ export function Navbar() {
   }, []);
 
   useEffect(() => {
-    const getUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      setUser(user);
+    let isMounted = true;
+    let subscription: { unsubscribe: () => void } | null = null;
+
+    const initAuth = async () => {
+      try {
+        // First, try to get the session
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        
+        if (isMounted) {
+          setUser(session?.user ?? null);
+          setLoading(false);
+        }
+
+        // Then listen for changes
+        if (isMounted) {
+          const { data } = supabase.auth.onAuthStateChange(
+            (_event: AuthChangeEvent, session: Session | null) => {
+              if (isMounted) {
+                setUser(session?.user ?? null);
+                setLoading(false);
+              }
+            }
+          );
+          subscription = data;
+        }
+      } catch (error) {
+        console.error("Auth initialization error:", error);
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
     };
-    getUser();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+    initAuth();
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      if (subscription && typeof subscription.unsubscribe === 'function') {
+        subscription.unsubscribe();
+      }
+    };
   }, [supabase.auth]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+    } catch (error) {
+      console.error("Sign out error:", error);
+    }
   };
 
   return (
@@ -96,49 +136,36 @@ export function Navbar() {
           <Link href="/" className="flex items-center gap-2 group">
             <motion.div
               whileHover={{ rotate: 180 }}
-              transition={{ duration: 0.5 }}
-              className="w-9 h-9 rounded-xl gradient-bg flex items-center justify-center"
+              transition={{ duration: 0.3 }}
+              className="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center"
             >
               <Sparkles className="w-5 h-5 text-white" />
             </motion.div>
-            <span className="text-xl font-bold gradient-text">NexusHub</span>
+            <span className="text-xl font-bold gradient-text">
+              SaaS Marketplace
+            </span>
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden lg:flex items-center gap-1">
+          <div className="hidden lg:flex items-center gap-8">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="relative px-4 py-2 text-sm font-medium transition-colors group"
-              >
-                <span
-                  className={cn(
-                    "relative z-10 transition-colors",
-                    pathname === link.href
-                      ? "text-primary"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {link.label}
-                </span>
-                {pathname === link.href && (
-                  <motion.div
-                    layoutId="navbar-indicator"
-                    className="absolute inset-0 rounded-lg bg-primary/10"
-                    transition={{
-                      type: "spring",
-                      stiffness: 350,
-                      damping: 30,
-                    }}
-                  />
+                className={cn(
+                  "text-sm font-medium transition-colors hover:text-primary",
+                  pathname === link.href
+                    ? "text-primary"
+                    : "text-muted-foreground"
                 )}
+              >
+                {link.label}
               </Link>
             ))}
           </div>
 
-          {/* Right Actions */}
-          <div className="flex items-center gap-2">
+          {/* Right Section */}
+          <div className="hidden lg:flex items-center gap-4">
             {/* Theme Toggle */}
             <Button
               variant="ghost"
@@ -146,73 +173,67 @@ export function Navbar() {
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               className="rounded-full"
             >
-              <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-              <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <span className="sr-only">Toggle theme</span>
             </Button>
 
             {/* Cart */}
             <Link href="/marketplace/cart">
-              <Button variant="ghost" size="icon" className="relative rounded-full">
-                <ShoppingCart className="h-4 w-4" />
-                <AnimatePresence>
-                  {itemCount > 0 && (
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      exit={{ scale: 0 }}
-                      className="absolute -top-1 -right-1"
-                    >
-                      <Badge className="h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px] gradient-bg border-0">
-                        {itemCount}
-                      </Badge>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+              <Button variant="ghost" size="icon" className="rounded-full relative">
+                <ShoppingCart className="h-5 w-5" />
+                {mounted && itemCount > 0 && (
+                  <Badge 
+                    suppressHydrationWarning 
+                    className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+                  >
+                    {itemCount}
+                  </Badge>
+                )}
               </Button>
             </Link>
 
             {/* User Menu */}
-            {user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="rounded-full">
-                    <User className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 glass-card">
-                  <div className="px-2 py-1.5">
-                    <p className="text-sm font-medium">{user.email}</p>
-                  </div>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/profile">Profile</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/orders">My Orders</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSignOut}>
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign Out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <div className="hidden sm:flex items-center gap-2">
-                <Link href="/auth/login">
-                  <Button variant="ghost" size="sm">
-                    Sign In
-                  </Button>
-                </Link>
-                <Link href="/auth/signup">
-                  <Button
-                    size="sm"
-                    className="gradient-bg text-white border-0 hover:opacity-90"
-                  >
-                    Get Started
-                  </Button>
-                </Link>
-              </div>
+            {!loading && (
+              user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="rounded-full">
+                      <User className="h-5 w-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <div className="px-2 py-1.5">
+                      <p className="text-sm font-medium">{user.email}</p>
+                    </div>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/dashboard">Dashboard</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleSignOut}>
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Sign Out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Link href="/auth/login">
+                    <Button variant="ghost" size="sm">
+                      Sign In
+                    </Button>
+                  </Link>
+                  <Link href="/auth/signup">
+                    <Button
+                      size="sm"
+                      className="gradient-bg text-white border-0 hover:opacity-90"
+                    >
+                      Get Started
+                    </Button>
+                  </Link>
+                </div>
+              )
             )}
 
             {/* Mobile Menu */}
@@ -222,7 +243,7 @@ export function Navbar() {
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-80 glass-card">
+              <SheetContent side="right" className="w-[300px]">
                 <div className="flex flex-col gap-6 mt-8">
                   {navLinks.map((link) => (
                     <Link
@@ -230,7 +251,7 @@ export function Navbar() {
                       href={link.href}
                       onClick={() => setMobileOpen(false)}
                       className={cn(
-                        "text-lg font-medium transition-colors",
+                        "text-lg font-medium transition-colors hover:text-primary",
                         pathname === link.href
                           ? "text-primary"
                           : "text-muted-foreground"
@@ -239,22 +260,21 @@ export function Navbar() {
                       {link.label}
                     </Link>
                   ))}
-                  <div className="border-t border-border pt-6 flex flex-col gap-3">
-                    {!user && (
-                      <>
-                        <Link href="/auth/login" onClick={() => setMobileOpen(false)}>
-                          <Button variant="outline" className="w-full">
-                            Sign In
-                          </Button>
-                        </Link>
-                        <Link href="/auth/signup" onClick={() => setMobileOpen(false)}>
-                          <Button className="w-full gradient-bg text-white border-0">
-                            Get Started
-                          </Button>
-                        </Link>
-                      </>
-                    )}
-                  </div>
+                  <hr className="border-border" />
+                  {!loading && !user && (
+                    <>
+                      <Link href="/auth/login" onClick={() => setMobileOpen(false)}>
+                        <Button variant="ghost" className="w-full justify-start">
+                          Sign In
+                        </Button>
+                      </Link>
+                      <Link href="/auth/signup" onClick={() => setMobileOpen(false)}>
+                        <Button className="w-full gradient-bg border-0">
+                          Get Started
+                        </Button>
+                      </Link>
+                    </>
+                  )}
                 </div>
               </SheetContent>
             </Sheet>
@@ -262,5 +282,13 @@ export function Navbar() {
         </div>
       </nav>
     </motion.header>
+  );
+}
+
+export function Navbar() {
+  return (
+    <Suspense fallback={null}>
+      <NavbarContent />
+    </Suspense>
   );
 }

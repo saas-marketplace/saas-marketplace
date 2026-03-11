@@ -38,7 +38,7 @@ export function ProductCard({
 }: ProductCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [likeAnimating, setLikeAnimating] = useState(false);
-  const addItem = useCartStore((state) => state.addItem);
+  const addItem = useCartStore((state: { addItem: (p: Product) => void }) => state.addItem);
   const { toast } = useToast();
 
   const handleLike = (e: React.MouseEvent) => {
@@ -71,7 +71,6 @@ export function ProductCard({
         whileHover={{ y: -8 }}
         className="glass-card rounded-2xl overflow-hidden group cursor-pointer h-full flex flex-col"
       >
-        {/* Image Area */}
         <div className="relative h-48 overflow-hidden">
           <div
             className={`absolute inset-0 bg-gradient-to-br ${
@@ -80,7 +79,6 @@ export function ProductCard({
           />
           <div className="absolute inset-0 bg-black/10" />
 
-          {/* Badges */}
           <div className="absolute top-3 left-3 flex flex-col gap-2">
             <Badge className="bg-white/20 text-white backdrop-blur-sm border-0 text-xs">
               {categoryLabels[product.category]}
@@ -98,7 +96,6 @@ export function ProductCard({
             )}
           </div>
 
-          {/* Like Button */}
           <button
             onClick={handleLike}
             className="absolute top-3 right-3 w-9 h-9 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-white/30"
@@ -113,16 +110,13 @@ export function ProductCard({
               >
                 <Heart
                   className={`w-4 h-4 transition-colors ${
-                    isLiked
-                      ? "text-red-500 fill-red-500"
-                      : "text-white"
+                    isLiked ? "text-red-500 fill-red-500" : "text-white"
                   }`}
                 />
               </motion.div>
             </AnimatePresence>
           </button>
 
-          {/* Hover overlay */}
           <AnimatePresence>
             {isHovered && (
               <motion.div
@@ -136,11 +130,7 @@ export function ProductCard({
                   animate={{ scale: 1 }}
                   transition={{ delay: 0.1 }}
                 >
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="rounded-full"
-                  >
+                  <Button size="sm" variant="secondary" className="rounded-full">
                     <Eye className="w-4 h-4 mr-1" />
                     Preview
                   </Button>
@@ -150,10 +140,9 @@ export function ProductCard({
           </AnimatePresence>
         </div>
 
-        {/* Content */}
         <div className="p-5 flex-1 flex flex-col">
           <div className="flex items-center gap-2 mb-2">
-            {product.tags.slice(0, 2).map((tag) => (
+            {product.tags.slice(0, 2).map((tag: string) => (
               <span
                 key={tag}
                 className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full"
@@ -171,7 +160,6 @@ export function ProductCard({
             {product.description}
           </p>
 
-          {/* Stats */}
           <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4">
             <span className="flex items-center gap-1">
               <Heart className="w-3 h-3" />
@@ -183,7 +171,6 @@ export function ProductCard({
             </span>
           </div>
 
-          {/* Price & Add to Cart */}
           <div className="flex items-center justify-between pt-3 border-t border-border/50">
             <div className="flex items-center gap-2">
               {product.sale_price ? (

@@ -15,8 +15,6 @@ import {
 import { FaDiscord, FaTiktok, FaSnapchatGhost } from "react-icons/fa";
 import { Separator } from "@/components/ui/separator";
 
-// npm install react-icons
-
 const footerLinks = {
   Platform: [
     { label: "Marketplace", href: "/marketplace" },
@@ -69,11 +67,9 @@ export function Footer() {
 
   return (
     <footer className="relative bg-muted/30 border-t border-border/50">
-      {/* Gradient decoration */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Main Footer Content */}
         <motion.div
           variants={containerVariants}
           initial="hidden"
@@ -81,7 +77,6 @@ export function Footer() {
           viewport={{ once: true }}
           className="py-16 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8"
         >
-          {/* Brand Section */}
           <motion.div variants={itemVariants} className="col-span-2">
             <Link href="/" className="flex items-center gap-2 mb-4">
               <div className="w-9 h-9 rounded-xl gradient-bg flex items-center justify-center">
@@ -108,7 +103,6 @@ export function Footer() {
             </div>
           </motion.div>
 
-          {/* Footer Links */}
           {Object.entries(footerLinks).map(([category, links]) => (
             <motion.div key={category} variants={itemVariants}>
               <h3 className="font-semibold text-sm mb-4">{category}</h3>
@@ -130,7 +124,6 @@ export function Footer() {
 
         <Separator className="bg-border/50" />
 
-        {/* Bottom Section */}
         <div className="py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
             © {new Date().getFullYear()} NexusHub. All rights reserved.

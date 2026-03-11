@@ -40,6 +40,7 @@ export default function FreelancerProfilePage() {
 
   useEffect(() => {
     fetchFreelancer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
   async function fetchFreelancer() {
@@ -142,14 +143,13 @@ export default function FreelancerProfilePage() {
           Back
         </button>
 
-        {/* Profile Header */}
         <ScrollReveal>
           <div className="glass-card rounded-3xl p-8 mb-8">
             <div className="flex flex-col sm:flex-row items-start gap-6">
               <div className="w-24 h-24 rounded-2xl gradient-bg flex items-center justify-center text-white text-3xl font-bold flex-shrink-0">
                 {freelancer.display_name
                   .split(" ")
-                  .map((n) => n[0])
+                  .map((n: string) => n[0])
                   .join("")}
               </div>
 
@@ -183,7 +183,6 @@ export default function FreelancerProfilePage() {
                   {freelancer.bio}
                 </p>
 
-                {/* Quick Stats */}
                 <div className="flex flex-wrap gap-4 text-sm">
                   {freelancer.location && (
                     <span className="flex items-center gap-1 text-muted-foreground">
@@ -211,12 +210,11 @@ export default function FreelancerProfilePage() {
               </div>
             </div>
 
-            {/* Skills */}
             <Separator className="my-6" />
             <div>
               <h3 className="font-semibold mb-3">Skills & Expertise</h3>
               <div className="flex flex-wrap gap-2">
-                {freelancer.skills.map((skill) => (
+                {freelancer.skills.map((skill: string) => (
                   <Badge key={skill} variant="secondary" className="px-3 py-1">
                     {skill}
                   </Badge>
@@ -224,7 +222,6 @@ export default function FreelancerProfilePage() {
               </div>
             </div>
 
-            {/* Contact Button */}
             <div className="mt-6">
               <Button className="gradient-bg text-white border-0 hover:opacity-90 rounded-xl">
                 <MessageSquare className="w-4 h-4 mr-2" />
@@ -234,31 +231,12 @@ export default function FreelancerProfilePage() {
           </div>
         </ScrollReveal>
 
-        {/* Portfolio */}
-        {freelancer.portfolio_images.length > 0 && (
-          <ScrollReveal>
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold mb-6">Portfolio</h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {freelancer.portfolio_images.map((img, i) => (
-                  <div
-                    key={i}
-                    className="aspect-video rounded-xl bg-muted gradient-bg overflow-hidden"
-                  />
-                ))}
-              </div>
-            </div>
-          </ScrollReveal>
-        )}
-
-        {/* Reviews */}
         <ScrollReveal>
           <div className="mb-8">
             <h2 className="text-2xl font-bold mb-6">
               Reviews ({reviews.length})
             </h2>
 
-            {/* Submit Review */}
             <div className="glass-card rounded-2xl p-6 mb-6">
               <h3 className="font-semibold mb-4">Leave a Review</h3>
               <div className="mb-4">
@@ -272,7 +250,9 @@ export default function FreelancerProfilePage() {
               <Textarea
                 placeholder="Share your experience working with this freelancer..."
                 value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  setNewComment(e.target.value)
+                }
                 rows={4}
                 className="mb-4"
               />
@@ -285,7 +265,6 @@ export default function FreelancerProfilePage() {
               </Button>
             </div>
 
-            {/* Review List */}
             <div className="space-y-4">
               {reviews.map((review) => (
                 <motion.div

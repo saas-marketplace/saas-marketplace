@@ -37,17 +37,20 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
-  const addItem = useCartStore((state) => state.addItem);
+  const addItem = useCartStore(
+    (state: { addItem: (p: Product) => void }) => state.addItem
+  );
   const { toast } = useToast();
   const supabase = createClient();
 
   useEffect(() => {
     fetchProduct();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.slug]);
 
   async function fetchProduct() {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("products")
       .select("*")
       .eq("slug", params.slug)
@@ -55,7 +58,6 @@ export default function ProductDetailPage() {
 
     if (data) {
       setProduct(data);
-      // Check if liked
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -112,7 +114,6 @@ export default function ProductDetailPage() {
   return (
     <div className="min-h-screen pt-24 pb-16">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Back Button */}
         <motion.button
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -124,16 +125,25 @@ export default function ProductDetailPage() {
         </motion.button>
 
         <div className="grid lg:grid-cols-2 gap-12">
-          {/* Product Image */}
           <ScrollReveal direction="left">
             <div className="relative">
-              <div
-                className={`w-full aspect-square rounded-3xl bg-gradient-to-br ${
-                  categoryGradients[product.category]
-                } flex items-center justify-center`}
-              >
-                <Package className="w-32 h-32 text-white/50" />
-              </div>
+              {product.image_url ? (
+                <div className="w-full aspect-square rounded-3xl overflow-hidden bg-muted">
+                  <img
+                    src={product.image_url}
+                    alt={product.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div
+                  className={`w-full aspect-square rounded-3xl bg-gradient-to-br ${
+                    categoryGradients[product.category]
+                  } flex items-center justify-center`}
+                >
+                  <Package className="w-32 h-32 text-white/50" />
+                </div>
+              )}
               {discount > 0 && (
                 <Badge className="absolute top-4 left-4 bg-red-500 text-white border-0 text-sm">
                   Save {discount}%
@@ -142,7 +152,6 @@ export default function ProductDetailPage() {
             </div>
           </ScrollReveal>
 
-          {/* Product Info */}
           <ScrollReveal direction="right">
             <div className="space-y-6">
               <div>
@@ -153,13 +162,12 @@ export default function ProductDetailPage() {
                   {product.title}
                 </h1>
 
-                {/* Author */}
                 {product.author_name && (
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 rounded-full gradient-bg flex items-center justify-center text-white text-sm font-bold">
                       {product.author_name
                         .split(" ")
-                        .map((n) => n[0])
+                        .map((n: string) => n[0])
                         .join("")}
                     </div>
                     <div>
@@ -169,7 +177,6 @@ export default function ProductDetailPage() {
                   </div>
                 )}
 
-                {/* Stats */}
                 <div className="flex items-center gap-6 text-sm text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <Heart className="w-4 h-4" />
@@ -184,7 +191,6 @@ export default function ProductDetailPage() {
 
               <Separator />
 
-              {/* Price */}
               <div className="flex items-center gap-4">
                 {product.sale_price ? (
                   <>
@@ -202,17 +208,15 @@ export default function ProductDetailPage() {
                 )}
               </div>
 
-              {/* Description */}
               <p className="text-muted-foreground leading-relaxed">
                 {product.long_description || product.description}
               </p>
 
-              {/* Features */}
               {product.features.length > 0 && (
                 <div>
                   <h3 className="font-semibold mb-3">What&apos;s Included</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {product.features.map((feature) => (
+                    {product.features.map((feature: string) => (
                       <div
                         key={feature}
                         className="flex items-center gap-2 text-sm"
@@ -225,10 +229,9 @@ export default function ProductDetailPage() {
                 </div>
               )}
 
-              {/* Tags */}
               {product.tags.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {product.tags.map((tag) => (
+                  {product.tags.map((tag: string) => (
                     <Badge key={tag} variant="secondary" className="text-xs">
                       {tag}
                     </Badge>
@@ -238,7 +241,6 @@ export default function ProductDetailPage() {
 
               <Separator />
 
-              {/* Actions */}
               <div className="flex items-center gap-4">
                 <Button
                   size="lg"
@@ -284,11 +286,7 @@ export default function ProductDetailPage() {
                     }`}
                   />
                 </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="h-12 rounded-xl"
-                >
+                <Button size="lg" variant="outline" className="h-12 rounded-xl">
                   <Share2 className="w-5 h-5" />
                 </Button>
               </div>
