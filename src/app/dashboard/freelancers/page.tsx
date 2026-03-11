@@ -375,74 +375,84 @@ export default function FreelancersPage() {
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       ) : freelancers.length > 0 ? (
-        <div className="rounded-md border overflow-x-auto">
-          <table className="w-full">
+        <div className="rounded-xl border bg-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="text-left py-3 px-4 font-medium">Name</th>
-                <th className="text-left py-3 px-4 font-medium">Title</th>
-                <th className="text-left py-3 px-4 font-medium">Skills</th>
-                <th className="text-left py-3 px-4 font-medium">Rate</th>
-                <th className="text-left py-3 px-4 font-medium">Projects</th>
-                <th className="text-left py-3 px-4 font-medium">Status</th>
-                <th className="text-right py-3 px-4 font-medium">Actions</th>
+                <th className="text-left py-3 px-4 font-medium w-48">Freelancer</th>
+                <th className="text-left py-3 px-4 font-medium w-40">Domain</th>
+                <th className="text-left py-3 px-4 font-medium w-40">Title</th>
+                <th className="text-left py-3 px-4 font-medium w-48">Skills</th>
+                <th className="text-left py-3 px-4 font-medium w-24">Rate</th>
+                <th className="text-left py-3 px-4 font-medium w-20">Projects</th>
+                <th className="text-left py-3 px-4 font-medium w-24">Status</th>
+                <th className="text-right py-3 px-4 font-medium w-24">Actions</th>
               </tr>
             </thead>
             <tbody>
               {freelancers.map((freelancer) => (
-                <tr key={freelancer.id} className="border-b">
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-white text-sm font-bold">
+                <tr key={freelancer.id} className="border-b hover:bg-muted/30 transition-colors">
+                  <td className="py-4 px-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
                         {freelancer.display_name?.charAt(0).toUpperCase()}
                       </div>
-                      <span className="font-medium">{freelancer.display_name}</span>
+                      <div>
+                        <div className="font-medium">{freelancer.display_name}</div>
+                        <div className="text-xs text-muted-foreground">{freelancer.location || 'No location'}</div>
+                      </div>
                     </div>
                   </td>
-                  <td className="py-3 px-4">
+                  <td className="py-4 px-4">
                     {freelancer.domain ? (
-                      <Badge variant="outline" className="flex items-center gap-1">
+                      <Badge variant="outline" className="flex items-center gap-1 bg-primary/5">
                         <Folder className="w-3 h-3" />
                         {freelancer.domain.name}
                       </Badge>
                     ) : (
-                      <span className="text-muted-foreground">-</span>
+                      <span className="text-muted-foreground text-sm">-</span>
                     )}
                   </td>
-                  <td className="py-3 px-4 text-muted-foreground">
-                    {freelancer.title || '-'}
+                  <td className="py-4 px-4">
+                    <span className="text-sm">{freelancer.title || '-'}</span>
                   </td>
-                  <td className="py-3 px-4">
+                  <td className="py-4 px-4">
                     <div className="flex flex-wrap gap-1">
-                      {Array.isArray(freelancer.skills) && freelancer.skills.slice(0, 2).map((skill, i) => (
+                      {Array.isArray(freelancer.skills) && freelancer.skills.slice(0, 3).map((skill, i) => (
                         <Badge key={i} variant="secondary" className="text-xs">
                           {skill}
                         </Badge>
                       ))}
-                      {Array.isArray(freelancer.skills) && freelancer.skills.length > 2 && (
+                      {Array.isArray(freelancer.skills) && freelancer.skills.length > 3 && (
                         <Badge variant="outline" className="text-xs">
-                          +{freelancer.skills.length - 2}
+                          +{freelancer.skills.length - 3}
                         </Badge>
                       )}
                     </div>
                   </td>
-                  <td className="py-3 px-4">
-                    {freelancer.hourly_rate ? `$${freelancer.hourly_rate}/hr` : '-'}
+                  <td className="py-4 px-4">
+                    {freelancer.hourly_rate ? (
+                      <span className="font-medium">${freelancer.hourly_rate}<span className="text-muted-foreground text-sm">/hr</span></span>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
                   </td>
-                  <td className="py-3 px-4">
-                    {freelancer.completed_projects || 0}
+                  <td className="py-4 px-4">
+                    <span className="font-medium">{freelancer.completed_projects || 0}</span>
                   </td>
-                  <td className="py-3 px-4">
-                    <Badge variant={freelancer.is_available ? 'default' : 'secondary'}>
+                  <td className="py-4 px-4">
+                    <Badge variant={freelancer.is_available ? 'default' : 'secondary'} className={freelancer.is_available ? 'bg-green-500 hover:bg-green-600' : ''}>
                       {freelancer.is_available ? 'Available' : 'Unavailable'}
                     </Badge>
                   </td>
-                  <td className="py-3 px-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
+                  <td className="py-4 px-4 text-right">
+                    <div className="flex items-center justify-end gap-1">
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => openEditDialog(freelancer)}
+                        className="hover:bg-primary/10"
                       >
                         <Pencil className="w-4 h-4" />
                       </Button>
@@ -450,7 +460,7 @@ export default function FreelancersPage() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDelete(freelancer.id)}
-                        className="text-destructive hover:text-destructive"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>

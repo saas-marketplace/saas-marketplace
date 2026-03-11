@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { ScrollReveal } from '@/components/ui/scroll-reveal';
 import { getIconComponent } from '@/components/ui/icon-selector';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface Domain {
   id: string;
@@ -30,6 +31,21 @@ const domainGradients: Record<string, string> = {
 export function DomainSection() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
+
+  const toggleDomain = (domainId: string) => {
+    setExpandedDomains(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(domainId)) {
+        newSet.delete(domainId);
+      } else {
+        newSet.add(domainId);
+      }
+      return newSet;
+    });
+  };
+
+  const isExpanded = (domainId: string) => expandedDomains.has(domainId);
 
   useEffect(() => {
     fetchDomains();
@@ -87,10 +103,25 @@ export function DomainSection() {
                       <h3 className="text-xl font-bold mb-2 group-hover:text-primary transition-colors">
                         {domain.name}
                       </h3>
-                      <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                      <p className={`text-sm text-muted-foreground mb-4 ${!isExpanded(domain.id) ? 'line-clamp-2' : ''}`}>
                         {domain.description || `Find ${domain.name} experts`}
                       </p>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      {(domain.description && domain.description.length > 100) && (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            toggleDomain(domain.id);
+                          }}
+                          className="text-sm text-primary hover:underline flex items-center gap-1 mb-2"
+                        >
+                          {isExpanded(domain.id) ? (
+                            <><ChevronUp className="w-4 h-4" /> Show less</>
+                          ) : (
+                            <><ChevronDown className="w-4 h-4" /> Read more</>
+                          )}
+                        </button>
+                      )}
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mt-auto">
                         <span className="font-medium text-primary">
                           {domain.freelancer_count || 0} freelancers
                         </span>
