@@ -94,6 +94,24 @@ export default function FreelancerProfilePage() {
       });
       setNewComment("");
       setNewRating(5);
+      
+      // Recalculate rating from all reviews and update freelancer
+      const { data: allReviews } = await supabase
+        .from("freelancer_reviews")
+        .select("rating")
+        .eq("freelancer_id", freelancer!.id);
+      
+      if (allReviews && allReviews.length > 0) {
+        const totalRating = allReviews.reduce((sum, r) => sum + r.rating, 0);
+        const avgRating = totalRating / allReviews.length;
+        
+        // Update freelancer with new rating and review count
+        await supabase.from("freelancers").update({
+          rating: avgRating,
+          review_count: allReviews.length
+        }).eq("id", freelancer!.id);
+      }
+      
       fetchFreelancer();
     }
     setSubmitting(false);
