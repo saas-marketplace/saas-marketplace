@@ -24,16 +24,14 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24" # Updated to Node.js 24 to address deprecation warning
 
       - name: Install dependencies
         run: |
-          cd saas-marketplace
           npm ci
 
       - name: Build
         run: |
-          cd saas-marketplace
           npm run build
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
@@ -43,4 +41,7 @@ jobs:
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./saas-marketplace/.next
+          publish_dir: ./out
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
