@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-  if (!supabaseUrl || !supabaseKey || !stripeWebhookSecret) {
+  if (!supabaseUrl || !supabaseKey || !stripeWebhookSecret || !stripe) {
     console.warn("Stripe webhook disabled because environment variables are missing.");
     return NextResponse.json(
       { message: "Stripe webhook temporarily disabled" },
