@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: true,
+  output: "export", // Enables static export in Next.js 14+
   images: {
     remotePatterns: [
       {
