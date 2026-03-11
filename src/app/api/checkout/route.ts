@@ -14,7 +14,6 @@ export async function POST(request: NextRequest) {
   const stripeInstance = stripe;
 
   try {
-
     const body = await request.json();
     const { items } = body;
 
