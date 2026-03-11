@@ -81,11 +81,6 @@ export default function ProductsPage() {
 
   const supabase = createClient();
 
-  useEffect(() => {
-    checkUser();
-    fetchProducts();
-  });
-
   const checkUser = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     setUser(user);
@@ -108,6 +103,11 @@ export default function ProductsPage() {
     }
     setLoading(false);
   }, [supabase]);
+
+  useEffect(() => {
+    checkUser();
+    fetchProducts();
+  }, [checkUser, fetchProducts]);
 
   function generateSlug(title: string) {
     return title
