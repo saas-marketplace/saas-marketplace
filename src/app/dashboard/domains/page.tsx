@@ -46,6 +46,9 @@ export default function DomainsPage() {
     description: "",
     icon: "",
   });
+  const [expandedDescriptions, setExpandedDescriptions] = useState<
+    Record<string, boolean>
+  >({});
 
   const supabase = createClient();
 
@@ -100,16 +103,44 @@ export default function DomainsPage() {
     }
   }
 
+  function handleDescriptionChange(
+    e: React.ChangeEvent<HTMLTextAreaElement>
+  ) {
+    let value = e.target.value.trim();
+    // Limit to 180 characters
+    if (value.length > 180) {
+      value = value.substring(0, 180);
+    }
+    setFormData({ ...formData, description: value });
+  }
+
+  function toggleDescriptionExpansion(domainId: string) {
+    setExpandedDescriptions((prev) => ({
+      ...prev,
+      [domainId]: !prev[domainId],
+    }));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     try {
       const domainData = {
-        name: formData.name,
-        slug: formData.slug,
-        description: formData.description || null,
+        name: formData.name.trim(),
+        slug: formData.slug.trim(),
+        description: formData.description.trim() || null,
         icon: formData.icon || null,
       };
+
+      // Validate description length
+      if (
+        domainData.description &&
+        domainData.description.length > 180
+      ) {
+        alert("Description must be 180 characters or less");
+        setSaving(false);
+        return;
+      }
 
       if (editingDomain) {
         const { error } = await supabase
@@ -164,7 +195,7 @@ export default function DomainsPage() {
         {/* Add/Edit Domain Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openAddDialog} className="gradient-bg">
+            <Button onClick={openAddDialog} className="bg-primary text-white">
               <Plus className="w-4 h-4 mr-2" />
               Add Domain
             </Button>
@@ -210,14 +241,22 @@ export default function DomainsPage() {
                 <Textarea
                   placeholder="Describe this domain..."
                   value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value.slice(0, 200) })
-                  }
-                  rows={3}
+                  onChange={handleDescriptionChange}
+                  rows={4}
                   className="resize-none"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Maximum recommended length for best display ({formData.description.length}/200)
+                <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                  <span>
+                    {formData.description.length} / 180 characters
+                  </span>
+                  {formData.description.length > 180 && (
+                    <span className="text-red-500">
+                      (Maximum 180 characters)
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Maximum recommended length for best display
                 </p>
               </div>
 
@@ -236,7 +275,7 @@ export default function DomainsPage() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={saving} className="gradient-bg">
+                <Button type="submit" disabled={saving} className="bg-primary text-white">
                   {saving && (
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   )}
@@ -257,10 +296,11 @@ export default function DomainsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {domains.map((domain) => {
             const Icon = getIconComponent(domain.icon);
+            const isExpanded = expandedDescriptions[domain.id] || false;
             return (
               <div
                 key={domain.id}
-                className="border rounded-lg p-4 hover:shadow-md transition-shadow bg-card"
+                className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition p-5 flex flex-col gap-4 min-h-[200px] flex-1"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
@@ -268,7 +308,9 @@ export default function DomainsPage() {
                       <Icon className="w-5 h-5 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-semibold">{domain.name}</h3>
+                      <h3 className="font-semibold text-gray-900 truncate">
+                        {domain.name}
+                      </h3>
                       <p className="text-xs text-muted-foreground">
                         /{domain.slug}
                       </p>
@@ -277,28 +319,49 @@ export default function DomainsPage() {
 
                   {/* Edit/Delete */}
                   <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
+                    <button
                       onClick={() => openEditDialog(domain)}
+                      className="p-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-600 transition flex items-center justify-center"
                     >
                       <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
+                    </button>
+                    <button
                       onClick={() => handleDelete(domain.id)}
-                      className="text-destructive hover:text-destructive"
+                      className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition flex items-center justify-center"
                     >
                       <Trash2 className="w-4 h-4" />
-                    </Button>
+                    </button>
                   </div>
                 </div>
 
                 {domain.description && (
-                  <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                    {domain.description}
-                  </p>
+                  <div className="flex-1">
+                    <p
+                      className={`text-sm text-muted-foreground mb-3 line-clamp-3 ${
+                        isExpanded ? "line-clamp-none" : ""
+                      }`}
+                    >
+                      {domain.description}
+                    </p>
+                    {domain.description.length > 100 && (
+                      <button
+                        onClick={() => toggleDescriptionExpansion(domain.id)}
+                        className="text-xs text-primary hover:text-primary/80 flex items-center gap-1"
+                      >
+                        {isExpanded ? (
+                          <>
+                            Show less
+                            <Pencil className="w-3 h-3 rotate-180" />
+                          </>
+                        ) : (
+                          <>
+                            Read more
+                            <Pencil className="w-3 h-3" />
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 <Badge variant="secondary" className="flex items-center gap-1">

@@ -10,6 +10,36 @@ import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 
+// Role type matching database schema
+type UserRole = "user" | "admin" ;
+
+// Function to fetch user role from database
+async function getUserRole(supabase: ReturnType<typeof createClient>, userId: string): Promise<UserRole | null> {
+  const { data, error } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Error fetching user role:", error);
+    return null;
+  }
+
+  return data?.role as UserRole | null;
+}
+
+// Function to determine redirect path based on role
+function getRedirectPath(role: UserRole | null): string {
+  switch (role) {
+    case "admin":
+      return "/dashboard";
+    case "user":
+    default:
+      return "/"; // Regular users go to home page
+  }
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,16 +52,31 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
+
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+
     if (error) {
       toast({ title: "Login failed", description: error.message });
+      setLoading(false);
+      return;
+    }
+
+    // Login successful - fetch user role and redirect accordingly
+    if (data?.user) {
+      const userRole = await getUserRole(supabase, data.user.id);
+      const redirectPath = getRedirectPath(userRole);
+      
+      toast({ title: "Login successful", description: `Welcome back! Redirecting to ${redirectPath}...` });
+      router.push(redirectPath);
+      router.refresh();
     } else {
       toast({ title: "Login successful", description: "Welcome back!" });
       router.push("/dashboard");
     }
+
     setLoading(false);
   }
 
@@ -107,7 +152,7 @@ export default function LoginPage() {
           </form>
 
           <p className="text-center text-sm text-muted-foreground mt-6">
-            Don&apos;t have an account?{" "}
+            Don't have an account?{" "}
             <Link href="/auth/signup" className="text-primary font-medium hover:underline">
               Sign Up
             </Link>

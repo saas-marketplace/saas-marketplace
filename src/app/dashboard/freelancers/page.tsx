@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Plus,
   Pencil,
@@ -19,6 +19,8 @@ import {
   Loader2,
   User,
   Folder,
+  MapPin,
+  DollarSign,
 } from "lucide-react";
 
 interface Domain {
@@ -178,6 +180,16 @@ export default function FreelancersPage() {
     fetchFreelancers();
   }
 
+  // Get initials for avatar
+  const getInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
   return (
     <div className="space-y-6 mx-auto px-4 max-w-7xl">
       <div className="flex items-center justify-between">
@@ -256,12 +268,14 @@ export default function FreelancersPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, location: e.target.value })
                   }
+                  placeholder="Location"
                 />
                 <Input
                   value={formData.hourly_rate}
                   onChange={(e) =>
                     setFormData({ ...formData, hourly_rate: e.target.value })
                   }
+                  placeholder="Hourly Rate"
                 />
               </div>
 
@@ -279,7 +293,7 @@ export default function FreelancersPage() {
         </Dialog>
       </div>
 
-      {/* Table */}
+      {/* Cards Grid */}
       {loading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -290,63 +304,118 @@ export default function FreelancersPage() {
           <p className="text-lg font-medium">No freelancers yet.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full table-auto">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="p-4 text-left">Freelancer</th>
-                <th>Domain</th>
-                <th>Title</th>
-                <th>Skills</th>
-                <th>Rate</th>
-                <th>Projects</th>
-                <th>Status</th>
-                <th className="text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {freelancers.map((f) => (
-                <tr key={f.id} className="hover:bg-slate-50 transition">
-                  <td className="p-4 font-medium">{f.display_name}</td>
-                  <td className="p-4">
-                    {f.domain ? (
-                      <Badge variant="outline" className="flex items-center gap-1">
-                        <Folder className="w-4 h-4" />
-                        {f.domain.name}
-                      </Badge>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td className="p-4">{f.title || "-"}</td>
-                  <td className="p-4">
-                    <div className="flex gap-1 flex-wrap">
-                      {f.skills.slice(0, 3).map((s, i) => (
-                        <Badge key={i} className="text-xs">
-                          {s}
-                        </Badge>
-                      ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {freelancers.map((f) => (
+            <div
+              key={f.id}
+              className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition p-5 flex flex-col gap-4"
+            >
+              {/* Left Section - Avatar, Name, Title */}
+              <div className="flex items-start gap-4">
+                <Avatar className="w-12 h-12 border-2 border-purple-100">
+                  <AvatarImage src="" />
+                  <AvatarFallback className="bg-purple-50 text-purple-600 font-semibold">
+                    {getInitials(f.display_name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-gray-900 truncate">
+                    {f.display_name}
+                  </h3>
+                  <p className="text-sm text-gray-500 truncate">
+                    {f.title || "No title"}
+                  </p>
+                  {f.location && (
+                    <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
+                      <MapPin className="w-3 h-3" />
+                      {f.location}
                     </div>
-                  </td>
-                  <td className="p-4">{f.hourly_rate ? `$${f.hourly_rate}` : "-"}</td>
-                  <td className="p-4">{f.completed_projects}</td>
-                  <td className="p-4">
-                    <Badge className={f.is_available ? "bg-green-100" : "bg-gray-200"}>
-                      {f.is_available ? "Available" : "Unavailable"}
-                    </Badge>
-                  </td>
-                  <td className="p-4 text-right">
-                    <Button size="icon" onClick={() => openEditDialog(f)}>
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button size="icon" onClick={() => handleDelete(f.id)}>
-                      <Trash2 className="w-4 h-4 text-red-500" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  )}
+                </div>
+              </div>
+
+              {/* Middle Section - Domain & Skills */}
+              <div className="flex flex-col gap-3">
+                {/* Domain */}
+                {f.domain && (
+                  <div className="flex items-center gap-2">
+                    <Folder className="w-4 h-4 text-gray-400" />
+                    <span className="text-sm text-gray-600">{f.domain.name}</span>
+                  </div>
+                )}
+
+                {/* Skills Tags */}
+                {f.skills.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {f.skills.slice(0, 4).map((skill, index) => (
+                      <span
+                        key={index}
+                        className="bg-purple-50 text-purple-600 text-xs px-3 py-1 rounded-full font-medium"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                    {f.skills.length > 4 && (
+                      <span className="bg-gray-50 text-gray-500 text-xs px-3 py-1 rounded-full font-medium">
+                        +{f.skills.length - 4}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Divider */}
+              <div className="border-t border-gray-100" />
+
+              {/* Right Section - Rate, Projects, Status, Actions */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  {/* Rate */}
+                  {f.hourly_rate && (
+                    <div className="flex items-center gap-1">
+                      <DollarSign className="w-4 h-4 text-gray-400" />
+                      <span className="text-sm font-medium text-gray-700">
+                        ${f.hourly_rate}/hr
+                      </span>
+                    </div>
+                  )}
+                  {/* Projects */}
+                  <span className="text-sm text-gray-500">
+                    {f.completed_projects} projects
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* Status Badge */}
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      f.is_available
+                        ? "bg-green-50 text-green-600"
+                        : "bg-red-50 text-red-600"
+                    }`}
+                  >
+                    {f.is_available ? "Available" : "Unavailable"}
+                  </span>
+
+                  {/* Edit Button */}
+                  <button
+                    onClick={() => openEditDialog(f)}
+                    className="p-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-600 transition flex items-center justify-center"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+
+                  {/* Delete Button */}
+                  <button
+                    onClick={() => handleDelete(f.id)}
+                    className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition flex items-center justify-center"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
