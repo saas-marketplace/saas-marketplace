@@ -35,7 +35,7 @@ const navLinks = [
   { href: "/", label: "Home" },
   { href: "/marketplace", label: "Marketplace" },
   { href: "/freelancers", label: "Freelancers" },
-  { href: "/testimonials", label: "Testimonials" },
+  { href: "/testimonials", label: " Clients" },
   { href: "/contact", label: "Contact" },
 ];
 

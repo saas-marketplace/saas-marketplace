@@ -105,7 +105,7 @@ export default function TestimonialsPage() {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <ScrollReveal className="text-center mb-16">
             <Badge variant="secondary" className="mb-4">
-              Testimonials
+               Clients
             </Badge>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
               What Our Clients{" "}
