@@ -139,7 +139,6 @@ function NavbarContent() {
               transition={{ duration: 0.3 }}
               className="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center"
             >
-              <Sparkles className="w-5 h-5 text-white" />
             </motion.div>
             <span className="text-xl font-bold gradient-text">
             </span>
