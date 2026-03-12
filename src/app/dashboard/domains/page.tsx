@@ -107,9 +107,9 @@ export default function DomainsPage() {
     e: React.ChangeEvent<HTMLTextAreaElement>
   ) {
     let value = e.target.value.trim();
-    // Limit to 180 characters
-    if (value.length > 180) {
-      value = value.substring(0, 180);
+    // Limit to 100 characters
+    if (value.length > 100) {
+      value = value.substring(0, 100);
     }
     setFormData({ ...formData, description: value });
   }
@@ -135,9 +135,9 @@ export default function DomainsPage() {
       // Validate description length
       if (
         domainData.description &&
-        domainData.description.length > 180
+        domainData.description.length > 100
       ) {
-        alert("Description must be 180 characters or less");
+        alert("Description must be 100 characters or less");
         setSaving(false);
         return;
       }
@@ -247,11 +247,11 @@ export default function DomainsPage() {
                 />
                 <div className="flex justify-between text-xs text-muted-foreground mt-1">
                   <span>
-                    {formData.description.length} / 180 characters
+                    {formData.description.length} / 100 characters
                   </span>
-                  {formData.description.length > 180 && (
+                  {formData.description.length > 100 && (
                     <span className="text-red-500">
-                      (Maximum 180 characters)
+                      (Maximum 100 characters)
                     </span>
                   )}
                 </div>

@@ -7,7 +7,6 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { ScrollReveal } from '@/components/ui/scroll-reveal';
 import { getIconComponent } from '@/components/ui/icon-selector';
-import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface Domain {
   id: string;
@@ -31,21 +30,6 @@ const domainGradients: Record<string, string> = {
 export function DomainSection() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
-
-  const toggleDomain = (domainId: string) => {
-    setExpandedDomains(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(domainId)) {
-        newSet.delete(domainId);
-      } else {
-        newSet.add(domainId);
-      }
-      return newSet;
-    });
-  };
-
-  const isExpanded = (domainId: string) => expandedDomains.has(domainId);
 
   useEffect(() => {
     fetchDomains();
@@ -58,23 +42,18 @@ export function DomainSection() {
       .select("*")
       .order('name', { ascending: true });
     
-    if (data) {
-      setDomains(data);
-    }
+    if (data) setDomains(data);
     setLoading(false);
   }
 
-  if (loading) {
-    return null;
-  }
-
-  if (domains.length === 0) {
-    return null;
-  }
+  if (loading) return null;
+  if (domains.length === 0) return null;
 
   return (
     <section className="py-20 bg-muted/30">
       <div className="container mx-auto px-4">
+
+        {/* HEADER */}
         <div className="text-center mb-12">
           <h2 className="text-3xl md:text-4xl font-bold mb-4">
             Browse by <span className="gradient-text">Service Domain</span>
@@ -84,6 +63,7 @@ export function DomainSection() {
           </p>
         </div>
 
+        {/* GRID */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {domains.map((domain, index) => {
             const Icon = getIconComponent(domain.icon);
@@ -97,35 +77,27 @@ export function DomainSection() {
                     className="group h-full"
                   >
                     <div className="h-full p-6 rounded-2xl border bg-card hover:shadow-lg transition-all duration-300 flex flex-col">
+                      
+                      {/* ICON */}
                       <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                         <Icon className="w-6 h-6 text-white" />
                       </div>
+
+                      {/* TITLE */}
                       <h3 className="text-xl font-bold mb-2 group-hover:text-primary transition-colors">
                         {domain.name}
                       </h3>
-                      <p className={`text-sm text-muted-foreground mb-4 ${!isExpanded(domain.id) ? 'line-clamp-2' : ''}`}>
+
+                      {/* DESCRIPTION (with ellipsis) */}
+                      <p className="text-sm text-muted-foreground line-clamp-3 mb-4">
                         {domain.description || `Find ${domain.name} experts`}
                       </p>
-                      {(domain.description && domain.description.length > 100) && (
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            toggleDomain(domain.id);
-                          }}
-                          className="text-sm text-primary hover:underline flex items-center gap-1 mb-2"
-                        >
-                          {isExpanded(domain.id) ? (
-                            <><ChevronUp className="w-4 h-4" /> Show less</>
-                          ) : (
-                            <><ChevronDown className="w-4 h-4" /> Read more</>
-                          )}
-                        </button>
-                      )}
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground mt-auto">
-                        <span className="font-medium text-primary">
-                          {domain.freelancer_count || 0} freelancers
-                        </span>
+
+                      {/* FOOTER: FREELANCER COUNT */}
+                      <div className="mt-auto text-sm font-medium text-primary">
+                        {domain.freelancer_count || 0} freelancers
                       </div>
+
                     </div>
                   </motion.div>
                 </Link>
@@ -134,6 +106,7 @@ export function DomainSection() {
           })}
         </div>
 
+        {/* VIEW ALL */}
         <div className="text-center mt-10">
           <Link href="/freelancers">
             <Button variant="outline" size="lg" className="gap-2">
@@ -141,6 +114,7 @@ export function DomainSection() {
             </Button>
           </Link>
         </div>
+
       </div>
     </section>
   );
