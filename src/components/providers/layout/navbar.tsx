@@ -142,7 +142,6 @@ function NavbarContent() {
               <Sparkles className="w-5 h-5 text-white" />
             </motion.div>
             <span className="text-xl font-bold gradient-text">
-              SaaS Marketplace
             </span>
           </Link>
 
