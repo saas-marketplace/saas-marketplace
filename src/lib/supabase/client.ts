@@ -15,3 +15,6 @@ export function createClient() {
 
   return client;
 }
+
+// Export a singleton supabase client instance for use in client components
+export const supabase = createClient();
