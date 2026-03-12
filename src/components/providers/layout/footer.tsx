@@ -12,6 +12,7 @@ import {
   FaTiktok,
   FaGithub,
   FaLinkedin,
+  FaSnapchat,
 } from "react-icons/fa6";
 
 import { Separator } from "@/components/ui/separator";
@@ -51,6 +52,7 @@ const socialLinks = [
   { icon: FaTiktok, href: "#", label: "TikTok" },
   { icon: FaGithub, href: "#", label: "GitHub" },
   { icon: FaLinkedin, href: "#", label: "LinkedIn" },
+  { icon: FaSnapchat, href: "#", label: "Snapchat" },
 ];
 
 export function Footer() {
