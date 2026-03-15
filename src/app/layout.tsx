@@ -23,7 +23,7 @@ export default function RootLayout({
 
   return (
     <html lang="en" suppressHydrationWarning className={cn("font-sans", inter.variable)}>
-      <body className={inter.className}>
+      <body className={cn(inter.className, "bg-background text-foreground")}>
         <AIChatWidget />
         <Providers>
           <LayoutWithConditionalNavFooter>{children}</LayoutWithConditionalNavFooter>

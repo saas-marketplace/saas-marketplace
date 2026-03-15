@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Phone, Mail, MapPin, Send, Clock } from "lucide-react";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
@@ -57,17 +58,67 @@ export default function ContactPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const supabase = createClient();
+  const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
 
-    const { error } = await supabase.from("contact_submissions").insert(formData);
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
 
-    if (!error) {
+    // Guest protection - redirect to login
+    if (!user) {
+      router.push("/auth/login?redirect=/contact");
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          freelancer_id: null,
+          subject: formData.subject,
+          message: formData.message,
+          request_type: "admin",
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast({
+          title: "Error",
+          description: data.error || "Something went wrong. Please try again.",
+          variant: "destructive",
+        });
+        setSubmitting(false);
+        return;
+      }
+
       toast({
         title: "Message sent!",
         description: "We'll get back to you as soon as possible.",
+      });
+      
+      // Reset form
+      setFormData({
+        name: "",
+        email: "",
+        subject: "",
+        phone: "",
+        message: "",
+      });
+      
+      // Redirect to requests page
+      router.push("/dashboard/requests");
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
       });
     }
 

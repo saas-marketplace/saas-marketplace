@@ -10,8 +10,7 @@ import {
   User, 
   Send, 
   ArrowLeft,
-  Loader2,
-  Mail
+  Loader2
 } from "lucide-react";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { Badge } from "@/components/ui/badge";
@@ -24,12 +23,6 @@ interface Request {
   title: string | null;
   status: "pending" | "received" | "answered";
   created_at: string;
-  // User info for admin
-  users?: {
-    id: string;
-    email: string;
-    full_name: string | null;
-  } | null;
 }
 
 interface RequestMessage {
@@ -43,7 +36,7 @@ interface RequestMessage {
 export default function UserRequestsPage() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
   const [messages, setMessages] = useState<RequestMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
@@ -57,46 +50,17 @@ export default function UserRequestsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
-        // Check if user is admin
-        const { data: userData } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', user.id)
-          .single();
+        setCurrentUserId(user.id);
         
-        const admin = userData?.role === 'admin';
-        setIsAdmin(admin);
-        
-        let query = supabase
+        // Fetch only this user's requests
+        const { data } = await supabase
           .from("requests")
           .select("*")
+          .eq("user_id", user.id)
           .order("created_at", { ascending: false });
 
-        // If admin, show all requests; otherwise show only user's requests
-        if (!admin) {
-          query = query.eq("user_id", user.id);
-        }
-
-        const { data } = await query;
-
         if (data) {
-          // If admin, fetch user info for each request
-          if (admin && data.length > 0) {
-            const userIds = Array.from(new Set(data.map(r => r.user_id)));
-            const { data: usersData } = await supabase
-              .from('users')
-              .select('id, email, full_name')
-              .in('id', userIds);
-            
-            const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
-            const requestsWithUsers = data.map(r => ({
-              ...r,
-              users: usersMap.get(r.user_id) || null
-            }));
-            setRequests(requestsWithUsers);
-          } else {
-            setRequests(data);
-          }
+          setRequests(data);
         }
       }
       setLoading(false);
@@ -157,12 +121,12 @@ export default function UserRequestsPage() {
         setRequests(prev => 
           prev.map(r => 
             r.id === selectedRequest.id 
-              ? { ...r, status: "answered" as const }
+              ? { ...r, status: "received" as const }
               : r
           )
         );
         setSelectedRequest(prev => 
-          prev ? { ...prev, status: "answered" as const } : null
+          prev ? { ...prev, status: "received" as const } : null
         );
       }
     } catch (error) {
@@ -198,18 +162,6 @@ export default function UserRequestsPage() {
     }
   };
 
-  // Get display name for request based on user role
-  const getRequestDisplayName = (request: Request) => {
-    if (isAdmin) {
-      // Admin view: show user info
-      const userInfo = request.users;
-      return userInfo?.full_name || userInfo?.email || "Unknown User";
-    } else {
-      // Regular user view
-      return "Milit Company Support";
-    }
-  };
-
   const formatDate = (date: string) => {
     return new Date(date).toLocaleDateString("en-US", {
       year: "numeric",
@@ -228,115 +180,112 @@ export default function UserRequestsPage() {
   };
 
   // Check if message is from current user
-  const isCurrentUserMessage = async (senderId: string): Promise<boolean> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    return user?.id === senderId;
+  const isCurrentUserMessage = (senderId: string): boolean => {
+    return currentUserId === senderId;
   };
 
   // Chat view component
   if (selectedRequest) {
     return (
-      <div className="h-[calc(100vh-200px)] flex flex-col">
-        {/* Chat Header */}
-        <div className="flex items-center gap-4 mb-4 pb-4 border-b border-border">
-          <Button 
-            variant="ghost" 
-            size="icon"
-            onClick={() => setSelectedRequest(null)}
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div className="flex-1">
-            <h2 className="font-semibold">
-              {getRequestDisplayName(selectedRequest)}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {formatDate(selectedRequest.created_at)}
-            </p>
-          </div>
-          {getStatusBadge(selectedRequest.status)}
-        </div>
-
-        {/* Subject */}
-        {selectedRequest.title && (
-          <div className="mb-4 p-3 bg-muted/50 rounded-lg">
-            <p className="font-medium">{selectedRequest.title}</p>
-          </div>
-        )}
-
-        {/* Messages - using column-reverse for Instagram style */}
-        <div className="flex-1 overflow-y-auto flex flex-col-reverse gap-4 mb-4">
-          {messagesLoading ? (
-            <div className="flex items-center justify-center h-full">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      <div className="max-w-4xl mx-auto">
+        <div className="h-[calc(100vh-200px)] flex flex-col">
+          {/* Chat Header */}
+          <div className="flex items-center gap-4 mb-4 pb-4 border-b border-border">
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={() => setSelectedRequest(null)}
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div className="flex-1">
+              <h2 className="font-semibold">
+                Milit Company Support
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {formatDate(selectedRequest.created_at)}
+              </p>
             </div>
-          ) : messages.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p>No messages yet. Start the conversation!</p>
+            {getStatusBadge(selectedRequest.status)}
+          </div>
+
+          {/* Subject */}
+          {selectedRequest.title && (
+            <div className="mb-4 p-3 bg-muted/50 rounded-lg">
+              <p className="font-medium">{selectedRequest.title}</p>
             </div>
-          ) : (
-            <>
-              <div ref={messagesEndRef} />
-              {messages.map((msg) => {
-                // Determine if message is from current user (for user view) or admin (for admin view)
-                const isUserMessage = isAdmin 
-                  ? msg.sender_id !== selectedRequest.user_id  // Admin sees: user messages on left
-                  : msg.sender_id === selectedRequest.user_id; // User sees: own messages on right
-                
-                return (
-                  <motion.div
-                    key={msg.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`flex ${isUserMessage ? "justify-end" : "justify-start"}`}
-                  >
-                    <div 
-                      className={`max-w-[70%] rounded-2xl p-4 ${
-                        isUserMessage
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-cyan-500 text-white"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium">
-                          {isUserMessage ? (isAdmin ? "User" : "You") : "Admin"}
-                        </span>
-                        <span className="text-xs opacity-70">
-                          {formatMessageTime(msg.created_at)}
-                        </span>
-                      </div>
-                      <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </>
           )}
-        </div>
 
-        {/* Message Input */}
-        <div className="flex gap-2 pt-4 border-t border-border">
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
-            placeholder="Type your message..."
-            className="flex-1 px-4 py-2 rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-            disabled={sendingMessage}
-          />
-          <Button 
-            onClick={handleSendMessage}
-            disabled={!newMessage.trim() || sendingMessage}
-            className="gradient-bg"
-          >
-            {sendingMessage ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+          {/* Messages - using column-reverse for Instagram/Messenger style */}
+          <div className="flex-1 overflow-y-auto flex flex-col-reverse gap-4 mb-4">
+            {messagesLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>No messages yet. Start the conversation!</p>
+              </div>
             ) : (
-              <Send className="w-4 h-4" />
+              <>
+                <div ref={messagesEndRef} />
+                {messages.map((msg) => {
+                  const isUserMsg = isCurrentUserMessage(msg.sender_id);
+                  return (
+                    <motion.div
+                      key={msg.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`flex ${isUserMsg ? "justify-end" : "justify-start"}`}
+                    >
+                      <div 
+                        className={`max-w-[70%] rounded-2xl p-4 ${
+                          isUserMsg
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-cyan-500 text-white"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-medium">
+                            {isUserMsg ? "You" : "Admin"}
+                          </span>
+                          <span className="text-xs opacity-70">
+                            {formatMessageTime(msg.created_at)}
+                          </span>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </>
             )}
-          </Button>
+          </div>
+
+          {/* Message Input */}
+          <div className="flex gap-2 pt-4 border-t border-border">
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
+              placeholder="Type your message..."
+              className="flex-1 px-4 py-2 rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+              disabled={sendingMessage}
+            />
+            <Button 
+              onClick={handleSendMessage}
+              disabled={!newMessage.trim() || sendingMessage}
+              className="gradient-bg"
+            >
+              {sendingMessage ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -344,14 +293,11 @@ export default function UserRequestsPage() {
 
   // List view
   return (
-    <div>
+    <div className="max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">{isAdmin ? "All Requests" : "My Requests"}</h1>
+        <h1 className="text-2xl font-bold">My Requests</h1>
         <p className="text-muted-foreground">
-          {isAdmin 
-            ? "Manage user requests and communications" 
-            : "View your messages to Milit Company"
-          }
+          View your messages to Milit Company
         </p>
       </div>
 
@@ -364,20 +310,13 @@ export default function UserRequestsPage() {
       ) : requests.length === 0 ? (
         <div className="text-center py-12">
           <MessageSquare className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <h3 className="text-lg font-semibold mb-2">{isAdmin ? "No requests yet" : "No requests yet"}</h3>
+          <h3 className="text-lg font-semibold mb-2">No requests yet</h3>
           <p className="text-muted-foreground mb-4">
-            {isAdmin 
-              ? "User requests will appear here" 
-              : "Contact Milit Company to start a conversation"
-            }
+            Contact Milit Company to start a conversation
           </p>
-          {!isAdmin && (
-            <div className="flex gap-2 justify-center">
-              <Button variant="outline" asChild>
-                <a href="/contact">Contact Us</a>
-              </Button>
-            </div>
-          )}
+          <Button variant="outline" asChild>
+            <a href="/contact">Contact Us</a>
+          </Button>
         </div>
       ) : (
         <div className="space-y-4">
@@ -395,14 +334,8 @@ export default function UserRequestsPage() {
                     </div>
                     <div>
                       <p className="font-semibold">
-                        {getRequestDisplayName(request)}
+                        Milit Company Support
                       </p>
-                      {isAdmin && request.users?.email && (
-                        <p className="text-sm text-muted-foreground flex items-center gap-1">
-                          <Mail className="w-3 h-3" />
-                          {request.users.email}
-                        </p>
-                      )}
                       <p className="text-sm text-muted-foreground">
                         {formatDate(request.created_at)}
                       </p>

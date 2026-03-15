@@ -4,65 +4,75 @@
 
 @layer base {
   :root {
-    /* Black theme with cyan accent */
-    --background: 0 0% 0%;
-    --foreground: 0 0% 100%;
+    /* Light Theme - Default */
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
     
-    --card: 0 0% 5%;
-    --card-foreground: 0 0% 100%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
     
-    --popover: 0 0% 5%;
-    --popover-foreground: 0 0% 100%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
     
-    /* Primary: Cyan #9aedff */
-    --primary: 189 100% 81%;
-    --primary-foreground: 0 0% 0%;
+    /* Primary: Black for buttons */
+    --primary: 240 10% 3.9%;
+    --primary-foreground: 0 0% 100%;
     
-    /* Secondary: Dark gray */
-    --secondary: 0 0% 10%;
-    --secondary-foreground: 0 0% 100%;
+    /* Secondary: Light gray */
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 10% 3.9%;
     
-    /* Muted: Dark gray */
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 70%;
+    /* Muted: Very light gray */
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
     
-    /* Accent: Cyan */
+    /* Accent: Cyan for highlights/hover */
     --accent: 189 100% 81%;
-    --accent-foreground: 0 0% 0%;
+    --accent-foreground: 240 10% 3.9%;
+    
+    /* Softer Cyan Accent for Dark Mode - easier on eyes */
+    --accent-dark: 187 72% 53%;  /* #0AA3C8 - darker, softer cyan */
+    --accent-dark-foreground: 0 0% 0%;
     
     /* Destructive: Red */
-    --destructive: 0 84% 60%;
+    --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 100%;
     
-    /* Border */
-    --border: 0 0% 15%;
-    --input: 0 0% 15%;
+    /* Border: Light gray */
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
     --ring: 189 100% 81%;
     
     --radius: 0.75rem;
   }
 
+  /* Dark Theme */
   .dark {
     --background: 0 0% 0%;
     --foreground: 0 0% 100%;
     
-    --card: 0 0% 5%;
+    --card: 0 0% 7%;  /* Dark gray #111111 */
     --card-foreground: 0 0% 100%;
     
-    --popover: 0 0% 5%;
+    --popover: 0 0% 7%;  /* Dark gray #111111 */
     --popover-foreground: 0 0% 100%;
     
-    --primary: 189 100% 81%;
+    /* Primary: White buttons with black text in dark mode */
+    --primary: 0 0% 100%;
     --primary-foreground: 0 0% 0%;
     
     --secondary: 0 0% 10%;
     --secondary-foreground: 0 0% 100%;
     
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 70%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 69%;  /* Light gray #B0B0B0 */
     
     --accent: 189 100% 81%;
     --accent-foreground: 0 0% 0%;
+    
+    /* Softer Cyan Accent for Dark Mode - easier on eyes */
+    --accent-dark: 187 72% 53%;  /* #0AA3C8 - darker, softer cyan */
+    --accent-dark-foreground: 0 0% 0%;
     
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
@@ -82,39 +92,131 @@
   }
 }
 
+/* Cyan Grid Pattern Background - Light Mode */
+.cyber-grid {
+  background-image: 
+    linear-gradient(rgba(0, 180, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 180, 255, 0.06) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+/* Dark Mode Grid - Cyan pattern */
+.dark .cyber-grid {
+  background-image: 
+    linear-gradient(rgba(0, 180, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 180, 255, 0.06) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+/* Subtle cyan grid for lighter backgrounds */
+.cyber-grid-light {
+  background-image: 
+    linear-gradient(rgba(0, 180, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 180, 255, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.dark .cyber-grid-light {
+  background-image: 
+    linear-gradient(rgba(0, 180, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 180, 255, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
 @layer utilities {
+  /* Glass effect for light theme */
   .glass {
+    @apply bg-white/80 backdrop-blur-xl border border-gray-200;
+  }
+
+  .dark .glass {
     @apply bg-white/5 backdrop-blur-xl border border-white/10;
   }
-  .glass-dark {
-    @apply bg-black/20 backdrop-blur-xl border border-white/5;
-  }
+  
   .glass-card {
-    @apply bg-black/80 dark:bg-black/80 backdrop-blur-xl border border-white/10 dark:border-white/10;
+    @apply bg-white backdrop-blur-xl border border-gray-200 shadow-sm;
+  }
+
+  .dark .glass-card {
+    @apply bg-[#111111] backdrop-blur-xl border border-white/10;
   }
   
   /* Cyan gradient text */
   .gradient-text {
-    @apply bg-gradient-to-r from-[#9aedff] via-cyan-300 to-[#9aedff] bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-cyan-400 to-sky-500 bg-clip-text text-transparent;
+  }
+
+  .dark .gradient-text {
+    @apply bg-gradient-to-r from-[#0AA3C8] via-cyan-400 to-[#0AA3C8] bg-clip-text text-transparent;
   }
   
   /* Cyan gradient background */
   .gradient-bg {
-    @apply bg-gradient-to-r from-[#9aedff] to-cyan-400;
+    @apply bg-gradient-to-r from-cyan-400 to-sky-500;
+  }
+
+  .dark .gradient-bg {
+    @apply bg-gradient-to-r from-[#0AA3C8] to-cyan-500;
   }
   
-  /* Subtle dark gradient */
+  /* Subtle gradient for sections */
   .gradient-bg-subtle {
-    @apply bg-gradient-to-br from-gray-900 via-black to-gray-900 dark:from-black dark:via-black dark:to-black;
+    @apply bg-gradient-to-b from-gray-50 via-white to-gray-50;
+  }
+
+  .dark .gradient-bg-subtle {
+    @apply bg-gradient-to-br from-gray-900 via-black to-gray-900;
+  }
+  
+  /* Light gradient background */
+  .gradient-bg-light {
+    @apply bg-gradient-to-br from-gray-50 via-white to-gray-50;
+  }
+
+  .dark .gradient-bg-light {
+    @apply bg-gradient-to-br from-gray-900 via-black to-gray-900;
   }
   
   /* Cyan glow effect */
   .glow-cyan {
-    box-shadow: 0 0 20px rgba(154, 237, 255, 0.3);
+    box-shadow: 0 0 20px rgba(0, 180, 255, 0.3);
+  }
+
+  .dark .glow-cyan {
+    box-shadow: 0 0 20px rgba(10, 163, 200, 0.3);
   }
   
   .glow-cyan-hover:hover {
-    box-shadow: 0 0 30px rgba(154, 237, 255, 0.4);
+    box-shadow: 0 0 30px rgba(0, 180, 255, 0.4);
+  }
+
+  .dark .glow-cyan-hover:hover {
+    box-shadow: 0 0 30px rgba(10, 163, 200, 0.4);
+  }
+  
+  /* Text colors for light theme */
+  .text-primary {
+    @apply text-[#0A0A0A];
+  }
+
+  .dark .text-primary {
+    @apply text-white;
+  }
+  
+  .text-secondary {
+    @apply text-[#525252];
+  }
+
+  .dark .text-secondary {
+    @apply text-gray-300;
+  }
+  
+  .text-muted {
+    @apply text-[#737373];
+  }
+
+  .dark .text-muted {
+    @apply text-[#B0B0B0];
   }
 }
 
@@ -126,43 +228,106 @@ body {
   overflow-x: hidden;
 }
 
-/* Fix spacing issues - reduce top padding, add bottom margin */
-
-
+/* Fix spacing issues */
 .pt-24 {
   padding-top: 0 !important;
- 
 }
-
+.max-w-6xl{
+  padding-top: 4rem !important;
+}
+.max-w-2xl{
+  padding-top: 4rem !important;
+}
 .mb-16 {
   margin-bottom: 4rem !important;
   padding-top: 7.2rem !important;
 }
-.mb-20{
+.max-w-4xl{
+  padding-top: 4rem !important;
+}
+.mb-20 {
   margin-bottom: 0 !important;
-  padding-top: 3rem !important;
+  padding-top: 4rem !important;
 }
-.mb-8{
-  margin-top:3rem!important;
- 
-}
-/* Custom scrollbar for dark theme */
 
-/* Custom scrollbar for dark theme */
+.mb-8 {
+  margin-top: 3rem !important;
+}
+
+/* Light theme scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #000;
+  background: #f5f5f5;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #333;
+  background: #d4d4d4;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #9aedff;
+  background: #0ea5e9;
+}
+
+/* Dark theme scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: #111111;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #333333;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #0AA3C8;
+}
+
+/* Focus ring for inputs */
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2;
+}
+
+.dark .focus-ring {
+  @apply focus:ring-[#0AA3C8] focus:ring-offset-black;
+}
+
+/* Dark mode input styles - easier on eyes */
+.dark .input-dark {
+  @apply bg-[#111111] border-[#2a2a2a] text-white placeholder:text-[#B0B0B0];
+  transition: all 0.3s ease-in-out;
+}
+
+.dark .input-dark:focus {
+  @apply border-[#0AA3C8] ring-2 ring-[#0AA3C8]/30;
+  box-shadow: 0 0 0 3px rgba(10, 163, 200, 0.15);
+}
+
+.dark .input-dark:hover {
+  @apply border-[#333333];
+}
+
+/* Softer cyan glow for dark mode */
+.dark .glow-cyan-soft {
+  box-shadow: 0 0 15px rgba(10, 163, 200, 0.2);
+}
+
+.dark .glow-cyan-soft:hover {
+  box-shadow: 0 0 25px rgba(10, 163, 200, 0.3);
+}
+
+/* Card shadows for light theme */
+.card-shadow {
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
+
+.dark .card-shadow {
+  box-shadow: none;
+}
+
+.card-shadow-hover:hover {
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
 }

@@ -140,6 +140,7 @@ CREATE TABLE public.client_reviews (
 -- Contact submissions
 CREATE TABLE public.contact_submissions (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id),
   name TEXT NOT NULL,
   email TEXT NOT NULL,
   subject TEXT,
@@ -147,6 +148,19 @@ CREATE TABLE public.contact_submissions (
   phone TEXT,
   is_read BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- User requests (messages to freelancers or admin)
+CREATE TABLE public.user_requests (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  freelancer_id UUID REFERENCES public.freelancers(id),
+  request_type TEXT NOT NULL DEFAULT 'admin' CHECK (request_type IN ('admin', 'freelancer')),
+  subject TEXT,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'replied', 'closed')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Blog posts
@@ -179,6 +193,7 @@ ALTER TABLE public.freelancer_reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.client_reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.contact_submissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.blog_posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_requests ENABLE ROW LEVEL SECURITY;
 
 -- Public read access
 CREATE POLICY "Public read access" ON public.domains FOR SELECT USING (true);
@@ -204,6 +219,14 @@ CREATE POLICY "Users create orders" ON public.orders FOR INSERT WITH CHECK (auth
 CREATE POLICY "Authenticated users can review" ON public.freelancer_reviews FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Authenticated users can submit testimonials" ON public.client_reviews FOR INSERT WITH CHECK (true);
 CREATE POLICY "Anyone can submit contact" ON public.contact_submissions FOR INSERT WITH CHECK (true);
+
+-- User requests policies
+CREATE POLICY "Users view own requests" ON public.user_requests FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users create requests" ON public.user_requests FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users update own requests" ON public.user_requests FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Admin view all requests" ON public.user_requests FOR SELECT USING (
+  EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
+);
 
 -- Functions
 CREATE OR REPLACE FUNCTION update_freelancer_rating()

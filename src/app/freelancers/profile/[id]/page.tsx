@@ -14,6 +14,7 @@ import {
   ExternalLink,
   Calendar,
   Clock,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,8 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { StarRating } from "@/components/ui/star-rating";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { formatDate } from "@/lib/utils";
@@ -35,6 +38,9 @@ export default function FreelancerProfilePage() {
   const [newRating, setNewRating] = useState(5);
   const [newComment, setNewComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [contactForm, setContactForm] = useState({ subject: "", message: "" });
+  const [contactSubmitting, setContactSubmitting] = useState(false);
   const supabase = createClient();
   const { toast } = useToast();
 
@@ -115,6 +121,58 @@ export default function FreelancerProfilePage() {
       fetchFreelancer();
     }
     setSubmitting(false);
+  }
+
+  async function handleContactSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setContactSubmitting(true);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    // Guest protection - redirect to login
+    if (!user) {
+      router.push("/auth/login?redirect=" + encodeURIComponent(window.location.pathname));
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          freelancer_id: freelancer!.id,
+          subject: contactForm.subject,
+          message: contactForm.message,
+          request_type: "freelancer",
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast({
+          title: "Error",
+          description: data.error || "Failed to send message. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Message sent!",
+        description: `Your message has been sent to ${freelancer!.display_name}.`,
+      });
+      setContactForm({ subject: "", message: "" });
+      setContactOpen(false);
+      router.push("/dashboard/requests");
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+        variant: "destructive",
+      });
+    }
+    setContactSubmitting(false);
   }
 
   if (loading) {
@@ -241,10 +299,47 @@ export default function FreelancerProfilePage() {
             </div>
 
             <div className="mt-6">
-              <Button className="gradient-bg text-white border-0 hover:opacity-90 rounded-xl">
-                <MessageSquare className="w-4 h-4 mr-2" />
-                Contact {freelancer.display_name.split(" ")[0]}
-              </Button>
+              <Dialog open={contactOpen} onOpenChange={setContactOpen}>
+                <DialogTrigger asChild>
+                  <Button className="gradient-bg text-white border-0 hover:opacity-90 rounded-xl">
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Contact {freelancer.display_name.split(" ")[0]}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Contact {freelancer.display_name}</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleContactSubmit} className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Subject</label>
+                      <Input
+                        placeholder="Project inquiry"
+                        value={contactForm.subject}
+                        onChange={(e) => setContactForm({ ...contactForm, subject: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Message</label>
+                      <Textarea
+                        placeholder="Tell them about your project..."
+                        value={contactForm.message}
+                        onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+                        rows={4}
+                        required
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      className="w-full gradient-bg text-white border-0"
+                      disabled={contactSubmitting}
+                    >
+                      {contactSubmitting ? "Sending..." : "Send Message"}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
         </ScrollReveal>

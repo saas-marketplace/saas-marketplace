@@ -118,6 +118,48 @@ export interface ClientReview {
   created_at: string;
 }
 
+export interface Request {
+  id: string;
+  user_id: string;
+  title: string | null;
+  status: 'pending' | 'received' | 'answered';
+  created_at: string;
+}
+
+export interface RequestMessage {
+  id: string;
+  request_id: string;
+  sender_id: string;
+  message: string;
+  created_at: string;
+}
+
+export interface UserRequest {
+  id: string;
+  user_id: string;
+  freelancer_id: string | null;
+  recipient_id: string | null;
+  request_type: 'admin' | 'freelancer';
+  subject: string | null;
+  message: string;
+  status: 'pending' | 'received' | 'answered';
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  freelancer?: {
+    id: string;
+    display_name: string;
+    title?: string;
+    avatar_url?: string;
+  } | null;
+  user?: {
+    id: string;
+    email: string;
+    full_name: string | null;
+  } | null;
+  freelancer_name?: string;
+}
+
 export interface BlogPost {
   id: string;
   title: string;

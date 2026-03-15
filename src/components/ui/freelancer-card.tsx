@@ -17,7 +17,7 @@ export default function FreelancerCard({ freelancer }: FreelancerCardProps) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="bg-card rounded-xl border border-border overflow-hidden hover:shadow-lg transition-shadow"
+      className="bg-white dark:bg-[#111111] rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden hover:shadow-lg transition-shadow"
     >
       <div className="p-6">
         <div className="flex items-start gap-4">
@@ -25,10 +25,10 @@ export default function FreelancerCard({ freelancer }: FreelancerCardProps) {
             {freelancer.display_name?.charAt(0).toUpperCase() || "F"}
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-semibold truncate">
+            <h3 className="text-lg font-semibold truncate text-[#0A0A0A] dark:text-white">
               {freelancer.display_name}
             </h3>
-            <p className="text-muted-foreground text-sm truncate">
+            <p className="text-[#525252] dark:text-gray-400 text-sm truncate">
               {freelancer.title || freelancer.bio?.slice(0, 50) || "Freelancer"}
             </p>
             <div className="flex items-center gap-2 mt-1">
@@ -36,13 +36,13 @@ export default function FreelancerCard({ freelancer }: FreelancerCardProps) {
                 <div className="flex items-center gap-1">
                   <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                   <span className="text-sm font-medium">{freelancer.rating.toFixed(1)}</span>
-                  <span className="text-muted-foreground text-xs">
+                  <span className="text-[#737373] dark:text-gray-500 text-xs">
                     ({freelancer.review_count})
                   </span>
                 </div>
               )}
               {freelancer.location && (
-                <div className="flex items-center gap-1 text-muted-foreground">
+                <div className="flex items-center gap-1 text-[#737373] dark:text-gray-500">
                   <MapPin className="w-3 h-3" />
                   <span className="text-xs">{freelancer.location}</span>
                 </div>
@@ -67,7 +67,7 @@ export default function FreelancerCard({ freelancer }: FreelancerCardProps) {
         )}
 
         <div className="mt-4 flex items-center justify-between">
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+          <div className="flex items-center gap-4 text-sm text-[#525252] dark:text-gray-400">
             {freelancer.completed_projects > 0 && (
               <div className="flex items-center gap-1">
                 <Briefcase className="w-4 h-4" />
@@ -75,7 +75,7 @@ export default function FreelancerCard({ freelancer }: FreelancerCardProps) {
               </div>
             )}
             {freelancer.hourly_rate && (
-              <span className="font-semibold text-foreground">
+              <span className="font-semibold text-[#0A0A0A] dark:text-white">
                 ${freelancer.hourly_rate}/hr
               </span>
             )}

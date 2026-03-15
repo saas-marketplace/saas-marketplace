@@ -18,6 +18,16 @@ import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import type { ClientReview } from "@/types";
 
+// Color palette for review cards - similar to Domain section
+const reviewColorPalettes = [
+  { bg: "bg-cyan-500", text: "text-cyan-500", gradient: "from-cyan-500 to-sky-500" },
+  { bg: "bg-green-500", text: "text-green-500", gradient: "from-green-500 to-emerald-500" },
+  { bg: "bg-purple-500", text: "text-purple-500", gradient: "from-purple-500 to-pink-500" },
+  { bg: "bg-orange-500", text: "text-orange-500", gradient: "from-orange-500 to-amber-500" },
+  { bg: "bg-blue-500", text: "text-blue-500", gradient: "from-blue-500 to-cyan-500" },
+  { bg: "bg-rose-500", text: "text-rose-500", gradient: "from-rose-500 to-pink-500" },
+];
+
 export default function TestimonialsPage() {
   const [reviews, setReviews] = useState<ClientReview[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -48,18 +58,19 @@ export default function TestimonialsPage() {
     fetchReviews();
   }, [fetchReviews]);
 
-  const featuredReviews = reviews.filter((r) => r.is_featured);
+  // Get latest reviews for slider (limit to 6 most recent)
+  const sliderReviews = reviews.slice(0, 6);
   const allReviews = reviews;
 
   const nextSlide = () => {
     setCurrentIndex((prev) =>
-      prev >= featuredReviews.length - 1 ? 0 : prev + 1
+      prev >= sliderReviews.length - 1 ? 0 : prev + 1
     );
   };
 
   const prevSlide = () => {
     setCurrentIndex((prev) =>
-      prev <= 0 ? featuredReviews.length - 1 : prev - 1
+      prev <= 0 ? sliderReviews.length - 1 : prev - 1
     );
   };
 
@@ -112,11 +123,10 @@ export default function TestimonialsPage() {
               <span className="gradient-text">Say About Us</span>
             </h1>
             {reviews.length > 0 ? (
-              <ul>
-                {reviews.map((review) => (
-                  <li key={review.id}>{review.comment}</li>
-                ))}
-              </ul>
+              <p className="text-lg text-[#525252] dark:text-gray-400 max-w-2xl mx-auto">
+                Hear directly from our clients about their experiences working with
+                us and how we&apos;ve helped them achieve their goals.
+              </p>
             ) : (
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
                 No testimonials available.
@@ -126,7 +136,7 @@ export default function TestimonialsPage() {
         </div>
       </section>
 
-      {featuredReviews.length > 0 && (
+      {sliderReviews.length > 0 && (
         <section className="container mx-auto px-4 sm:px-6 lg:px-8 mb-20">
           <div className="relative max-w-4xl mx-auto">
             <AnimatePresence mode="wait">
@@ -138,34 +148,36 @@ export default function TestimonialsPage() {
                 transition={{ duration: 0.5 }}
                 className="glass-card rounded-3xl p-8 sm:p-12 text-center"
               >
-                <Quote className="w-12 h-12 text-primary/30 mx-auto mb-6" />
+                <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${reviewColorPalettes[currentIndex % reviewColorPalettes.length].gradient} flex items-center justify-center mx-auto mb-6`}>
+                  <Quote className="w-7 h-7 text-white" />
+                </div>
 
                 <p className="text-xl sm:text-2xl leading-relaxed mb-8 text-balance">
-                  &ldquo;{featuredReviews[currentIndex]?.comment}&rdquo;
+                  &ldquo;{sliderReviews[currentIndex]?.comment}&rdquo;
                 </p>
 
                 <div className="flex justify-center mb-4">
                   <StarRating
-                    rating={featuredReviews[currentIndex]?.rating || 5}
+                    rating={sliderReviews[currentIndex]?.rating || 5}
                     size="lg"
                   />
                 </div>
 
                 <div>
-                  <div className="w-16 h-16 rounded-full gradient-bg flex items-center justify-center text-white text-xl font-bold mx-auto mb-3">
-                    {featuredReviews[currentIndex]?.reviewer_name
+                  <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${reviewColorPalettes[currentIndex % reviewColorPalettes.length].gradient} flex items-center justify-center text-white text-xl font-bold mx-auto mb-3`}>
+                    {sliderReviews[currentIndex]?.reviewer_name
                       .split(" ")
                       .map((n: string) => n[0])
                       .join("")}
                   </div>
                   <p className="font-semibold text-lg">
-                    {featuredReviews[currentIndex]?.reviewer_name}
+                    {sliderReviews[currentIndex]?.reviewer_name}
                   </p>
-                  {featuredReviews[currentIndex]?.reviewer_title && (
+                  {sliderReviews[currentIndex]?.reviewer_title && (
                     <p className="text-muted-foreground">
-                      {featuredReviews[currentIndex]?.reviewer_title}
-                      {featuredReviews[currentIndex]?.reviewer_company &&
-                        ` at ${featuredReviews[currentIndex]?.reviewer_company}`}
+                      {sliderReviews[currentIndex]?.reviewer_title}
+                      {sliderReviews[currentIndex]?.reviewer_company &&
+                        ` at ${sliderReviews[currentIndex]?.reviewer_company}`}
                     </p>
                   )}
                 </div>
@@ -183,7 +195,7 @@ export default function TestimonialsPage() {
               </Button>
 
               <div className="flex gap-2">
-                {featuredReviews.map((_, i) => (
+                {sliderReviews.map((_, i) => (
                   <button
                     key={i}
                     onClick={() => setCurrentIndex(i)}
@@ -227,7 +239,7 @@ export default function TestimonialsPage() {
                   &ldquo;{review.comment}&rdquo;
                 </p>
                 <div className="flex items-center gap-3 pt-4 border-t border-border/50">
-                  <div className="w-10 h-10 rounded-full gradient-bg flex items-center justify-center text-white text-sm font-bold">
+                  <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${reviewColorPalettes[index % reviewColorPalettes.length].gradient} flex items-center justify-center text-white text-sm font-bold`}>
                     {review.is_anonymous
                       ? "?"
                       : review.reviewer_name

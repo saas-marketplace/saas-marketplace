@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { formatPrice } from "@/lib/utils";
-import { useCartStore } from "@/stores/cart-store";
+import { useCart } from "@/stores/cart-context";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import type { Product } from "@/types";
@@ -28,9 +28,7 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
-  const addItem = useCartStore(
-    (state: { addItem: (p: Product) => void }) => state.addItem
-  );
+  const { addToCart, isAuthenticated } = useCart();
   const { toast } = useToast();
   const supabase = createClient();
 
@@ -237,7 +235,15 @@ export default function ProductDetailPage() {
                   size="lg"
                   className="flex-1 gradient-bg text-white border-0 hover:opacity-90 h-12 rounded-xl"
                   onClick={() => {
-                    addItem(product);
+                    if (!isAuthenticated) {
+                      toast({
+                        title: "Sign in required",
+                        description: "Please sign in to add items to your cart.",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    addToCart(product);
                     toast({
                       title: "Added to cart!",
                       description: `${product.title} has been added to your cart.`,

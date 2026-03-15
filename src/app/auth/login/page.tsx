@@ -81,7 +81,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center pt-16 pb-16">
+    <div className="min-h-screen flex items-center justify-center pt-16 pb-16 bg-white dark:bg-black">
       <div className="absolute inset-0 gradient-bg-subtle" />
 
       <motion.div

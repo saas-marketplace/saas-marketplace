@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: ["class"],
+  darkMode: "class",
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -41,6 +41,20 @@ const config: Config = {
         accent: {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
+        },
+        /* Softer cyan for dark mode - easier on eyes */
+        "accent-dark": {
+          DEFAULT: "#0AA3C8",
+          50: "#E6F5F9",
+          100: "#CCE9F3",
+          200: "#99D3E7",
+          300: "#66BDDB",
+          400: "#33A7CF",
+          500: "#0AA3C8",
+          600: "#0882A0",
+          700: "#066178",
+          800: "#044150",
+          900: "#022028",
         },
         popover: {
           DEFAULT: "hsl(var(--popover))",

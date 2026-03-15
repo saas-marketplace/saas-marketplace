@@ -9,17 +9,17 @@ const words = ["Products", "Services", "Talent", "Growth"];
 
 export function HeroSection() {
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-white dark:bg-black">
       {/* Background Effects */}
       <div className="absolute inset-0 gradient-bg-subtle" />
       <div className="absolute inset-0">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/20 rounded-full blur-3xl animate-blob" />
-        <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-cyan-400/20 rounded-full blur-3xl animate-blob animation-delay-2000" />
-        <div className="absolute bottom-1/4 left-1/3 w-96 h-96 bg-cyan-300/20 rounded-full blur-3xl animate-blob animation-delay-4000" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-400/10 dark:bg-cyan-500/20 rounded-full blur-3xl animate-blob" />
+        <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-sky-400/10 dark:bg-cyan-400/20 rounded-full blur-3xl animate-blob animation-delay-2000" />
+        <div className="absolute bottom-1/4 left-1/3 w-96 h-96 bg-cyan-300/10 dark:bg-cyan-300/20 rounded-full blur-3xl animate-blob animation-delay-4000" />
       </div>
 
-      {/* Grid Pattern */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(154,237,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(154,237,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px]" />
+      {/* Grid Pattern - Light version */}
+      <div className="absolute inset-0 cyber-grid" />
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="max-w-5xl mx-auto text-center">
@@ -30,8 +30,8 @@ export function HeroSection() {
             transition={{ duration: 0.5 }}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-card mb-8"
           >
-            <Sparkles className="w-4 h-4 text-primary" />
-            <span className="text-sm font-medium">
+            <Sparkles className="w-4 h-4 text-cyan-500" />
+            <span className="text-sm font-medium text-[#525252] dark:text-gray-400">
               The #1 Digital Services Platform
             </span>
             <ArrowRight className="w-3 h-3" />
@@ -42,7 +42,7 @@ export function HeroSection() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.2 }}
-            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-tight mb-6"
+            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-tight mb-6 text-[#0A0A0A] dark:text-white"
           >
             Discover Premium Digital{" "}
             <span className="relative">
@@ -75,9 +75,9 @@ export function HeroSection() {
                 />
                 <defs>
                   <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#9aedff" />
-                    <stop offset="50%" stopColor="#67cce0" />
-                    <stop offset="100%" stopColor="#9aedff" />
+                    <stop offset="0%" stopColor="#0AA3C8" />
+                    <stop offset="50%" stopColor="#0AA3C8" />
+                    <stop offset="100%" stopColor="#0AA3C8" />
                   </linearGradient>
                 </defs>
               </motion.svg>
@@ -89,7 +89,7 @@ export function HeroSection() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.4 }}
-            className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed"
+            className="text-lg sm:text-xl text-[#525252] dark:text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed"
           >
             Your one-stop marketplace for premium digital products, top-tier
             freelance talent, and everything you need to build your next big
@@ -106,7 +106,7 @@ export function HeroSection() {
             <Link href="/marketplace">
               <Button
                 size="lg"
-                className="gradient-bg text-white border-0 hover:opacity-90 text-base px-8 h-12 rounded-xl group"
+                className="bg-[#0A0A0A] dark:bg-[#0AA3C8] text-white dark:text-black border-0 hover:bg-[#262626] dark:hover:bg-[#0AA3C8]/90 text-base px-8 h-12 rounded-xl group shadow-lg"
               >
                 Explore Marketplace
                 <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
@@ -116,7 +116,7 @@ export function HeroSection() {
               <Button
                 size="lg"
                 variant="outline"
-                className="text-base px-8 h-12 rounded-xl glass-card hover:bg-primary/5"
+                className="text-base px-8 h-12 rounded-xl bg-white dark:bg-white/5 border-gray-200 dark:border-white/10 text-[#0A0A0A] dark:text-white hover:bg-gray-50 dark:hover:bg-white/10 hover:border-gray-300 dark:hover:border-white/20"
               >
                 <Zap className="mr-2 h-4 w-4" />
                 Find Freelancers
@@ -141,7 +141,7 @@ export function HeroSection() {
                 <div className="text-2xl sm:text-3xl font-bold gradient-text">
                   {stat.value}
                 </div>
-                <div className="text-sm text-muted-foreground mt-1">
+                <div className="text-sm text-[#737373] dark:text-gray-400 mt-1">
                   {stat.label}
                 </div>
               </div>
@@ -156,9 +156,9 @@ export function HeroSection() {
         animate={{ y: [0, 8, 0] }}
         transition={{ duration: 2, repeat: Infinity }}
       >
-        <div className="w-6 h-10 rounded-full border-2 border-muted-foreground/30 flex items-start justify-center p-1">
+        <div className="w-6 h-10 rounded-full border-2 border-gray-300 dark:border-white/20 flex items-start justify-center p-1">
           <motion.div
-            className="w-1.5 h-1.5 rounded-full bg-primary"
+            className="w-1.5 h-1.5 rounded-full bg-cyan-500 dark:bg-[#0AA3C8]"
             animate={{ y: [0, 16, 0] }}
             transition={{ duration: 2, repeat: Infinity }}
           />

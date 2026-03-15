@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { formatPrice } from "@/lib/utils";
-import { useCartStore } from "@/stores/cart-store";
+import { useCart } from "@/stores/cart-context";
 import { loadStripe, Stripe } from "@stripe/stripe-js";
 
 interface CheckoutItem {
@@ -28,11 +28,18 @@ interface CheckoutItem {
 }
 
 export default function CartPage() {
-  const { items, removeItem, updateQuantity, getTotal } =
-    useCartStore();
-  const [loading, setLoading] = useState(false);
+  const { cartItems, removeFromCart, updateQuantity, loading: cartLoading, isAuthenticated } = useCart();
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [stripeError, setStripeError] = useState<string | null>(null);
   const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
+
+  // Calculate total from cart items
+  const getTotal = () => {
+    return cartItems.reduce((total, item) => {
+      const price = item.product?.sale_price || item.product?.price || 0;
+      return total + price * item.quantity;
+    }, 0);
+  };
 
   // Initialize Stripe on mount
   useEffect(() => {
@@ -51,13 +58,18 @@ export default function CartPage() {
   }, []);
 
   const handleCheckout = async () => {
-    setLoading(true);
+    if (!isAuthenticated) {
+      setStripeError("Please sign in to complete your purchase.");
+      return;
+    }
+    
+    setCheckoutLoading(true);
     setStripeError(null);
     try {
-      const checkoutItems: CheckoutItem[] = items.map((item) => ({
-        id: item.product.id,
-        title: item.product.title,
-        price: item.product.sale_price || item.product.price,
+      const checkoutItems = cartItems.map((item) => ({
+        id: item.product_id,
+        title: item.product?.title || "Product",
+        price: item.product?.sale_price || item.product?.price || 0,
         quantity: item.quantity,
       }));
 
@@ -91,10 +103,25 @@ export default function CartPage() {
       console.error("Checkout error:", error);
       setStripeError(error.message || "An error occurred during checkout. Please try again.");
     }
-    setLoading(false);
+    setCheckoutLoading(false);
   };
 
-  if (items.length === 0) {
+  if (cartLoading) {
+    return (
+      <div className="min-h-screen pt-24 pb-16 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full mx-auto"
+          />
+          <p className="text-muted-foreground">Loading cart...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (cartItems.length === 0) {
     return (
       <div className="min-h-screen pt-24 pb-16 flex items-center justify-center">
         <div className="text-center space-y-6">
@@ -107,7 +134,9 @@ export default function CartPage() {
           </motion.div>
           <h1 className="text-2xl font-bold">Your cart is empty</h1>
           <p className="text-muted-foreground">
-            Discover amazing digital products in our marketplace.
+            {isAuthenticated 
+              ? "You haven't added any products to your cart yet."
+              : "Sign in to start shopping and add items to your cart."}
           </p>
           <Link href="/marketplace">
             <Button className="gradient-bg text-white border-0">
@@ -133,16 +162,16 @@ export default function CartPage() {
         <h1 className="text-3xl font-bold mb-8">
           Shopping Cart{" "}
           <span className="text-muted-foreground text-lg font-normal">
-            ({items.length} item{items.length !== 1 ? "s" : ""})
+            ({cartItems.length} item{cartItems.length !== 1 ? "s" : ""})
           </span>
         </h1>
 
         <div className="grid lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-4">
             <AnimatePresence>
-              {items.map((item) => (
+              {cartItems.map((item) => (
                 <motion.div
-                  key={item.product.id}
+                  key={item.id}
                   layout
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -156,15 +185,15 @@ export default function CartPage() {
                   <div className="flex-1 space-y-2">
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="font-semibold">{item.product.title}</h3>
+                        <h3 className="font-semibold">{item.product?.title || "Product"}</h3>
                         <Badge variant="secondary" className="text-xs capitalize mt-1">
-                          {item.product.category}
+                          {item.product?.category || "product"}
                         </Badge>
                       </div>
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => removeItem(item.product.id)}
+                        onClick={() => removeFromCart(item.product_id)}
                         className="text-muted-foreground hover:text-destructive"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -177,9 +206,7 @@ export default function CartPage() {
                           variant="outline"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={() =>
-                            updateQuantity(item.product.id, item.quantity - 1)
-                          }
+                          onClick={() => updateQuantity(item.product_id, item.quantity - 1)}
                         >
                           <Minus className="w-3 h-3" />
                         </Button>
@@ -190,16 +217,14 @@ export default function CartPage() {
                           variant="outline"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={() =>
-                            updateQuantity(item.product.id, item.quantity + 1)
-                          }
+                          onClick={() => updateQuantity(item.product_id, item.quantity + 1)}
                         >
                           <Plus className="w-3 h-3" />
                         </Button>
                       </div>
 
                       <div className="text-right">
-                        {item.product.sale_price ? (
+                        {item.product?.sale_price ? (
                           <div>
                             <span className="font-bold text-primary">
                               {formatPrice(item.product.sale_price * item.quantity)}
@@ -210,7 +235,7 @@ export default function CartPage() {
                           </div>
                         ) : (
                           <span className="font-bold">
-                            {formatPrice(item.product.price * item.quantity)}
+                            {formatPrice((item.product?.price || 0) * item.quantity)}
                           </span>
                         )}
                       </div>
@@ -244,9 +269,9 @@ export default function CartPage() {
               <Button
                 className="w-full h-12 gradient-bg text-white border-0 hover:opacity-90 rounded-xl"
                 onClick={handleCheckout}
-                disabled={loading || !!stripeError}
+                disabled={checkoutLoading || !!stripeError || !isAuthenticated}
               >
-                {loading ? (
+                {checkoutLoading ? (
                   <span className="flex items-center gap-2">
                     <motion.div
                       animate={{ rotate: 360 }}

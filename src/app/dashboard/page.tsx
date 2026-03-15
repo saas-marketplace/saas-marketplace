@@ -27,20 +27,18 @@ export default function DashboardPage() {
       const [
         { count: freelancers },
         { count: products },
-        { count: clientRequests },
-        { count: teamMembers }
+        { count: clientRequests }
       ] = await Promise.all([
         supabase.from('freelancers').select('*', { count: 'exact', head: true }),
         supabase.from('products').select('*', { count: 'exact', head: true }),
-        supabase.from('client_requests').select('*', { count: 'exact', head: true }),
-        supabase.from('team_members').select('*', { count: 'exact', head: true })
+        supabase.from('requests').select('*', { count: 'exact', head: true })
       ]);
 
       setStats({
         freelancers: freelancers || 0,
         products: products || 0,
         clientRequests: clientRequests || 0,
-        teamMembers: teamMembers || 0
+        teamMembers: 0
       });
       setLoading(false);
     };

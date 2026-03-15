@@ -42,28 +42,28 @@ export default function MarketplacePage() {
   });
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen gradient-bg-subtle">
       {/* Hero Section */}
-      <div className="bg-gradient-to-br from-gray-900 via-black to-gray-900 py-16">
+      <div className="py-16">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl mx-auto text-center">
-            <h1 className="text-4xl sm:text-5xl font-bold mb-4">
+            <h1 className="text-4xl sm:text-5xl font-bold mb-4 text-[#0A0A0A] dark:text-white">
               Marketplace{" "}
               <span className="gradient-text">Products</span>
             </h1>
-            <p className="text-lg text-muted-foreground mb-8">
+            <p className="text-lg text-[#525252] dark:text-gray-400 mb-8">
               Discover premium templates, e-books, design assets, and more from talented creators
             </p>
             
             {/* Search Bar */}
             <div className="relative max-w-lg mx-auto">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <Input
                 type="text"
                 placeholder="Search products..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 pr-4 py-6 text-lg bg-black border-2 focus:border-primary"
+                className="pl-12 pr-4 py-6 text-lg bg-white dark:bg-[#111111] border-2 border-gray-200 dark:border-white/10 focus:border-cyan-400 dark:focus:border-[#0AA3C8]"
               />
             </div>
           </div>
@@ -99,11 +99,11 @@ export default function MarketplacePage() {
           </div>
         ) : (
           <div className="text-center py-16">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center">
-              <Filter className="w-8 h-8 text-muted-foreground" />
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center">
+              <Filter className="w-8 h-8 text-gray-400 dark:text-gray-500" />
             </div>
-            <h3 className="text-xl font-semibold mb-2">No products found</h3>
-            <p className="text-muted-foreground">
+            <h3 className="text-xl font-semibold mb-2 text-[#0A0A0A] dark:text-white">No products found</h3>
+            <p className="text-[#525252] dark:text-gray-400">
               {searchQuery || selectedCategory
                 ? "Try adjusting your search or filters"
                 : "No products available yet. Check back later!"}
@@ -113,7 +113,7 @@ export default function MarketplacePage() {
 
         {/* Results Count */}
         {!loading && filteredProducts.length > 0 && (
-          <p className="text-sm text-muted-foreground mt-8 text-center">
+          <p className="text-sm text-[#525252] dark:text-gray-400 mt-8 text-center">
             Showing {filteredProducts.length} of {products.length} products
           </p>
         )}

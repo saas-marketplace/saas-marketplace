@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Heart, ShoppingCart, Star, Eye, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatPrice } from "@/lib/utils";
-import { useCartStore } from "@/stores/cart-store";
+import { useCart } from "@/stores/cart-context";
 import { useToast } from "@/components/ui/use-toast";
 import type { Product } from "@/types";
 
@@ -38,8 +39,9 @@ export function ProductCard({
 }: ProductCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [likeAnimating, setLikeAnimating] = useState(false);
-  const addItem = useCartStore((state: { addItem: (p: Product) => void }) => state.addItem);
+  const { addToCart, isAuthenticated } = useCart();
   const { toast } = useToast();
+  const router = useRouter();
 
   const handleLike = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -52,7 +54,14 @@ export function ProductCard({
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    addItem(product);
+    
+    // Redirect guests to registration page - privacy requirement
+    if (!isAuthenticated) {
+      router.push('/auth/register');
+      return;
+    }
+    
+    addToCart(product);
     toast({
       title: "Added to cart!",
       description: `${product.title} has been added to your cart.`,

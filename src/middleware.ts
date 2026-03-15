@@ -68,18 +68,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  // Dashboard routes require admin or super_admin role
+  // CRITICAL: Block ALL /dashboard routes for non-admin users
+  // Regular users must NEVER access /dashboard
   if (request.nextUrl.pathname.startsWith("/dashboard")) {
-    // Allow access if no role record exists (backwards compatibility)
-    if (!userRole) {
-      return response;
-    }
-
-    // Check if user has required role
+    // Check if user has admin role
     if (!["admin", "super_admin"].includes(userRole)) {
-      // Redirect to home if not authorized
+      // Redirect regular users to home page
       return NextResponse.redirect(new URL("/", request.url));
     }
+    // Admin users can access dashboard - allow through
   }
 
   return response;
@@ -90,5 +87,6 @@ export const config = {
     "/",
     "/dashboard/:path*",
     "/auth/:path*",
+    "/requests/:path*",
   ],
 };

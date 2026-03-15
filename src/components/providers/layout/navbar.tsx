@@ -25,7 +25,7 @@ import {
 } from "../../ui/dropdown-menu";
 import { Badge } from "../../ui/badge";
 import { cn } from "../../../lib/utils";
-import { useCartStore } from "../../../stores/cart-store";
+import { useCart } from "@/stores/cart-context";
 import { createClient } from "../../../lib/supabase/client";
 import type { Session, AuthChangeEvent } from "@supabase/supabase-js";
 
@@ -40,18 +40,39 @@ const navLinks = [
 function NavbarContent() {
   const [scrolled, setScrolled] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
-  const itemCount = useCartStore((state: { getItemCount: () => number }) => state.getItemCount());
+  const { cartCount } = useCart();
   const supabase = createClient();
+
+  // Fetch user role
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      if (user) {
+        const { data } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        setUserRole(data?.role || null);
+      } else {
+        setUserRole(null);
+      }
+    };
+    fetchUserRole();
+  }, [user, supabase]);
 
   // Prevent hydration mismatch
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Get theme with mounted check to prevent hydration mismatch
+  const effectiveTheme = mounted ? theme : "light";
 
   useEffect(() => {
     const handleScroll = () => {
@@ -132,8 +153,8 @@ function NavbarContent() {
         className={cn(
           "fixed inset-x-0 top-0 z-50 w-full transition-all duration-300",
           scrolled
-            ? "bg-background/80 backdrop-blur-xl border-b border-border/50 shadow-lg shadow-black/5"
-            : "bg-background/80" // keep same height and bg even at top
+            ? "bg-white dark:bg-neutral-900 backdrop-blur-xl border-b border-gray-200 dark:border-white/10 shadow-lg"
+            : "bg-white dark:bg-neutral-900"
         )}
       >
       <nav className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -156,10 +177,10 @@ function NavbarContent() {
                 key={link.href}
                 href={link.href}
                 className={cn(
-                  "text-sm font-medium transition-colors hover:text-primary",
+                  "text-sm font-medium transition-colors",
                   pathname === link.href
-                    ? "text-primary"
-                    : "text-muted-foreground"
+                    ? "text-black dark:text-white"
+                    : "text-gray-600 dark:text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400"
                 )}
               >
                 {link.label}
@@ -173,24 +194,27 @@ function NavbarContent() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="rounded-full"
+              onClick={() => setTheme(effectiveTheme === "dark" ? "light" : "dark")}
+              className="rounded-full text-black dark:text-white"
             >
-              <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-              <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              {effectiveTheme === "dark" ? (
+                <Sun className="h-5 w-5 transition-transform" />
+              ) : (
+                <Moon className="h-5 w-5 transition-transform" />
+              )}
               <span className="sr-only">Toggle theme</span>
             </Button>
 
             {/* Cart */}
             <Link href="/marketplace/cart">
-              <Button variant="ghost" size="icon" className="rounded-full relative">
+              <Button variant="ghost" size="icon" className="rounded-full relative text-black dark:text-white">
                 <ShoppingCart className="h-5 w-5" />
-                {mounted && itemCount > 0 && (
+                {mounted && cartCount > 0 && (
                   <Badge 
                     suppressHydrationWarning 
                     className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
                   >
-                    {itemCount}
+                    {cartCount}
                   </Badge>
                 )}
               </Button>
@@ -210,9 +234,20 @@ function NavbarContent() {
                       <p className="text-sm font-medium">{user.email}</p>
                     </div>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link href="/dashboard">Dashboard</Link>
-                    </DropdownMenuItem>
+                    {userRole === 'admin' ? (
+                      <>
+                        <DropdownMenuItem asChild>
+                          <Link href="/dashboard">Dashboard</Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href="/dashboard/requests">Requests</Link>
+                        </DropdownMenuItem>
+                      </>
+                    ) : (
+                      <DropdownMenuItem asChild>
+                        <Link href="/requests">My Requests</Link>
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleSignOut}>
                       <LogOut className="mr-2 h-4 w-4" />
@@ -259,7 +294,7 @@ function NavbarContent() {
               onClick={toggleMenu}
               aria-label="Toggle menu"
               aria-expanded={menuOpen}
-              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition text-black dark:text-white"
             >
               {menuOpen ? (
                 <X className="h-5 w-5" />
@@ -278,7 +313,7 @@ function NavbarContent() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
-              className="absolute top-full left-0 w-full bg-white dark:bg-gray-900 border-t shadow-md z-50"
+              className="absolute top-full left-0 w-full bg-white dark:bg-neutral-900 border-t border-gray-200 dark:border-white/10 shadow-md z-50"
             >
               <div className="flex flex-col">
                 {/* Mobile Navigation Links */}
@@ -288,24 +323,24 @@ function NavbarContent() {
                     href={link.href}
                     onClick={() => setMenuOpen(false)}
                     className={cn(
-                      "block px-6 py-4 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors",
+                      "block px-6 py-4 transition-colors",
                       pathname === link.href
-                        ? "text-primary bg-primary/5"
-                        : "text-muted-foreground"
+                        ? "text-black dark:text-white bg-cyan-50 dark:bg-white/5"
+                        : "text-gray-600 dark:text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400 hover:bg-gray-50 dark:hover:bg-white/5"
                     )}
                   >
                     {link.label}
                   </Link>
                 ))}
                 
-                <div className="border-t border-border" />
+                <div className="border-t border-gray-200 dark:border-white/10" />
                 
                 {/* Sign In - Only show if not logged in */}
                 {!loading && !user && (
                   <Link
                     href="/auth/login"
                     onClick={() => setMenuOpen(false)}
-                    className="block px-6 py-4 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    className="block px-6 py-4 text-gray-600 dark:text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
                   >
                     Sign In
                   </Link>
@@ -315,15 +350,24 @@ function NavbarContent() {
                 {!loading && user && (
                   <>
                     <Link
-                      href="/dashboard"
+                      href={userRole === 'admin' ? '/dashboard' : '/requests'}
                       onClick={() => setMenuOpen(false)}
-                      className="block px-6 py-4 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      className="block px-6 py-4 text-gray-600 dark:text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
                     >
-                      Dashboard
+                      {userRole === 'admin' ? 'Dashboard' : 'My Requests'}
                     </Link>
+                    {userRole === 'admin' && (
+                      <Link
+                        href="/dashboard/requests"
+                        onClick={() => setMenuOpen(false)}
+                        className="block px-6 py-4 text-gray-600 dark:text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                      >
+                        Requests
+                      </Link>
+                    )}
                     <button
                       onClick={handleSignOut}
-                      className="block px-6 py-4 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left w-full"
+                      className="block px-6 py-4 text-gray-600 dark:text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left w-full"
                     >
                       Sign Out
                     </button>
