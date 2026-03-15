@@ -15,10 +15,10 @@ import { getIconComponent } from "@/components/ui/icon-selector";
 
 const domainGradients: Record<string, string> = {
   "web-development": "from-blue-500 to-cyan-500",
-  "graphic-design": "from-pink-500 to-purple-500",
-  "video-editing": "from-red-500 to-orange-500",
-  marketing: "from-green-500 to-emerald-500",
-  copywriting: "from-yellow-500 to-amber-500",
+  "ui-ux-design": "from-purple-500 to-pink-500",
+  "mobile-development": "from-pink-500 to-rose-500",
+  "data-science": "from-orange-500 to-amber-500",
+  "devops-cloud": "from-green-500 to-emerald-500",
 };
 
 export default function FreelancersPage() {

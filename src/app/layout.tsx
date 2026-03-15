@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import dynamic from "next/dynamic";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import LayoutWithConditionalNavFooter from "@/components/providers/LayoutWithConditionalNavFooter";
@@ -18,9 +19,12 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const AIChatWidget = dynamic(() => import("@/components/ai/AIChatWidget"), { ssr: false });
+
   return (
     <html lang="en" suppressHydrationWarning className={cn("font-sans", inter.variable)}>
       <body className={inter.className}>
+        <AIChatWidget />
         <Providers>
           <LayoutWithConditionalNavFooter>{children}</LayoutWithConditionalNavFooter>
         </Providers>

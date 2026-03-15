@@ -53,7 +53,7 @@ export default function ProductDetailPage() {
           .select("id")
           .eq("user_id", user.id)
           .eq("product_id", data.id)
-          .single();
+          .maybeSingle();
         setIsLiked(!!like);
       }
     }

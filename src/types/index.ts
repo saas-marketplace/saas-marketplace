@@ -135,6 +135,16 @@ export interface BlogPost {
   created_at: string;
 }
 
+export interface Blog {
+  id: string;
+  title: string;
+  description: string | null;
+  content: string | null;
+  image_url: string | null;
+  author: string | null;
+  created_at: string;
+}
+
 export interface ContactSubmission {
   name: string;
   email: string;

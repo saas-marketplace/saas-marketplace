@@ -5,46 +5,101 @@ import Link from "next/link";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Clock, Calendar } from "lucide-react";
+import { ArrowRight, Clock, Calendar, Loader2, FileText } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { supabase } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
 
-const blogPosts = [
-  {
-    title: "The Future of Remote Work in 2024",
-    excerpt:
-      "Explore the latest trends shaping remote work and how freelancers can stay ahead of the curve.",
-    slug: "future-of-remote-work-2024",
-    author: "Alex Rivera",
-    category: "Industry",
-    read_time: 8,
-    published_at: "2024-01-15",
-    gradient: "from-purple-500 to-blue-500",
-  },
-  {
-    title: "10 Essential Tools Every Designer Needs",
-    excerpt:
-      "A curated list of must-have design tools for modern digital designers who want to stay productive.",
-    slug: "10-essential-designer-tools",
-    author: "Sophie Laurent",
-    category: "Design",
-    read_time: 6,
-    published_at: "2024-01-10",
-    gradient: "from-pink-500 to-orange-500",
-  },
-  {
-    title: "How to Build a Profitable SaaS Product",
-    excerpt:
-      "Step-by-step guide to building, launching, and scaling a successful SaaS product from scratch.",
-    slug: "build-profitable-saas",
-    author: "James Wilson",
-    category: "Development",
-    read_time: 12,
-    published_at: "2024-01-05",
-    gradient: "from-green-500 to-teal-500",
-  },
+interface Blog {
+  id: string;
+  title: string;
+  description: string | null;
+  content: string | null;
+  image_url: string | null;
+  author: string | null;
+  created_at: string;
+}
+
+const gradients = [
+  "from-purple-500 to-blue-500",
+  "from-pink-500 to-orange-500",
+  "from-green-500 to-teal-500",
+  "from-amber-500 to-red-500",
+  "from-cyan-500 to-blue-500",
+  "from-violet-500 to-pink-500",
 ];
 
 export function BlogSection() {
+  const [blogs, setBlogs] = useState<Blog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchBlogs() {
+      const { data, error } = await supabase
+        .from("blogs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(6);
+
+      if (!error && data) {
+        setBlogs(data);
+      }
+      setLoading(false);
+    }
+
+    fetchBlogs();
+  }, []);
+
+  if (loading) {
+    return (
+      <section className="py-24">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // If no blogs, don't show the section or show a placeholder
+  if (blogs.length === 0) {
+    return (
+      <section className="py-24">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-16">
+            <ScrollReveal>
+              <Badge variant="secondary" className="mb-4">
+                Latest Insights
+              </Badge>
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
+                From our <span className="gradient-text">blog</span>
+              </h2>
+              <p className="text-lg text-muted-foreground max-w-xl">
+                Stay updated with the latest trends, tips, and insights from
+                industry experts.
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.2}>
+              <Link href="/blog">
+                <Button variant="outline" className="mt-4 sm:mt-0 group">
+                  View All Posts
+                  <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </Button>
+              </Link>
+            </ScrollReveal>
+          </div>
+
+          <div className="text-center py-12 text-muted-foreground">
+            <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+            <p className="text-lg font-medium">No blog posts yet.</p>
+            <p className="text-sm">Check back soon for new content!</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="py-24">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -72,51 +127,67 @@ export function BlogSection() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {blogPosts.map((post, index) => (
-            <ScrollReveal key={post.slug} delay={index * 0.15}>
-              <motion.article
-                whileHover={{ y: -8 }}
-                className="glass-card rounded-2xl overflow-hidden group cursor-pointer"
-              >
-                {/* Image placeholder */}
-                <div
-                  className={`h-48 bg-gradient-to-br ${post.gradient} relative overflow-hidden`}
-                >
-                  <div className="absolute inset-0 bg-black/20" />
-                  <div className="absolute bottom-4 left-4">
-                    <Badge className="bg-white/20 text-white backdrop-blur-sm border-0">
-                      {post.category}
-                    </Badge>
-                  </div>
-                </div>
+          {blogs.map((blog, index) => {
+            const gradient = gradients[index % gradients.length];
+            
+            return (
+              <ScrollReveal key={blog.id} delay={index * 0.15}>
+                <Link href={`/blog/${blog.id}`}>
+                  <motion.article
+                    whileHover={{ y: -8 }}
+                    className="glass-card rounded-2xl overflow-hidden group cursor-pointer h-full"
+                  >
+                    {/* Image */}
+                    {blog.image_url ? (
+                      <div className="h-48 relative overflow-hidden">
+                        <img
+                          src={blog.image_url}
+                          alt={blog.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <div className="absolute inset-0 bg-black/20" />
+                      </div>
+                    ) : (
+                      <div
+                        className={`h-48 bg-gradient-to-br ${gradient} relative overflow-hidden`}
+                      >
+                        <div className="absolute inset-0 bg-black/20" />
+                      </div>
+                    )}
 
-                <div className="p-6">
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      {formatDate(post.published_at)}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {post.read_time} min read
-                    </span>
-                  </div>
+                    <div className="p-6">
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {formatDate(blog.created_at)}
+                        </span>
+                        {blog.author && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {blog.author}
+                          </span>
+                        )}
+                      </div>
 
-                  <h3 className="text-xl font-semibold mb-2 group-hover:text-primary transition-colors line-clamp-2">
-                    {post.title}
-                  </h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed line-clamp-2 mb-4">
-                    {post.excerpt}
-                  </p>
+                      <h3 className="text-xl font-semibold mb-2 group-hover:text-primary transition-colors line-clamp-2">
+                        {blog.title}
+                      </h3>
+                      {blog.description && (
+                        <p className="text-muted-foreground text-sm leading-relaxed line-clamp-2 mb-4">
+                          {blog.description}
+                        </p>
+                      )}
 
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{post.author}</span>
-                    <ArrowRight className="w-4 h-4 text-primary group-hover:translate-x-1 transition-transform" />
-                  </div>
-                </div>
-              </motion.article>
-            </ScrollReveal>
-          ))}
+                      <div className="flex items-center justify-between mt-auto">
+                        <span className="text-sm font-medium">Read more</span>
+                        <ArrowRight className="w-4 h-4 text-primary group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </div>
+                  </motion.article>
+                </Link>
+              </ScrollReveal>
+            );
+          })}
         </div>
       </div>
     </section>

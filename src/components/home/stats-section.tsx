@@ -12,8 +12,8 @@ const stats = [
     suffix: "+",
     label: "Active Users",
     description: "Creators and businesses worldwide",
-    color: "text-purple-500",
-    bgColor: "bg-purple-500/10",
+    color: "text-cyan-500",
+    bgColor: "bg-cyan-500/10",
   },
   {
     icon: Package,
@@ -21,8 +21,8 @@ const stats = [
     suffix: "+",
     label: "Digital Products",
     description: "Curated premium resources",
-    color: "text-pink-500",
-    bgColor: "bg-pink-500/10",
+    color: "text-cyan-400",
+    bgColor: "bg-cyan-400/10",
   },
   {
     icon: Star,

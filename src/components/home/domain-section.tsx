@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { ScrollReveal } from '@/components/ui/scroll-reveal';
 import { getIconComponent } from '@/components/ui/icon-selector';
+import { ArrowRight } from 'lucide-react';
 
 interface Domain {
   id: string;
@@ -18,14 +19,25 @@ interface Domain {
   freelancer_count: number;
 }
 
-const domainGradients: Record<string, string> = {
-  "web-development": "from-blue-500 to-cyan-500",
-  "mobile-development": "from-purple-500 to-pink-500",
-  "design": "from-pink-500 to-rose-500",
-  "marketing": "from-orange-500 to-amber-500",
-  "copywriting": "from-green-500 to-emerald-500",
-  "default": "from-violet-500 to-purple-500",
-};
+// Color palette for cycling through domains - each new domain gets a different color
+const colorPalette = [
+  { from: "from-blue-500", to: "to-cyan-500" },
+  { from: "from-purple-500", to: "to-pink-500" },
+  { from: "from-pink-500", to: "to-rose-500" },
+  { from: "from-orange-500", to: "to-amber-500" },
+  { from: "from-green-500", to: "to-emerald-500" },
+  { from: "from-cyan-500", to: "to-cyan-400" },
+  { from: "from-violet-500", to: "to-purple-500" },
+  { from: "from-rose-500", to: "to-red-500" },
+  { from: "from-teal-500", to: "to-green-500" },
+  { from: "from-indigo-500", to: "to-violet-500" },
+];
+
+// Function to get color based on domain index (cycles through palette)
+function getDomainColor(index: number) {
+  const colorIndex = index % colorPalette.length;
+  return `${colorPalette[colorIndex].from} ${colorPalette[colorIndex].to}`;
+}
 
 export function DomainSection() {
   const [domains, setDomains] = useState<Domain[]>([]);
@@ -67,7 +79,7 @@ export function DomainSection() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {domains.map((domain, index) => {
             const Icon = getIconComponent(domain.icon);
-            const gradient = domainGradients[domain.slug] || domainGradients.default;
+            const gradient = getDomainColor(index);
 
             return (
               <ScrollReveal key={domain.id} delay={index * 0.1}>
@@ -94,8 +106,13 @@ export function DomainSection() {
                       </p>
 
                       {/* FOOTER: FREELANCER COUNT */}
-                      <div className="mt-auto text-sm font-medium text-primary">
-                        {domain.freelancer_count || 0} freelancers
+                      <div className="mt-auto flex items-center justify-between">
+                        <span className="text-sm font-medium text-primary">
+                          {domain.freelancer_count || 0} freelancers
+                        </span>
+                        <div className="w-8 h-8 rounded-full bg-transparent border-2 border-white/30 flex items-center justify-center opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300">
+                          <ArrowRight className="w-4 h-4 text-white" />
+                        </div>
                       </div>
 
                     </div>

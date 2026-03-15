@@ -308,7 +308,7 @@ export default function FreelancersPage() {
           {freelancers.map((f) => (
             <div
               key={f.id}
-              className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition p-5 flex flex-col gap-4"
+              className="bg-black border border-white/10 rounded-xl shadow-sm hover:shadow-md hover:shadow-cyan-500/10 transition p-5 flex flex-col gap-4"
             >
               {/* Left Section - Avatar, Name, Title */}
               <div className="flex items-start gap-4">
@@ -356,7 +356,7 @@ export default function FreelancersPage() {
                       </span>
                     ))}
                     {f.skills.length > 4 && (
-                      <span className="bg-gray-50 text-gray-500 text-xs px-3 py-1 rounded-full font-medium">
+                      <span className="bg-gray-900 text-gray-400 text-xs px-3 py-1 rounded-full font-medium">
                         +{f.skills.length - 4}
                       </span>
                     )}

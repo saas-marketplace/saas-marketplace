@@ -42,9 +42,9 @@ export default function MarketplacePage() {
   });
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-black">
       {/* Hero Section */}
-      <div className="bg-gradient-to-br from-violet-50 via-white to-blue-50 dark:from-violet-950 dark:via-gray-900 dark:to-blue-950 py-16">
+      <div className="bg-gradient-to-br from-gray-900 via-black to-gray-900 py-16">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl mx-auto text-center">
             <h1 className="text-4xl sm:text-5xl font-bold mb-4">
@@ -63,7 +63,7 @@ export default function MarketplacePage() {
                 placeholder="Search products..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 pr-4 py-6 text-lg bg-white dark:bg-gray-800 border-2 focus:border-primary"
+                className="pl-12 pr-4 py-6 text-lg bg-black border-2 focus:border-primary"
               />
             </div>
           </div>

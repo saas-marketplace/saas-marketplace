@@ -34,7 +34,7 @@ export default function ProductTable() {
   }, []);
 
   return (
-    <table className="min-w-full bg-white">
+    <table className="min-w-full bg-black">
       <thead>
         <tr>
           <th className="py-2">Title</th>

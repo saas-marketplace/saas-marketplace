@@ -3,13 +3,14 @@
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Folder, Users, Package, MessageSquare, UsersRound } from 'lucide-react';
+import { LayoutDashboard, Folder, Users, Package, MessageSquare, UsersRound, FileText } from 'lucide-react';
 
 const links = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dashboard/domains', label: 'Domains', icon: Folder },
   { href: '/dashboard/freelancers', label: 'Freelancers', icon: Users },
   { href: '/dashboard/products', label: 'Products', icon: Package },
+  { href: '/dashboard/blog', label: 'Blog', icon: FileText },
   { href: '/dashboard/requests', label: 'Client Requests', icon: MessageSquare },
   { href: '/dashboard/team', label: 'Team Members', icon: UsersRound },
 ];

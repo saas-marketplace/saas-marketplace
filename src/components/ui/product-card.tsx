@@ -29,7 +29,7 @@ export default function ProductCard({ product }: ProductCardProps) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="bg-card rounded-xl border border-border overflow-hidden hover:shadow-lg transition-shadow"
+      className="bg-black rounded-xl border border-white/10 overflow-hidden hover:shadow-lg hover:shadow-cyan-500/10 transition-all"
     >
       <div className="aspect-video relative bg-muted overflow-hidden">
         {product.image_url ? (

@@ -4,48 +4,72 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 262 83% 58%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 262 83% 58%;
+    /* Black theme with cyan accent */
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    
+    --card: 0 0% 5%;
+    --card-foreground: 0 0% 100%;
+    
+    --popover: 0 0% 5%;
+    --popover-foreground: 0 0% 100%;
+    
+    /* Primary: Cyan #9aedff */
+    --primary: 189 100% 81%;
+    --primary-foreground: 0 0% 0%;
+    
+    /* Secondary: Dark gray */
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 0 0% 100%;
+    
+    /* Muted: Dark gray */
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 70%;
+    
+    /* Accent: Cyan */
+    --accent: 189 100% 81%;
+    --accent-foreground: 0 0% 0%;
+    
+    /* Destructive: Red */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    /* Border */
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 189 100% 81%;
+    
     --radius: 0.75rem;
   }
 
   .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 8%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 262 83% 58%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 217.2 32.6% 12%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 15%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 15%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 50.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 262 83% 58%;
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    
+    --card: 0 0% 5%;
+    --card-foreground: 0 0% 100%;
+    
+    --popover: 0 0% 5%;
+    --popover-foreground: 0 0% 100%;
+    
+    --primary: 189 100% 81%;
+    --primary-foreground: 0 0% 0%;
+    
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 0 0% 100%;
+    
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 70%;
+    
+    --accent: 189 100% 81%;
+    --accent-foreground: 0 0% 0%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 189 100% 81%;
   }
 }
 
@@ -60,22 +84,37 @@
 
 @layer utilities {
   .glass {
-    @apply bg-white/10 backdrop-blur-xl border border-white/20;
+    @apply bg-white/5 backdrop-blur-xl border border-white/10;
   }
   .glass-dark {
-    @apply bg-black/10 backdrop-blur-xl border border-white/10;
+    @apply bg-black/20 backdrop-blur-xl border border-white/5;
   }
   .glass-card {
-    @apply bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-white/10;
+    @apply bg-black/80 dark:bg-black/80 backdrop-blur-xl border border-white/10 dark:border-white/10;
   }
+  
+  /* Cyan gradient text */
   .gradient-text {
-    @apply bg-gradient-to-r from-purple-600 via-pink-500 to-blue-500 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-[#9aedff] via-cyan-300 to-[#9aedff] bg-clip-text text-transparent;
   }
+  
+  /* Cyan gradient background */
   .gradient-bg {
-    @apply bg-gradient-to-r from-purple-600 via-pink-500 to-blue-500;
+    @apply bg-gradient-to-r from-[#9aedff] to-cyan-400;
   }
+  
+  /* Subtle dark gradient */
   .gradient-bg-subtle {
-    @apply bg-gradient-to-br from-purple-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-950 dark:to-purple-950;
+    @apply bg-gradient-to-br from-gray-900 via-black to-gray-900 dark:from-black dark:via-black dark:to-black;
+  }
+  
+  /* Cyan glow effect */
+  .glow-cyan {
+    box-shadow: 0 0 20px rgba(154, 237, 255, 0.3);
+  }
+  
+  .glow-cyan-hover:hover {
+    box-shadow: 0 0 30px rgba(154, 237, 255, 0.4);
   }
 }
 
@@ -85,4 +124,45 @@ html {
 
 body {
   overflow-x: hidden;
+}
+
+/* Fix spacing issues - reduce top padding, add bottom margin */
+
+
+.pt-24 {
+  padding-top: 0 !important;
+ 
+}
+
+.mb-16 {
+  margin-bottom: 4rem !important;
+  padding-top: 7.2rem !important;
+}
+.mb-20{
+  margin-bottom: 0 !important;
+  padding-top: 3rem !important;
+}
+.mb-8{
+  margin-top:3rem!important;
+ 
+}
+/* Custom scrollbar for dark theme */
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9aedff;
 }
