@@ -170,8 +170,8 @@ Avoid Modern Standard Arabic and avoid switching to English if the user wrote in
 /* ---------------- FALLBACK ---------------- */
 
 function getFallbackResponse() {
-  return `⚠️ AI moch mawjouda taw.<br><br>
-tnajem tzour:<br>
+  return `⚠️ Ai not availble now.<br><br>
+complete your navigation <br>
 • <a href="/marketplace">Marketplace</a><br>
 • <a href="/freelancers">Freelancers</a><br>
 • <a href="/pricing">Pricing</a><br>
