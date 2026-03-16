@@ -116,7 +116,7 @@ async function getSystemPrompt() {
     return readFileSync(path, "utf-8");
   } catch {
     return `
-You are NexusHub AI.
+You are Milit Company AI.
 
 STRICT DATABASE RULES:
 

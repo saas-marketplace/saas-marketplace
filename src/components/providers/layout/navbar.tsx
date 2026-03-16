@@ -276,16 +276,48 @@ function NavbarContent() {
           </div>
 
           {/* Mobile Right Section - Visible on screens smaller than md */}
-          <div className="flex md:hidden items-center gap-2">
-            {/* Get Started Button - Always visible on mobile */}
-            <Link href="/auth/signup">
-              <Button
-                size="sm"
-                className="gradient-bg text-white border-0 hover:opacity-90 text-xs px-3"
-              >
-                Get Started
+          <div className="flex md:hidden items-center gap-1">
+            {/* Cart - Visible on mobile */}
+            <Link href="/marketplace/cart">
+              <Button variant="ghost" size="icon" className="rounded-full relative text-black dark:text-white">
+                <ShoppingCart className="h-5 w-5" />
+                {mounted && cartCount > 0 && (
+                  <Badge 
+                    suppressHydrationWarning 
+                    className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+                  >
+                    {cartCount}
+                  </Badge>
+                )}
               </Button>
             </Link>
+
+            {/* Theme Toggle - Visible on mobile */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setTheme(effectiveTheme === "dark" ? "light" : "dark")}
+              className="rounded-full text-black dark:text-white"
+            >
+              {effectiveTheme === "dark" ? (
+                <Sun className="h-5 w-5 transition-transform" />
+              ) : (
+                <Moon className="h-5 w-5 transition-transform" />
+              )}
+              <span className="sr-only">Toggle theme</span>
+            </Button>
+
+            {/* Get Started Button - Only visible when NOT logged in */}
+            {!loading && !user && (
+              <Link href="/auth/signup">
+                <Button
+                  size="sm"
+                  className="gradient-bg text-white border-0 hover:opacity-90 text-xs px-3"
+                >
+                  Get Started
+                </Button>
+              </Link>
+            )}
 
             {/* Hamburger Menu Button */}
             <Button

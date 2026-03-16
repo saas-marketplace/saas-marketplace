@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "NexusHub - Premium Digital Services Marketplace",
+  title: "Milit Company - Premium Digital Services Marketplace",
   description:
     "Discover premium digital products, top-tier freelance talent, and everything you need to build your next project.",
 };

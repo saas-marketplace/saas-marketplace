@@ -96,7 +96,7 @@ export default function LoginPage() {
             </div>
             <h1 className="text-2xl font-bold mb-2">Welcome Back</h1>
             <p className="text-muted-foreground">
-              Sign in to your NexusHub account
+              Sign in to your Milit Company account
             </p>
           </div>
 

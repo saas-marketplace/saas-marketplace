@@ -91,7 +91,7 @@ export function Footer() {
             <p className="text-[#525252] dark:text-gray-400 text-sm leading-relaxed max-w-xs mb-6">
               The ultimate platform for digital services, products, and
               freelance talent. Build, grow, and scale your business with
-              NexusHub.
+              Milit Company.
             </p>
 
             <div className="flex items-center gap-3">

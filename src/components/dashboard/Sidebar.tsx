@@ -25,7 +25,7 @@ export default function Sidebar() {
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
             <span className="font-bold text-white">N</span>
           </div>
-          <span className="text-lg font-bold">NexusHub</span>
+          <span className="text-lg font-bold">Milit Company</span>
         </div>
         <p className="text-xs text-slate-400 mt-1">Admin Panel</p>
       </div>
@@ -55,7 +55,7 @@ export default function Sidebar() {
         </ul>
       </nav>
       <div className="p-4 border-t border-slate-700">
-        <p className="text-xs text-slate-500">© 2024 NexusHub</p>
+        <p className="text-xs text-slate-500">© 2024 Milit Company</p>
       </div>
     </div>
   );

@@ -20,7 +20,7 @@ export function AboutSection() {
               <span className="gradient-text">digital commerce</span>
             </h2>
             <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
-              Founded in 2022, NexusHub was born from a simple idea: make it
+              Founded in 2022, Milit Company was born from a simple idea: make it
               effortless for businesses to find premium digital products and
               world-class freelance talent in one place. Our founder, Sarah
               Chen, experienced the frustration of juggling multiple platforms
@@ -78,14 +78,14 @@ export function AboutSection() {
                   SC
                 </div>
                 <blockquote className="text-lg italic text-muted-foreground mb-6 leading-relaxed">
-                  &ldquo;I built NexusHub because I believe every creator
+                  &ldquo;I built Milit Company because I believe every creator
                   deserves a platform that values quality, transparency, and
                   community. We&apos;re not just a marketplace — we&apos;re a
                   movement to empower digital creators worldwide.&rdquo;
                 </blockquote>
                 <div>
-                  <p className="font-semibold text-lg">Sarah Chen</p>
-                  <p className="text-muted-foreground">Founder & CEO, NexusHub</p>
+                  <p className="font-semibold text-lg">Yassin zamzem</p>
+                  <p className="text-muted-foreground">Founder & CEO, Milit Company</p>
                 </div>
               </div>
             </div>
