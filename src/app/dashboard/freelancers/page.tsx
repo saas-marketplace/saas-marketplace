@@ -11,6 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Plus,
@@ -20,7 +21,6 @@ import {
   User,
   Folder,
   MapPin,
-  DollarSign,
 } from "lucide-react";
 
 interface Domain {
@@ -36,8 +36,9 @@ interface Freelancer {
   title: string | null;
   bio: string | null;
   skills: string[];
-  hourly_rate: number | null;
+  avatar_url: string | null;
   completed_projects: number;
+  experience_level: string | null;
   location: string | null;
   is_available: boolean;
   domain?: Domain;
@@ -56,11 +57,12 @@ export default function FreelancersPage() {
     title: "",
     bio: "",
     skills: "",
-    hourly_rate: "",
+    avatar_url: "",
     location: "",
     domain_id: "",
     is_available: true,
     completed_projects: 0,
+    experience_level: "",
   });
 
   const fetchDomains = useCallback(async () => {
@@ -80,10 +82,23 @@ export default function FreelancersPage() {
       .order("created_at", { ascending: false });
 
     if (!error && data) {
-      const parsedData = data.map((f: any) => ({
-        ...f,
-        skills: Array.isArray(f.skills) ? f.skills : [],
-      }));
+      // Try to fetch reviews to calculate ratings
+      const { data: reviewData } = await supabase
+        .from("reviews")
+        .select("freelancer_id, rating");
+
+      const parsedData = data.map((f: any) => {
+        const freelancerReviews = reviewData?.filter(r => r.freelancer_id === f.id) || [];
+        if (freelancerReviews.length > 0) {
+          const totalRating = freelancerReviews.reduce((sum, r) => sum + r.rating, 0);
+          f.rating = totalRating / freelancerReviews.length;
+          f.review_count = freelancerReviews.length;
+        }
+        return {
+          ...f,
+          skills: Array.isArray(f.skills) ? f.skills : [],
+        };
+      });
       setFreelancers(parsedData);
     }
     setLoading(false);
@@ -100,11 +115,12 @@ export default function FreelancersPage() {
       title: "",
       bio: "",
       skills: "",
-      hourly_rate: "",
+      avatar_url: "",
       location: "",
       domain_id: "",
       is_available: true,
       completed_projects: 0,
+      experience_level: "",
     });
     setEditingFreelancer(null);
   }
@@ -121,11 +137,12 @@ export default function FreelancersPage() {
       title: freelancer.title || "",
       bio: freelancer.bio || "",
       skills: freelancer.skills.join(", "),
-      hourly_rate: freelancer.hourly_rate?.toString() || "",
+      avatar_url: freelancer.avatar_url || "",
       location: freelancer.location || "",
       domain_id: freelancer.domain_id || "",
       is_available: freelancer.is_available,
       completed_projects: freelancer.completed_projects,
+      experience_level: freelancer.experience_level || "",
     });
     setIsDialogOpen(true);
   }
@@ -145,13 +162,12 @@ export default function FreelancersPage() {
         title: formData.title || null,
         bio: formData.bio || null,
         skills: skillsArray,
-        hourly_rate: formData.hourly_rate
-          ? parseFloat(formData.hourly_rate)
-          : null,
+        avatar_url: formData.avatar_url || null,
         location: formData.location || null,
         domain_id: formData.domain_id || null,
         is_available: formData.is_available,
         completed_projects: formData.completed_projects,
+        experience_level: formData.experience_level || null,
       };
 
       if (editingFreelancer) {
@@ -191,106 +207,135 @@ export default function FreelancersPage() {
   };
 
   return (
-    <div className="space-y-6 mx-auto px-4 max-w-7xl">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Freelancers Management</h1>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={openAddDialog} className="bg-primary text-white">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Freelancer
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-xl">
-            <DialogHeader>
-              <DialogTitle>{editingFreelancer ? "Edit Freelancer" : "Add Freelancer"}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Personal Info */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium">Display Name *</label>
-                  <Input
-                    value={formData.display_name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, display_name: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Title</label>
-                  <Input
-                    value={formData.title}
-                    onChange={(e) =>
-                      setFormData({ ...formData, title: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
-              {/* Domain */}
-              <div>
-                <label className="text-sm font-medium">Domain</label>
-                <select
-                  className="input"
-                  value={formData.domain_id}
-                  onChange={(e) =>
-                    setFormData({ ...formData, domain_id: e.target.value })
-                  }
-                >
-                  <option value="">Select a domain</option>
-                  {domains.map((domain) => (
-                    <option key={domain.id} value={domain.id}>
-                      {domain.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Skills */}
-              <div>
-                <label className="text-sm font-medium">
-                  Skills (comma separated)
-                </label>
-                <Input
-                  value={formData.skills}
-                  onChange={(e) =>
-                    setFormData({ ...formData, skills: e.target.value })
-                  }
-                />
-              </div>
-
-              {/* Location & Rate */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  value={formData.location}
-                  onChange={(e) =>
-                    setFormData({ ...formData, location: e.target.value })
-                  }
-                  placeholder="Location"
-                />
-                <Input
-                  value={formData.hourly_rate}
-                  onChange={(e) =>
-                    setFormData({ ...formData, hourly_rate: e.target.value })
-                  }
-                  placeholder="Hourly Rate"
-                />
-              </div>
-
-              <div className="text-right">
-                <Button
-                  type="submit"
-                  className="bg-primary text-white"
-                  disabled={saving}
-                >
-                  {saving ? <Loader2 className="animate-spin" /> : "Save"}
+    <div className="min-h-screen bg-white">
+      <div className="space-y-6 mx-auto px-4 max-w-7xl py-8">
+        {/* Header Card */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Freelancers Management</h1>
+              <p className="text-muted-foreground mt-1">Manage your freelancer team</p>
+            </div>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button onClick={openAddDialog}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Freelancer
                 </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+              </DialogTrigger>
+              <DialogContent className="max-w-xl">
+                <DialogHeader>
+                  <DialogTitle>{editingFreelancer ? "Edit Freelancer" : "Add Freelancer"}</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  {/* Personal Info */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-slate-200">Display Name *</label>
+                      <Input
+                        value={formData.display_name}
+                        onChange={(e) =>
+                          setFormData({ ...formData, display_name: e.target.value })
+                        }
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-200">Title</label>
+                      <Input
+                        value={formData.title}
+                        onChange={(e) =>
+                          setFormData({ ...formData, title: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Domain */}
+                  <div>
+                    <label className="text-sm font-medium text-slate-200">Domain</label>
+                    <Select value={formData.domain_id} onValueChange={(value) => setFormData({ ...formData, domain_id: value })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a domain" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {domains.map((domain) => (
+                          <SelectItem key={domain.id} value={domain.id}>
+                            {domain.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Skills */}
+                  <div>
+                    <label className="text-sm font-medium text-slate-200">
+                      Skills (comma separated)
+                    </label>
+                    <Input
+                      value={formData.skills}
+                      onChange={(e) =>
+                        setFormData({ ...formData, skills: e.target.value })
+                      }
+                    />
+                  </div>
+
+                  {/* Experience Level */}
+                  <div>
+                    <label className="text-sm font-medium text-slate-200">Experience Level</label>
+                    <Select value={formData.experience_level} onValueChange={(value) => setFormData({ ...formData, experience_level: value })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select experience level" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="New Freelancer">New Freelancer</SelectItem>
+                        <SelectItem value="1+ years experience">1+ years experience</SelectItem>
+                        <SelectItem value="3+ years experience">3+ years experience</SelectItem>
+                        <SelectItem value="5+ years experience">5+ years experience</SelectItem>
+                        <SelectItem value="10+ years experience">10+ years experience</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Location & Projects */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-slate-200">Location</label>
+                      <Input
+                        value={formData.location}
+                        onChange={(e) =>
+                          setFormData({ ...formData, location: e.target.value })
+                        }
+                        placeholder="Location"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-200">Completed Projects</label>
+                      <Input
+                        type="number"
+                        value={formData.completed_projects}
+                        onChange={(e) =>
+                          setFormData({ ...formData, completed_projects: parseInt(e.target.value) || 0 })
+                        }
+                        placeholder="Number of Projects"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <Button
+                      type="submit"
+                      disabled={saving}
+                    >
+                      {saving ? <Loader2 className="animate-spin" /> : "Save"}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
       </div>
 
       {/* Cards Grid */}
@@ -299,7 +344,7 @@ export default function FreelancersPage() {
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       ) : freelancers.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-12 text-center">
           <User className="w-12 h-12 mx-auto mb-4 opacity-50" />
           <p className="text-lg font-medium">No freelancers yet.</p>
         </div>
@@ -308,16 +353,22 @@ export default function FreelancersPage() {
           {freelancers.map((f) => (
             <div
               key={f.id}
-              className="bg-black border border-white/10 rounded-xl shadow-sm hover:shadow-md hover:shadow-cyan-500/10 transition p-5 flex flex-col gap-4"
+              className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition p-5 flex flex-col gap-4"
             >
               {/* Left Section - Avatar, Name, Title */}
               <div className="flex items-start gap-4">
-                <Avatar className="w-12 h-12 border-2 border-purple-100">
-                  <AvatarImage src="" />
-                  <AvatarFallback className="bg-purple-50 text-purple-600 font-semibold">
+                {f.avatar_url ? (
+                  <Avatar className="w-12 h-12 border-2 border-purple-100">
+                    <AvatarImage src={f.avatar_url} />
+                    <AvatarFallback className="bg-purple-50 text-purple-600 font-semibold">
+                      {getInitials(f.display_name)}
+                    </AvatarFallback>
+                  </Avatar>
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
                     {getInitials(f.display_name)}
-                  </AvatarFallback>
-                </Avatar>
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <h3 className="font-semibold text-gray-900 truncate">
                     {f.display_name}
@@ -334,8 +385,17 @@ export default function FreelancersPage() {
                 </div>
               </div>
 
-              {/* Middle Section - Domain & Skills */}
+              {/* Middle Section - Domain, Skills & Experience */}
               <div className="flex flex-col gap-3">
+                {/* Experience Level */}
+                {f.experience_level && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-purple-600 bg-purple-50 px-2 py-1 rounded-full">
+                      {f.experience_level}
+                    </span>
+                  </div>
+                )}
+
                 {/* Domain */}
                 {f.domain && (
                   <div className="flex items-center gap-2">
@@ -356,7 +416,7 @@ export default function FreelancersPage() {
                       </span>
                     ))}
                     {f.skills.length > 4 && (
-                      <span className="bg-gray-900 text-gray-400 text-xs px-3 py-1 rounded-full font-medium">
+                      <span className="bg-gray-100 text-gray-600 text-xs px-3 py-1 rounded-full font-medium">
                         +{f.skills.length - 4}
                       </span>
                     )}
@@ -367,18 +427,9 @@ export default function FreelancersPage() {
               {/* Divider */}
               <div className="border-t border-gray-100" />
 
-              {/* Right Section - Rate, Projects, Status, Actions */}
+              {/* Right Section - Projects, Status, Actions */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  {/* Rate */}
-                  {f.hourly_rate && (
-                    <div className="flex items-center gap-1">
-                      <DollarSign className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm font-medium text-gray-700">
-                        ${f.hourly_rate}/hr
-                      </span>
-                    </div>
-                  )}
                   {/* Projects */}
                   <span className="text-sm text-gray-500">
                     {f.completed_projects} projects

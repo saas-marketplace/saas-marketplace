@@ -74,9 +74,9 @@ export default function FreelancerCard({ freelancer }: FreelancerCardProps) {
                 <span>{freelancer.completed_projects} projects</span>
               </div>
             )}
-            {freelancer.hourly_rate && (
-              <span className="font-semibold text-[#0A0A0A] dark:text-white">
-                ${freelancer.hourly_rate}/hr
+            {freelancer.experience_level && (
+              <span className="text-xs font-medium text-purple-600 bg-purple-50 px-2 py-1 rounded-full">
+                {freelancer.experience_level}
               </span>
             )}
           </div>

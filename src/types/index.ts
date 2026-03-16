@@ -29,7 +29,6 @@ export interface Freelancer {
   bio: string | null;
   avatar_url: string | null;
   skills: string[];
-  hourly_rate: number | null;
   rating: number;
   review_count: number;
   portfolio_urls: string[];
@@ -38,6 +37,7 @@ export interface Freelancer {
   completed_projects: number;
   location: string | null;
   languages: string[];
+  experience_level: string | null;
   created_at: string;
   updated_at: string;
   domain?: Domain;
@@ -102,6 +102,21 @@ export interface FreelancerReview {
   comment: string | null;
   is_anonymous: boolean;
   created_at: string;
+}
+
+export interface Review {
+  id: string;
+  freelancer_id: string;
+  user_id: string | null;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  // Joined user data
+  user?: {
+    id: string;
+    full_name: string | null;
+    email: string;
+  } | null;
 }
 
 export interface ClientReview {

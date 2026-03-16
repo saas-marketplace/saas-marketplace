@@ -75,22 +75,22 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Dashboard Overview</h1>
+      <h1 className="text-2xl font-bold mb-6 text-slate-900">Dashboard Overview</h1>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((card) => (
           <div
             key={card.title}
-            className="bg-card rounded-xl border border-border p-6"
+            className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 hover:shadow-md transition-all duration-200"
           >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">{card.title}</p>
-                <p className="text-3xl font-bold mt-1">
+                <p className="text-sm text-slate-500">{card.title}</p>
+                <p className="text-3xl font-bold mt-1 text-slate-900">
                   {loading ? '...' : card.value}
                 </p>
               </div>
-              <div className={`w-12 h-12 rounded-lg ${card.color} flex items-center justify-center`}>
+              <div className={`w-12 h-12 rounded-lg ${card.color} flex items-center justify-center shadow-md`}>
                 <card.icon className="w-6 h-6 text-white" />
               </div>
             </div>

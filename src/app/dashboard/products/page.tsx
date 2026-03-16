@@ -13,6 +13,7 @@ import {
   DialogTitle, 
   DialogTrigger 
 } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { 
   Plus, 
@@ -290,7 +291,7 @@ export default function ProductsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 mx-auto px-4 max-w-7xl py-8">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Products Management</h1>
@@ -299,21 +300,21 @@ export default function ProductsPage() {
         
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openAddDialog} className="gradient-bg">
+            <Button onClick={openAddDialog}>
               <Plus className="w-4 h-4 mr-2" />
               Add Product
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>
-                {editingProduct ? 'Edit Product' : 'Add New Product'}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
+                <DialogHeader>
+                  <DialogTitle>
+                    {editingProduct ? 'Edit Product' : 'Add New Product'}
+                  </DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Title *</label>
+                  <label className="text-sm font-medium text-slate-200">Title *</label>
                   <Input
                     placeholder="Product title"
                     value={formData.title}
@@ -322,7 +323,7 @@ export default function ProductsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Slug</label>
+                  <label className="text-sm font-medium text-slate-200">Slug</label>
                   <Input
                     placeholder="product-slug"
                     value={formData.slug}
@@ -332,7 +333,7 @@ export default function ProductsPage() {
               </div>
               
               <div className="space-y-2">
-                <label className="text-sm font-medium">Description</label>
+                <label className="text-sm font-medium text-slate-200">Description</label>
                 <Textarea
                   placeholder="Product description..."
                   value={formData.description}
@@ -343,7 +344,7 @@ export default function ProductsPage() {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Price ($) *</label>
+                  <label className="text-sm font-medium text-slate-200">Price ($) *</label>
                   <Input
                     type="number"
                     step="0.01"
@@ -355,7 +356,7 @@ export default function ProductsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Sale Price ($)</label>
+                  <label className="text-sm font-medium text-slate-200">Sale Price ($)</label>
                   <Input
                     type="number"
                     step="0.01"
@@ -369,20 +370,21 @@ export default function ProductsPage() {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Category</label>
-                  <select
-                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2"
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  >
-                    <option value="templates">Templates</option>
-                    <option value="ebooks">E-Books</option>
-                    <option value="design">Design Assets</option>
-                    <option value="assets">Assets</option>
-                  </select>
+                  <label className="text-sm font-medium text-slate-200">Category</label>
+                  <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="templates">Templates</SelectItem>
+                      <SelectItem value="ebooks">E-Books</SelectItem>
+                      <SelectItem value="design">Design Assets</SelectItem>
+                      <SelectItem value="assets">Assets</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Tags (comma separated)</label>
+                  <label className="text-sm font-medium text-slate-200">Tags (comma separated)</label>
                   <Input
                     placeholder="react, dashboard, admin"
                     value={formData.tags}
@@ -391,16 +393,15 @@ export default function ProductsPage() {
                 </div>
               </div>
               
-              <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     id="is_featured"
                     checked={formData.is_featured}
                     onChange={(e) => setFormData({ ...formData, is_featured: e.target.checked })}
-                    className="w-4 h-4"
+                    className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-cyan-500 focus:ring-cyan-400"
                   />
-                  <label htmlFor="is_featured" className="text-sm font-medium">
+                  <label htmlFor="is_featured" className="text-sm font-medium text-slate-200">
                     Featured
                   </label>
                 </div>
@@ -410,16 +411,15 @@ export default function ProductsPage() {
                     id="is_active"
                     checked={formData.is_active}
                     onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                    className="w-4 h-4"
+                    className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-cyan-500 focus:ring-cyan-400"
                   />
-                  <label htmlFor="is_active" className="text-sm font-medium">
+                  <label htmlFor="is_active" className="text-sm font-medium text-slate-200">
                     Active
                   </label>
                 </div>
-              </div>
               
               <div className="space-y-2">
-                <label className="text-sm font-medium">Product Image</label>
+                <label className="text-sm font-medium text-slate-200">Product Image</label>
                 <div className="flex items-center gap-4">
                   <input
                     type="file"
@@ -456,7 +456,7 @@ export default function ProductsPage() {
               </div>
               
               <div className="space-y-2">
-                <label className="text-sm font-medium">Download File (PDF, ZIP)</label>
+                <label className="text-sm font-medium text-slate-200">Download File (PDF, ZIP)</label>
                 <div className="flex items-center gap-4">
                   <input
                     type="file"
@@ -493,7 +493,7 @@ export default function ProductsPage() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={saving} className="gradient-bg">
+                <Button type="submit" disabled={saving}>
                   {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                   {uploading ? 'Uploading...' : (editingProduct ? 'Update' : 'Create')}
                 </Button>

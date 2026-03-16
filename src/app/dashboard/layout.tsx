@@ -38,14 +38,14 @@ export default async function DashboardLayout({
   const userRole = await getUserRole();
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white dark:bg-black">
+    <div className="flex h-screen overflow-hidden bg-white">
       {/* Only show admin sidebar for admins */}
       {userRole === 'admin' || userRole === 'super_admin' ? (
         <Sidebar />
       ) : null}
       <div className="flex-1 flex flex-col overflow-hidden">
         <Topbar />
-        <main className="flex-1 overflow-y-auto p-6 bg-white dark:bg-black">
+        <main className="flex-1 overflow-y-auto p-6 bg-white">
           {children}
         </main>
       </div>

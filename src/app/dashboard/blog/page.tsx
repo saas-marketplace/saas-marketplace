@@ -244,7 +244,7 @@ export default function BlogPage() {
           {blogs.map((blog) => (
             <div
               key={blog.id}
-              className="bg-black border border-white/10 rounded-xl shadow-sm hover:shadow-md hover:shadow-cyan-500/10 transition p-5 flex flex-col gap-4"
+              className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition p-5 flex flex-col gap-4"
             >
               {/* Image */}
               {blog.image_url ? (

@@ -8,7 +8,6 @@ import {
   MapPin,
   Globe,
   Briefcase,
-  DollarSign,
   CheckCircle2,
   MessageSquare,
   ExternalLink,
@@ -27,13 +26,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { formatDate } from "@/lib/utils";
-import type { Freelancer, FreelancerReview } from "@/types";
+import type { Freelancer, Review } from "@/types";
 
 export default function FreelancerProfilePage() {
   const params = useParams();
   const router = useRouter();
   const [freelancer, setFreelancer] = useState<Freelancer | null>(null);
-  const [reviews, setReviews] = useState<FreelancerReview[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [userReview, setUserReview] = useState<Review | null>(null);
   const [loading, setLoading] = useState(true);
   const [newRating, setNewRating] = useState(5);
   const [newComment, setNewComment] = useState("");
@@ -51,22 +51,57 @@ export default function FreelancerProfilePage() {
 
   async function fetchFreelancer() {
     setLoading(true);
-    const { data: freelancerData } = await supabase
+    
+    // Fetch freelancer data
+    const { data: freelancerData, error: freelancerError } = await supabase
       .from("freelancers")
       .select("*")
       .eq("id", params.id)
       .single();
 
-    if (freelancerData) {
-      setFreelancer(freelancerData);
+    if (freelancerError) {
+      console.error("Error fetching freelancer:", freelancerError);
+      setLoading(false);
+      return;
+    }
 
-      const { data: reviewData } = await supabase
-        .from("freelancer_reviews")
-        .select("*")
+    if (freelancerData) {
+      // Try fetching from new reviews table first
+      let reviewData: Review[] | null = null;
+      let avgRating = freelancerData.rating || 0;
+      let reviewCount = freelancerData.review_count || 0;
+      
+      const { data: newReviews, error: newReviewsError } = await supabase
+        .from("reviews")
+        .select(`
+          *,
+          user:users(id, full_name, email)
+        `)
         .eq("freelancer_id", freelancerData.id)
         .order("created_at", { ascending: false });
 
-      if (reviewData) setReviews(reviewData);
+      if (!newReviewsError && newReviews && newReviews.length > 0) {
+        // Use new reviews table
+        reviewData = newReviews;
+        reviewCount = newReviews.length;
+        const totalRating = newReviews.reduce((sum, r) => sum + r.rating, 0);
+        avgRating = totalRating / reviewCount;
+        console.log("Using reviews table:", reviewCount, "reviews");
+      }
+      
+      // Update freelancer with calculated rating
+      freelancerData.rating = avgRating;
+      freelancerData.review_count = reviewCount;
+      
+      setFreelancer(freelancerData);
+      setReviews(reviewData || []);
+      
+      // Check if current user has already reviewed
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && reviewData) {
+        const existingReview = reviewData.find((r: Review) => r.user_id === user.id);
+        setUserReview(existingReview || null);
+      }
     }
     setLoading(false);
   }
@@ -84,42 +119,45 @@ export default function FreelancerProfilePage() {
       return;
     }
 
+    // Check if user has already reviewed
+    if (userReview) {
+      toast({
+        title: "Already reviewed",
+        description: "You have already reviewed this freelancer. You can only leave one review per freelancer.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSubmitting(true);
-    const { error } = await supabase.from("freelancer_reviews").insert({
+    
+    // Try inserting into new reviews table first
+    const { error: insertError } = await supabase.from("reviews").insert({
       freelancer_id: freelancer!.id,
       user_id: user.id,
       rating: newRating,
       comment: newComment,
-      reviewer_name: user.email,
     });
-
-    if (!error) {
+    
+    if (insertError) {
       toast({
-        title: "Review submitted!",
-        description: "Thank you for your feedback.",
+        title: "Error",
+        description: insertError.message || "Failed to submit review. You may have already reviewed this freelancer.",
+        variant: "destructive",
       });
-      setNewComment("");
-      setNewRating(5);
-      
-      // Recalculate rating from all reviews and update freelancer
-      const { data: allReviews } = await supabase
-        .from("freelancer_reviews")
-        .select("rating")
-        .eq("freelancer_id", freelancer!.id);
-      
-      if (allReviews && allReviews.length > 0) {
-        const totalRating = allReviews.reduce((sum, r) => sum + r.rating, 0);
-        const avgRating = totalRating / allReviews.length;
-        
-        // Update freelancer with new rating and review count
-        await supabase.from("freelancers").update({
-          rating: avgRating,
-          review_count: allReviews.length
-        }).eq("id", freelancer!.id);
-      }
-      
-      fetchFreelancer();
+      setSubmitting(false);
+      return;
     }
+
+    toast({
+      title: "Review submitted!",
+      description: "Thank you for your feedback.",
+    });
+    setNewComment("");
+    setNewRating(5);
+    
+    // Refresh reviews - the database trigger will automatically update the freelancer rating
+    fetchFreelancer();
     setSubmitting(false);
   }
 
@@ -270,10 +308,10 @@ export default function FreelancerProfilePage() {
                     <Briefcase className="w-4 h-4" />
                     {freelancer.completed_projects} projects
                   </span>
-                  {freelancer.hourly_rate && (
-                    <span className="flex items-center gap-1 font-semibold">
-                      <DollarSign className="w-4 h-4 text-primary" />
-                      {freelancer.hourly_rate}/hr
+                  {freelancer.experience_level && (
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <Clock className="w-4 h-4" />
+                      {freelancer.experience_level}
                     </span>
                   )}
                   {freelancer.languages.length > 0 && (
@@ -352,30 +390,42 @@ export default function FreelancerProfilePage() {
 
             <div className="glass-card rounded-2xl p-6 mb-6">
               <h3 className="font-semibold mb-4">Leave a Review</h3>
-              <div className="mb-4">
-                <StarRating
-                  rating={newRating}
-                  interactive
-                  onRatingChange={setNewRating}
-                  size="lg"
-                />
-              </div>
-              <Textarea
-                placeholder="Share your experience working with this freelancer..."
-                value={newComment}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                  setNewComment(e.target.value)
-                }
-                rows={4}
-                className="mb-4"
-              />
-              <Button
-                onClick={handleSubmitReview}
-                disabled={submitting || !newComment.trim()}
-                className="gradient-bg text-white border-0"
-              >
-                {submitting ? "Submitting..." : "Submit Review"}
-              </Button>
+              {userReview ? (
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground mb-2">You have already reviewed this freelancer.</p>
+                  <StarRating rating={userReview.rating} size="sm" />
+                  {userReview.comment && (
+                    <p className="mt-2 text-sm text-muted-foreground">"{userReview.comment}"</p>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="mb-4">
+                    <StarRating
+                      rating={newRating}
+                      interactive
+                      onRatingChange={setNewRating}
+                      size="lg"
+                    />
+                  </div>
+                  <Textarea
+                    placeholder="Share your experience working with this freelancer..."
+                    value={newComment}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                      setNewComment(e.target.value)
+                    }
+                    rows={4}
+                    className="mb-4"
+                  />
+                  <Button
+                    onClick={handleSubmitReview}
+                    disabled={submitting || !newComment.trim()}
+                    className="gradient-bg text-white border-0"
+                  >
+                    {submitting ? "Submitting..." : "Submit Review"}
+                  </Button>
+                </>
+              )}
             </div>
 
             <div className="space-y-4">
@@ -389,9 +439,7 @@ export default function FreelancerProfilePage() {
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <p className="font-medium">
-                        {review.is_anonymous
-                          ? "Anonymous"
-                          : review.reviewer_name || "User"}
+                        {review.user?.full_name || review.user?.email || "User"}
                       </p>
                       <StarRating rating={review.rating} size="sm" />
                     </div>

@@ -28,30 +28,28 @@ export default function Topbar() {
   };
 
   return (
-    <div className={cn(
-      'bg-black border-b border-white/10 px-6 py-3 flex justify-between items-center'
-    )}>
+    <div className="bg-white border-b border-gray-200 px-6 py-3 flex justify-between items-center shadow-sm">
       <div className="flex items-center gap-4">
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input 
             type="text" 
             placeholder="Search..." 
-            className="pl-10 pr-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent w-64"
+            className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent w-64"
           />
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <button className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors relative">
+        <button className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors relative">
           <Bell className="w-5 h-5" />
           <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
         </button>
-        <div className="h-6 w-px bg-gray-700"></div>
+        <div className="h-6 w-px bg-gray-200"></div>
         <button 
           onClick={handleLogout}
           className="flex items-center gap-2 p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
         >
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white font-medium text-sm">
             {userEmail.charAt(0).toUpperCase()}
           </div>
           <span className="text-sm font-medium text-slate-700">{userEmail}</span>

@@ -19,15 +19,17 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <div className="w-64 bg-slate-900 text-slate-100 h-full flex flex-col">
+    <div className="w-64 bg-[rgb(15,23,42)] text-slate-100 h-full flex flex-col">
       <div className="p-4 border-b border-slate-700">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
-            <span className="font-bold text-white">N</span>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center border border-slate-700">
+            <span className="font-bold text-cyan-400 text-lg">M</span>
           </div>
-          <span className="text-lg font-bold">Milit Company</span>
+          <div>
+            <span className="text-lg font-bold">Milit Company</span>
+            <p className="text-xs text-slate-400">Admin Panel</p>
+          </div>
         </div>
-        <p className="text-xs text-slate-400 mt-1">Admin Panel</p>
       </div>
       <nav className="flex-1 p-3">
         <ul className="space-y-1">
@@ -40,10 +42,10 @@ export default function Sidebar() {
                 <Link
                   href={link.href}
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200',
+                    'flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200',
                     isActive 
-                      ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-md' 
-                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                      ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-md' 
+                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
                   )}
                 >
                   <Icon className="w-5 h-5" />

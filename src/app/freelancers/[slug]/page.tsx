@@ -8,7 +8,6 @@ import {
   ArrowLeft,
   MapPin,
   Briefcase,
-  DollarSign,
   CheckCircle2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -45,7 +44,38 @@ export default function DomainFreelancersPage() {
         .eq("domain_id", domainData.id)
         .order("rating", { ascending: false });
 
-      if (freelancerData) setFreelancers(freelancerData);
+      if (freelancerData && freelancerData.length > 0) {
+        // Try to fetch reviews from new reviews table
+        const { data: reviewData } = await supabase
+          .from("reviews")
+          .select("freelancer_id, rating");
+
+        if (reviewData && reviewData.length > 0) {
+          // Calculate ratings for each freelancer
+          const freelancerIds = freelancerData.map(f => f.id);
+          const reviewsByFreelancer = reviewData.filter(r => 
+            freelancerIds.includes(r.freelancer_id)
+          );
+          
+          freelancerData.forEach(freelancer => {
+            const freelancerReviews = reviewsByFreelancer.filter(
+              r => r.freelancer_id === freelancer.id
+            );
+            if (freelancerReviews.length > 0) {
+              const totalRating = freelancerReviews.reduce((sum, r) => sum + r.rating, 0);
+              freelancer.rating = totalRating / freelancerReviews.length;
+              freelancer.review_count = freelancerReviews.length;
+            } else {
+              freelancer.rating = 0;
+              freelancer.review_count = 0;
+            }
+          });
+        }
+        
+        setFreelancers(freelancerData);
+      } else {
+        setFreelancers([]);
+      }
     }
     setLoading(false);
   }, [supabase, params.slug]);
@@ -166,13 +196,7 @@ export default function DomainFreelancersPage() {
                   </div>
 
                   {/* Footer */}
-                  <div className="flex items-center justify-between pt-4 border-t border-border/50">
-                    {freelancer.hourly_rate && (
-                      <span className="flex items-center gap-1 font-semibold">
-                        <DollarSign className="w-4 h-4 text-primary" />
-                        {freelancer.hourly_rate}/hr
-                      </span>
-                    )}
+                  <div className="flex items-center justify-end pt-4 border-t border-border/50">
                     <Link
                       href={`/freelancers/profile/${freelancer.id}`}
                     >
