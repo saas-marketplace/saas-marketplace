@@ -77,6 +77,7 @@ export default function UserRequestsPage() {
   const [typingStatus, setTypingStatus] = useState<TypingStatus>({});
   const [onlineStatus, setOnlineStatus] = useState<OnlineStatus>({});
   const [adminIsTyping, setAdminIsTyping] = useState(false);
+  const [adminUserId, setAdminUserId] = useState<string | null>(null);
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -143,6 +144,84 @@ export default function UserRequestsPage() {
     fetchRequests();
   }, [supabase]);
 
+  // Fetch admin user ID and subscribe to admin presence
+  useEffect(() => {
+    const fetchAdminAndSubscribe = async () => {
+      // Fetch admin users
+      const { data: adminUsers } = await supabase
+        .from('users')
+        .select('id')
+        .in('role', ['admin', 'super_admin'])
+        .limit(1);
+      
+      if (adminUsers && adminUsers.length > 0) {
+        const adminId = adminUsers[0].id;
+        setAdminUserId(adminId);
+        console.log('[Admin Presence] Admin ID:', adminId);
+        
+        // Fetch initial admin status
+        const { data: adminStatus } = await supabase
+          .from('user_status')
+          .select('*')
+          .eq('user_id', adminId)
+          .maybeSingle();
+        
+        if (adminStatus) {
+          setOnlineStatus(prev => ({
+            ...prev,
+            [adminId]: {
+              online: adminStatus.is_online,
+              lastSeen: adminStatus.last_seen
+            }
+          }));
+        }
+      }
+    };
+    
+    fetchAdminAndSubscribe();
+  }, [supabase]);
+
+  // Subscribe to admin status changes
+  useEffect(() => {
+    const statusChannel = supabase
+      .channel('admin_status_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_status'
+        },
+        async (payload) => {
+          // Fetch admin users to check if this is an admin
+          const { data: adminUsers } = await supabase
+            .from('users')
+            .select('id')
+            .in('role', ['admin', 'super_admin'])
+            .limit(1);
+          
+          if (adminUsers && adminUsers.length > 0) {
+            const adminId = adminUsers[0].id;
+            const payloadNew = payload.new as { user_id: string; is_online: boolean; last_seen: string } | null;
+            if (payloadNew && payloadNew.user_id === adminId) {
+              setOnlineStatus(prev => ({
+                ...prev,
+                [payloadNew.user_id]: {
+                  online: payloadNew.is_online,
+                  lastSeen: payloadNew.last_seen
+                }
+              }));
+            }
+          }
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(statusChannel);
+    };
+  }, [supabase]);
+
   // Update user status when page loads and on activity
   useEffect(() => {
     console.log('[User Status] Effect running, currentUserId:', currentUserId);
@@ -196,6 +275,26 @@ export default function UserRequestsPage() {
       window.removeEventListener('keydown', handleActivity);
       window.removeEventListener('click', handleActivity);
       updateUserStatus(false);
+    };
+  }, [supabase, currentUserId]);
+
+  // Update last_seen on beforeunload (when user closes tab/browser)
+  useEffect(() => {
+    const handleBeforeUnload = async () => {
+      if (currentUserId) {
+        await supabase.from('user_status').upsert({
+          user_id: currentUserId,
+          is_online: false,
+          last_seen: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [supabase, currentUserId]);
 
@@ -291,9 +390,10 @@ export default function UserRequestsPage() {
   const sendTypingStatus = async (isTyping: boolean) => {
     if (!selectedRequest?.id || !currentUserId) return;
     
-    // Create channel if not exists
+    // Create channel if not exists and subscribe
     if (!typingChannelRef.current) {
       typingChannelRef.current = supabase.channel('typing_broadcast');
+      await typingChannelRef.current.subscribe();
     }
     
     // Send broadcast typing event
@@ -485,8 +585,21 @@ export default function UserRequestsPage() {
       );
     }
     
-    // For now, show as online since we don't have real online status yet
-    return <span className="text-xs text-green-500 dark:text-green-400">Online</span>;
+    // Check admin status from onlineStatus state
+    if (adminUserId) {
+      const adminStatus = onlineStatus[adminUserId];
+      
+      if (adminStatus?.online) {
+        return <span className="text-xs text-green-500 dark:text-green-400">Online</span>;
+      }
+      
+      if (adminStatus?.lastSeen) {
+        return <span className="text-xs text-slate-500 dark:text-slate-400">{formatLastSeen(adminStatus.lastSeen)}</span>;
+      }
+    }
+    
+    // Default to offline if no status found
+    return <span className="text-xs text-slate-400">Offline</span>;
   };
 
   // Check if message is from current user

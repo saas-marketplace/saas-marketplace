@@ -134,6 +134,8 @@ export default function UserRequestsPage() {
   const [typingStatus, setTypingStatus] = useState<TypingStatus>({});
   const [onlineStatus, setOnlineStatus] = useState<OnlineStatus>({});
   const [userIsTyping, setUserIsTyping] = useState(false);
+  const [typingChannelRef, setTypingChannelRef] = useState<any>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
@@ -280,6 +282,60 @@ export default function UserRequestsPage() {
     fetchRequests();
   }, [supabase]);
 
+  // Update admin status when page loads
+  useEffect(() => {
+    if (!currentUserId || !isAdmin) return;
+    
+    const updateAdminStatus = async (isOnline: boolean) => {
+      try {
+        await supabase.from('user_status').upsert({
+          user_id: currentUserId,
+          is_online: isOnline,
+          last_seen: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+      } catch (error) {
+        console.error('[Admin Status] Error updating status:', error);
+      }
+    };
+    
+    // Set admin as online on mount
+    updateAdminStatus(true);
+    
+    // Update on user activity
+    const handleActivity = () => updateAdminStatus(true);
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('keydown', handleActivity);
+    window.addEventListener('click', handleActivity);
+    
+    return () => {
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('click', handleActivity);
+      updateAdminStatus(false);
+    };
+  }, [supabase, currentUserId, isAdmin]);
+
+  // Update last_seen on beforeunload (when admin closes tab/browser)
+  useEffect(() => {
+    if (!currentUserId || !isAdmin) return;
+    
+    const handleBeforeUnload = async () => {
+      await supabase.from('user_status').upsert({
+        user_id: currentUserId,
+        is_online: false,
+        last_seen: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [supabase, currentUserId, isAdmin]);
+
   // Fetch messages when a request is selected
   useEffect(() => {
     const fetchMessages = async () => {
@@ -305,6 +361,39 @@ export default function UserRequestsPage() {
     };
     fetchMessages();
   }, [selectedRequest?.id]);
+
+  // Real-time subscription for messages (to receive user messages instantly)
+  useEffect(() => {
+    if (!selectedRequest?.id) return;
+
+    const messageChannel = supabase
+      .channel('admin_messages')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'request_messages',
+          filter: `request_id=eq.${selectedRequest.id}`
+        },
+        (payload) => {
+          const newMessage = payload.new as RequestMessage;
+          // Avoid duplicate messages
+          setMessages(prev => {
+            if (prev.some(m => m.id === newMessage.id)) return prev;
+            const newMessages = [...prev, newMessage];
+            return newMessages.sort(
+              (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(messageChannel);
+    };
+  }, [selectedRequest?.id, supabase]);
 
   // Auto-scroll to bottom when messages change
   const scrollToBottom = useCallback(() => {
@@ -389,40 +478,18 @@ export default function UserRequestsPage() {
       )
       .subscribe();
 
-    // Subscribe to request_typing table for typing indicators
+    // Subscribe to typing via broadcast (faster than database)
     const typingChannel = supabase
-      .channel('admin_request_typing')
+      .channel('typing_broadcast')
       .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'request_typing',
-          filter: `request_id=eq.${selectedRequest.id}`
-        },
+        'broadcast',
+        { event: 'typing' },
         (payload) => {
-          console.log('[Admin Presence] Typing change:', payload);
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const typingData = payload.new as { request_id: string; user_id: string; is_typing: boolean };
-            // Only show typing if it's from the request owner (user), not from admin
-            if (typingData.user_id === selectedRequest.user_id) {
-              console.log('[Admin Presence] User typing:', typingData.is_typing);
-              setTypingStatus(prev => ({
-                ...prev,
-                [typingData.request_id]: typingData.is_typing
-              }));
-              setUserIsTyping(typingData.is_typing);
-            }
-          }
-          if (payload.eventType === 'DELETE') {
-            const typingData = payload.old as { request_id: string; user_id: string };
-            if (typingData.user_id === selectedRequest.user_id) {
-              setTypingStatus(prev => ({
-                ...prev,
-                [typingData.request_id]: false
-              }));
-              setUserIsTyping(false);
-            }
+          const { requestId, userId, isTyping } = payload.payload;
+          // Only show typing if it's for the current request and not from self (admin)
+          if (requestId === selectedRequest.id && userId !== currentUserId) {
+            console.log('[Admin Presence] User typing via broadcast:', isTyping);
+            setUserIsTyping(isTyping);
           }
         }
       )
@@ -433,7 +500,43 @@ export default function UserRequestsPage() {
       supabase.removeChannel(statusChannel);
       supabase.removeChannel(typingChannel);
     };
-  }, [supabase, selectedRequest?.id, selectedRequest?.user_id]);
+  }, [supabase, selectedRequest?.id, selectedRequest?.user_id, currentUserId]);
+
+  // Send typing status via broadcast
+  const sendTypingStatus = async (isTyping: boolean) => {
+    if (!selectedRequest?.id || !currentUserId) return;
+    
+    // Create channel if not exists and subscribe
+    if (!typingChannelRef.current) {
+      const channel = supabase.channel('typing_broadcast');
+      await channel.subscribe();
+      setTypingChannelRef(channel);
+    }
+    
+    // Send broadcast typing event
+    typingChannelRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { 
+        requestId: selectedRequest.id, 
+        userId: currentUserId, 
+        isTyping 
+      }
+    });
+  };
+
+  // Handle typing input
+  const handleTyping = () => {
+    sendTypingStatus(true);
+    
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    typingTimeoutRef.current = setTimeout(() => {
+      sendTypingStatus(false);
+    }, 2000);
+  };
 
   // Handle sending a new message
   const handleSendMessage = async () => {
@@ -796,7 +899,10 @@ export default function UserRequestsPage() {
                 <input
                   type="text"
                   value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
+                  onChange={(e) => {
+                    setNewMessage(e.target.value);
+                    handleTyping();
+                  }}
                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
                   placeholder="Type a message..."
                   className="flex-1 px-4 py-2.5 sm:py-3 text-sm rounded-2xl border border-cyan-200 bg-cyan-50/50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#249fd3] focus:border-transparent transition-all duration-200"
@@ -940,7 +1046,10 @@ export default function UserRequestsPage() {
             <input
               type="text"
               value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
+              onChange={(e) => {
+                setNewMessage(e.target.value);
+                handleTyping();
+              }}
               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
               placeholder="Type a message..."
               className="flex-1 px-5 py-3 text-sm rounded-2xl border border-cyan-200 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#249fd3] focus:border-transparent transition-all duration-200"
