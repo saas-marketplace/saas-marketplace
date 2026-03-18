@@ -327,18 +327,26 @@ export default function UserRequestsPage() {
 
   // Online status and typing subscription
   useEffect(() => {
+    if (!selectedRequest?.user_id) return;
+    
+    console.log('[Admin Presence] Subscribing for user:', selectedRequest.user_id);
+    
+    // Subscribe to user_status table for online status
     const statusChannel = supabase
-      .channel('admin_presence')
+      .channel('admin_user_status')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'user_presence'
+          table: 'user_status',
+          filter: `user_id=eq.${selectedRequest.user_id}`
         },
         (payload) => {
+          console.log('[Admin Presence] Status change:', payload);
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const statusData = payload.new as { user_id: string; is_online: boolean; last_seen: string };
+            console.log('[Admin Presence] Setting status:', statusData);
             setOnlineStatus(prev => ({
               ...prev,
               [statusData.user_id]: {
@@ -351,20 +359,24 @@ export default function UserRequestsPage() {
       )
       .subscribe();
 
-    // Subscribe to typing indicator channel
+    // Subscribe to request_typing table for typing indicators
     const typingChannel = supabase
-      .channel('admin_typing')
+      .channel('admin_request_typing')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'typing_indicators'
+          table: 'request_typing',
+          filter: `request_id=eq.${selectedRequest.id}`
         },
         (payload) => {
+          console.log('[Admin Presence] Typing change:', payload);
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const typingData = payload.new as { request_id: string; user_id: string; is_typing: boolean };
-            if (selectedRequest && typingData.request_id === selectedRequest.id) {
+            // Only show typing if it's from the request owner (user), not from admin
+            if (typingData.user_id === selectedRequest.user_id) {
+              console.log('[Admin Presence] User typing:', typingData.is_typing);
               setTypingStatus(prev => ({
                 ...prev,
                 [typingData.request_id]: typingData.is_typing
@@ -373,8 +385,8 @@ export default function UserRequestsPage() {
             }
           }
           if (payload.eventType === 'DELETE') {
-            const typingData = payload.old as { request_id: string };
-            if (selectedRequest && typingData.request_id === selectedRequest.id) {
+            const typingData = payload.old as { request_id: string; user_id: string };
+            if (typingData.user_id === selectedRequest.user_id) {
               setTypingStatus(prev => ({
                 ...prev,
                 [typingData.request_id]: false
@@ -387,10 +399,11 @@ export default function UserRequestsPage() {
       .subscribe();
 
     return () => {
+      console.log('[Admin Presence] Cleaning up subscriptions');
       supabase.removeChannel(statusChannel);
       supabase.removeChannel(typingChannel);
     };
-  }, [supabase, selectedRequest]);
+  }, [supabase, selectedRequest?.id, selectedRequest?.user_id]);
 
   // Handle sending a new message
   const handleSendMessage = async () => {
