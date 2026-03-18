@@ -327,9 +327,39 @@ export default function UserRequestsPage() {
 
   // Online status and typing subscription
   useEffect(() => {
-    if (!selectedRequest?.user_id) return;
+    if (!selectedRequest?.user_id) {
+      console.log('[Admin Presence] No user_id in selectedRequest, skipping');
+      return;
+    }
     
     console.log('[Admin Presence] Subscribing for user:', selectedRequest.user_id);
+    
+    // First, try to fetch existing status
+    const fetchInitialStatus = async () => {
+      console.log('[Admin Presence] Fetching initial status for:', selectedRequest.user_id);
+      const { data, error } = await supabase
+        .from('user_status')
+        .select('*')
+        .eq('user_id', selectedRequest.user_id)
+        .maybeSingle();
+      
+      if (error) {
+        console.log('[Admin Presence] Error fetching status:', error);
+      } else if (data) {
+        console.log('[Admin Presence] Initial status data:', data);
+        setOnlineStatus(prev => ({
+          ...prev,
+          [data.user_id]: {
+            online: data.is_online,
+            lastSeen: data.last_seen
+          }
+        }));
+      } else {
+        console.log('[Admin Presence] No status found for user (they may not have visited the requests page yet)');
+      }
+    };
+    
+    fetchInitialStatus();
     
     // Subscribe to user_status table for online status
     const statusChannel = supabase
@@ -590,6 +620,8 @@ export default function UserRequestsPage() {
   const getUserStatus = () => {
     if (!selectedRequest?.user_id) return null;
     
+    console.log('[Admin UI] Getting status for user:', selectedRequest.user_id, 'Status:', onlineStatus[selectedRequest.user_id]);
+    
     // Check if user is typing
     if (typingStatus[selectedRequest.id]) {
       return (
@@ -605,6 +637,8 @@ export default function UserRequestsPage() {
     }
     
     const userStatus = onlineStatus[selectedRequest.user_id];
+    console.log('[Admin UI] User status object:', userStatus);
+    
     if (userStatus?.online) {
       return <span className="text-xs text-green-500 dark:text-green-400">Online</span>;
     }
@@ -613,7 +647,8 @@ export default function UserRequestsPage() {
       return <span className="text-xs text-slate-500 dark:text-slate-400">{formatLastSeen(userStatus.lastSeen)}</span>;
     }
     
-    return null;
+    // If no status data at all, show nothing or a default message
+    return <span className="text-xs text-slate-400">Offline</span>;
   };
 
   // Get sender display name

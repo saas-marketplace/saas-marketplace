@@ -143,6 +143,62 @@ export default function UserRequestsPage() {
     fetchRequests();
   }, [supabase]);
 
+  // Update user status when page loads and on activity
+  useEffect(() => {
+    console.log('[User Status] Effect running, currentUserId:', currentUserId);
+    
+    if (!currentUserId) {
+      console.log('[User Status] No user ID, waiting...');
+      return;
+    }
+
+    // Function to update user status
+    const updateUserStatus = async (isOnline: boolean) => {
+      try {
+        console.log('[User Status] Attempting to update:', isOnline ? 'online' : 'offline', 'for user:', currentUserId);
+        
+        const { data, error } = await supabase.from('user_status').upsert({
+          user_id: currentUserId,
+          is_online: isOnline,
+          last_seen: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+        
+        if (error) {
+          console.error('[User Status] Supabase error:', error);
+        } else {
+          console.log('[User Status] Updated successfully:', isOnline ? 'online' : 'offline', data);
+        }
+      } catch (error) {
+        console.error('[User Status] Error updating status:', error);
+      }
+    };
+
+    // Set user as online on mount
+    console.log('[User Status] Setting user as online...');
+    updateUserStatus(true);
+
+    // Update last_seen on user activity
+    const handleActivity = () => {
+      console.log('[User Status] Activity detected, updating...');
+      updateUserStatus(true);
+    };
+
+    // Listen for user activity
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('keydown', handleActivity);
+    window.addEventListener('click', handleActivity);
+
+    // Set user as offline on unmount
+    return () => {
+      console.log('[User Status] Unmounting, setting offline...');
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('click', handleActivity);
+      updateUserStatus(false);
+    };
+  }, [supabase, currentUserId]);
+
   // Real-time subscription for messages
   useEffect(() => {
     if (!selectedRequest?.id) return;
