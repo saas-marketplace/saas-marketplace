@@ -506,6 +506,8 @@ export default function UserRequestsPage() {
   const sendTypingStatus = async (isTyping: boolean) => {
     if (!selectedRequest?.id || !currentUserId) return;
     
+    console.log('[Typing] Sending:', { requestId: selectedRequest.id, userId: currentUserId, isTyping });
+    
     // Create channel if not exists and subscribe
     if (!typingChannelRef.current) {
       const channel = supabase.channel('typing_broadcast');
@@ -704,19 +706,10 @@ export default function UserRequestsPage() {
     window.open(`/freelancers/profile/${freelancerId}`, '_blank');
   };
 
-  // Format last seen time
+  // Format last seen time - shows exact time in HH:MM AM/PM format
   const formatLastSeen = (lastSeen: string) => {
-    const now = new Date();
-    const seen = new Date(lastSeen);
-    const diffMs = now.getTime() - seen.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffMins < 1) return "Last seen just now";
-    if (diffMins < 60) return `Last seen ${diffMins} min ago`;
-    if (diffHours < 24) return `Last seen ${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    return `Last seen ${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    const date = new Date(lastSeen);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   // Get user status (for admin view)

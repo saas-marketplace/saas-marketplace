@@ -146,7 +146,7 @@ export default function UserRequestsPage() {
 
   // Fetch admin user ID and subscribe to admin presence
   useEffect(() => {
-    const fetchAdminAndSubscribe = async () => {
+    const setupPresence = async () => {
       // Fetch admin users
       const { data: adminUsers } = await supabase
         .from('users')
@@ -159,7 +159,7 @@ export default function UserRequestsPage() {
         setAdminUserId(adminId);
         console.log('[Admin Presence] Admin ID:', adminId);
         
-        // Fetch initial admin status
+        // Fetch initial admin status from user_status table
         const { data: adminStatus } = await supabase
           .from('user_status')
           .select('*')
@@ -178,13 +178,13 @@ export default function UserRequestsPage() {
       }
     };
     
-    fetchAdminAndSubscribe();
+    setupPresence();
   }, [supabase]);
 
-  // Subscribe to admin status changes
+  // Subscribe to admin status changes using postgres_changes
   useEffect(() => {
     const statusChannel = supabase
-      .channel('admin_status_changes')
+      .channel('admin_status监听')
       .on(
         'postgres_changes',
         {
@@ -192,26 +192,20 @@ export default function UserRequestsPage() {
           schema: 'public',
           table: 'user_status'
         },
-        async (payload) => {
-          // Fetch admin users to check if this is an admin
-          const { data: adminUsers } = await supabase
-            .from('users')
-            .select('id')
-            .in('role', ['admin', 'super_admin'])
-            .limit(1);
+        (payload) => {
+          const payloadNew = payload.new as { user_id: string; is_online: boolean; last_seen: string } | null;
+          if (!payloadNew) return;
           
-          if (adminUsers && adminUsers.length > 0) {
-            const adminId = adminUsers[0].id;
-            const payloadNew = payload.new as { user_id: string; is_online: boolean; last_seen: string } | null;
-            if (payloadNew && payloadNew.user_id === adminId) {
-              setOnlineStatus(prev => ({
-                ...prev,
-                [payloadNew.user_id]: {
-                  online: payloadNew.is_online,
-                  lastSeen: payloadNew.last_seen
-                }
-              }));
-            }
+          // Check if this is an admin
+          if (adminUserId && payloadNew.user_id === adminUserId) {
+            console.log('[Admin Presence] Status update received:', payloadNew);
+            setOnlineStatus(prev => ({
+              ...prev,
+              [payloadNew.user_id]: {
+                online: payloadNew.is_online,
+                lastSeen: payloadNew.last_seen
+              }
+            }));
           }
         }
       )
@@ -220,7 +214,7 @@ export default function UserRequestsPage() {
     return () => {
       supabase.removeChannel(statusChannel);
     };
-  }, [supabase]);
+  }, [supabase, adminUserId]);
 
   // Update user status when page loads and on activity
   useEffect(() => {
@@ -331,7 +325,7 @@ export default function UserRequestsPage() {
     };
   }, [selectedRequest?.id, supabase]);
 
-  // Typing indicator subscription using broadcast (faster than database)
+  // Typing indicator subscription using broadcast
   useEffect(() => {
     if (!selectedRequest?.id) return;
 
@@ -342,6 +336,7 @@ export default function UserRequestsPage() {
         { event: 'typing' },
         (payload) => {
           const { requestId, userId, isTyping } = payload.payload;
+          console.log('[Typing] Received:', { requestId, userId, isTyping, currentRequest: selectedRequest.id, currentUser: currentUserId });
           // Only show typing if it's for the current request and not from self
           if (requestId === selectedRequest.id && userId !== currentUserId) {
             setAdminIsTyping(isTyping);
@@ -354,35 +349,6 @@ export default function UserRequestsPage() {
       supabase.removeChannel(typingChannel);
     };
   }, [selectedRequest?.id, currentUserId, supabase]);
-
-  // Online status subscription
-  useEffect(() => {
-    const statusChannel = supabase
-      .channel('user_presence')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'user_status'
-        },
-        (payload) => {
-          const statusData = payload.new as { user_id: string; is_online: boolean; last_seen: string };
-          setOnlineStatus(prev => ({
-            ...prev,
-            [statusData.user_id]: {
-              online: statusData.is_online,
-              lastSeen: statusData.last_seen
-            }
-          }));
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(statusChannel);
-    };
-  }, [supabase]);
 
   // Send typing status via broadcast (faster than database)
   const typingChannelRef = useRef<any>(null);
@@ -555,19 +521,10 @@ export default function UserRequestsPage() {
     });
   };
 
-  // Format last seen time
+  // Format last seen time - shows exact time in HH:MM AM/PM format
   const formatLastSeen = (lastSeen: string) => {
-    const now = new Date();
-    const seen = new Date(lastSeen);
-    const diffMs = now.getTime() - seen.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffMins < 1) return "Last seen just now";
-    if (diffMins < 60) return `Last seen ${diffMins} min ago`;
-    if (diffHours < 24) return `Last seen ${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    return `Last seen ${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    const date = new Date(lastSeen);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   // Get admin status (typing or online/offline)
