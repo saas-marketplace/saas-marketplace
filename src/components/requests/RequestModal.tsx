@@ -117,11 +117,11 @@ export function RequestModal({
             transition={{ duration: 0.2 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
           >
-            <div className="relative w-full max-w-lg bg-background rounded-2xl shadow-2xl border border-border overflow-hidden">
+            <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-cyan-100 overflow-hidden">
               {/* Header */}
-              <div className="flex items-center justify-between p-6 border-b border-border">
+              <div className="flex items-center justify-between p-6 border-b border-cyan-100 bg-gradient-to-r from-cyan-50 to-white">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full gradient-bg flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center shadow-lg shadow-cyan-500/25">
                     {freelancer?.avatar_url ? (
                       <img 
                         src={freelancer.avatar_url} 
@@ -133,11 +133,11 @@ export function RequestModal({
                     )}
                   </div>
                   <div>
-                    <h2 className="text-lg font-semibold">Contact {recipientTitle}</h2>
-                    <p className="text-sm text-muted-foreground">{recipientSubtitle}</p>
+                    <h2 className="text-lg font-semibold text-slate-900">Contact {recipientTitle}</h2>
+                    <p className="text-sm text-slate-500">{recipientSubtitle}</p>
                   </div>
                 </div>
-                <Button variant="ghost" size="icon" onClick={onClose}>
+                <Button variant="ghost" size="icon" onClick={onClose} className="text-slate-500 hover:text-[#249fd3] hover:bg-cyan-50">
                   <X className="w-5 h-5" />
                 </Button>
               </div>
@@ -151,7 +151,7 @@ export function RequestModal({
                 )}
 
                 <div>
-                  <label htmlFor="subject" className="block text-sm font-medium mb-2">
+                  <label htmlFor="subject" className="block text-sm font-medium mb-2 text-slate-700">
                     Subject (optional)
                   </label>
                   <input
@@ -160,12 +160,12 @@ export function RequestModal({
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
                     placeholder="What is this about?"
-                    className="w-full px-4 py-3 rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full px-4 py-3 rounded-xl border border-cyan-200 bg-cyan-50/30 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#249fd3] focus:border-transparent transition-all duration-200"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="message" className="block text-sm font-medium mb-2">
+                  <label htmlFor="message" className="block text-sm font-medium mb-2 text-slate-700">
                     Message *
                   </label>
                   <textarea
@@ -174,7 +174,7 @@ export function RequestModal({
                     onChange={(e) => setMessage(e.target.value)}
                     placeholder="Write your message here..."
                     rows={5}
-                    className="w-full px-4 py-3 rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                    className="w-full px-4 py-3 rounded-xl border border-cyan-200 bg-cyan-50/30 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#249fd3] focus:border-transparent transition-all duration-200 resize-none"
                     required
                   />
                 </div>
@@ -184,14 +184,14 @@ export function RequestModal({
                     type="button"
                     variant="outline"
                     onClick={onClose}
-                    className="flex-1"
+                    className="flex-1 border-cyan-200 text-slate-600 hover:bg-cyan-50 hover:text-[#249fd3] hover:border-cyan-300 transition-all duration-200"
                     disabled={loading}
                   >
                     Cancel
                   </Button>
                   <Button
                     type="submit"
-                    className="flex-1 gradient-bg"
+                    className="flex-1 bg-gradient-to-r from-[#249fd3] to-cyan-400 hover:from-[#1e8ac0] hover:to-cyan-500 shadow-lg shadow-cyan-500/25 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                     disabled={loading || !message.trim()}
                   >
                     {loading ? (

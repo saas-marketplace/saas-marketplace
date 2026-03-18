@@ -2,6 +2,7 @@
 
 import { supabase } from "@/lib/supabase/client";
 import { useEffect, useState, useCallback } from "react";
+import { useAccessControl } from "@/hooks/useAccessControl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,6 +22,7 @@ import {
   User,
   Folder,
   MapPin,
+  AlertTriangle,
 } from "lucide-react";
 
 interface Domain {
@@ -35,6 +37,7 @@ interface Freelancer {
   display_name: string;
   title: string | null;
   bio: string | null;
+  description: string | null;
   skills: string[];
   avatar_url: string | null;
   completed_projects: number;
@@ -45,17 +48,35 @@ interface Freelancer {
 }
 
 export default function FreelancersPage() {
+  const { isLoading, canAccessSection, canCreate, canUpdate, canDelete } = useAccessControl();
   const [freelancers, setFreelancers] = useState<Freelancer[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingFreelancer, setEditingFreelancer] = useState<Freelancer | null>(null);
+  const [selectedDomain, setSelectedDomain] = useState<string | null>(null); // For filtering
+
+  // Access control check
+  if (!isLoading && !canAccessSection('freelancers')) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh]">
+        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
+        <h2 className="text-xl font-semibold text-slate-900 mb-2">
+          Access Restricted
+        </h2>
+        <p className="text-slate-500 text-center max-w-md">
+          You don't have permission to view this section. Contact your administrator for access.
+        </p>
+      </div>
+    );
+  }
 
   const [formData, setFormData] = useState({
     display_name: "",
     title: "",
     bio: "",
+    description: "",
     skills: "",
     avatar_url: "",
     location: "",
@@ -114,6 +135,7 @@ export default function FreelancersPage() {
       display_name: "",
       title: "",
       bio: "",
+      description: "",
       skills: "",
       avatar_url: "",
       location: "",
@@ -136,6 +158,7 @@ export default function FreelancersPage() {
       display_name: freelancer.display_name,
       title: freelancer.title || "",
       bio: freelancer.bio || "",
+      description: freelancer.description || "",
       skills: freelancer.skills.join(", "),
       avatar_url: freelancer.avatar_url || "",
       location: freelancer.location || "",
@@ -149,6 +172,14 @@ export default function FreelancersPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    
+    // Check permission - use editingFreelancer to determine if create or update
+    const hasPermission = editingFreelancer ? canUpdate('freelancers') : canCreate('freelancers');
+    if (!hasPermission) {
+      alert('You do not have permission to perform this action');
+      return;
+    }
+    
     setSaving(true);
 
     try {
@@ -161,6 +192,7 @@ export default function FreelancersPage() {
         display_name: formData.display_name,
         title: formData.title || null,
         bio: formData.bio || null,
+        description: formData.description || null,
         skills: skillsArray,
         avatar_url: formData.avatar_url || null,
         location: formData.location || null,
@@ -191,7 +223,13 @@ export default function FreelancersPage() {
 
   async function handleDelete(id: string) {
     if (!confirm("Are you sure you want to delete this freelancer?")) return;
-
+    
+    // Check permission
+    if (!canDelete('freelancers')) {
+      alert('You do not have permission to delete freelancers');
+      return;
+    }
+    
     await supabase.from("freelancers").delete().eq("id", id);
     fetchFreelancers();
   }
@@ -206,6 +244,11 @@ export default function FreelancersPage() {
       .slice(0, 2);
   };
 
+  // Filter freelancers by selected domain
+  const filteredFreelancers = selectedDomain 
+    ? freelancers.filter(f => f.domain_id === selectedDomain)
+    : freelancers;
+
   return (
     <div className="min-h-screen bg-white">
       <div className="space-y-6 mx-auto px-4 max-w-7xl py-8">
@@ -218,10 +261,15 @@ export default function FreelancersPage() {
             </div>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
-                <Button onClick={openAddDialog}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Freelancer
-                </Button>
+                {canCreate('freelancers') && (
+                  <Button 
+                    onClick={openAddDialog}
+                    className="bg-cyan-600 hover:bg-cyan-700 text-white"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Freelancer
+                  </Button>
+                )}
               </DialogTrigger>
               <DialogContent className="max-w-xl">
                 <DialogHeader>
@@ -249,6 +297,18 @@ export default function FreelancersPage() {
                         }
                       />
                     </div>
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="text-sm font-medium text-slate-200">Description</label>
+                    <Input
+                      value={formData.description}
+                      onChange={(e) =>
+                        setFormData({ ...formData, description: e.target.value })
+                      }
+                      placeholder="Brief description about the freelancer"
+                    />
                   </div>
 
                   {/* Domain */}
@@ -335,6 +395,35 @@ export default function FreelancersPage() {
               </DialogContent>
             </Dialog>
           </div>
+
+          {/* Domain Filter Bar */}
+          {domains.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedDomain(null)}
+                className={selectedDomain === null 
+                  ? "bg-cyan-600 hover:bg-cyan-700 text-white border-cyan-600" 
+                  : "bg-slate-800 hover:bg-slate-700 text-white border-slate-600"}
+              >
+                All Freelancers
+              </Button>
+              {domains.map((domain) => (
+                <Button
+                  key={domain.id}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedDomain(domain.id)}
+                  className={selectedDomain === domain.id 
+                    ? "bg-cyan-600 hover:bg-cyan-700 text-white border-cyan-600" 
+                    : "bg-slate-800 hover:bg-slate-700 text-white border-slate-600"}
+                >
+                  {domain.name}
+                </Button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -343,14 +432,19 @@ export default function FreelancersPage() {
         <div className="flex justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
-      ) : freelancers.length === 0 ? (
+      ) : filteredFreelancers.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-12 text-center">
           <User className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p className="text-lg font-medium">No freelancers yet.</p>
+          <p className="text-lg font-medium">No freelancers found.</p>
+          {selectedDomain && (
+            <p className="text-sm text-gray-500 mt-2">
+              No freelancers in this domain. <button onClick={() => setSelectedDomain(null)} className="text-purple-600 underline">View all freelancers</button>
+            </p>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {freelancers.map((f) => (
+          {filteredFreelancers.map((f) => (
             <div
               key={f.id}
               className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition p-5 flex flex-col gap-4"
@@ -449,20 +543,24 @@ export default function FreelancersPage() {
                   </span>
 
                   {/* Edit Button */}
-                  <button
-                    onClick={() => openEditDialog(f)}
-                    className="p-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-600 transition flex items-center justify-center"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
+                  {canUpdate('freelancers') && (
+                    <button
+                      onClick={() => openEditDialog(f)}
+                      className="p-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-600 transition flex items-center justify-center"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  )}
 
                   {/* Delete Button */}
-                  <button
-                    onClick={() => handleDelete(f.id)}
-                    className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition flex items-center justify-center"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {canDelete('freelancers') && (
+                    <button
+                      onClick={() => handleDelete(f.id)}
+                      className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition flex items-center justify-center"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

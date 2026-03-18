@@ -1,31 +1,33 @@
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createClient } from '@supabase/supabase-js';
-import { useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Upload, X } from 'lucide-react';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createClient();
 
 const schema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().min(1, 'Description is required'),
   price: z.number().min(0, 'Price must be positive'),
   type: z.enum(['ebook', 'design', 'template']),
-  preview_image: z.string().url('Invalid URL'),
-  download_file: z.string().url('Invalid URL'),
+  preview_image: z.string().optional(),
+  download_file: z.string().optional(),
 });
 
 type ProductFormValues = z.infer<typeof schema>;
 
 export default function ProductForm({ onSuccess }: { onSuccess: () => void }) {
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string>('');
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
     register,
@@ -37,15 +39,90 @@ export default function ProductForm({ onSuccess }: { onSuccess: () => void }) {
     resolver: zodResolver(schema),
   });
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setError(null);
+
+    try {
+      // Generate unique filename
+      const fileName = `${Date.now()}-${file.name.replace(/\s+/g, '-')}`;
+      
+      console.log('Uploading image:', fileName);
+
+      // Upload to Supabase Storage
+      const { data, error: uploadError } = await supabase.storage
+        .from('products')
+        .upload(fileName, file);
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        throw new Error(uploadError.message);
+      }
+
+      // Get public URL
+      const { data: publicUrlData } = supabase.storage
+        .from('products')
+        .getPublicUrl(fileName);
+
+      const imageUrl = publicUrlData.publicUrl;
+      console.log('Uploaded image URL:', imageUrl);
+
+      setPreviewImage(imageUrl);
+      setPreviewFile(file);
+      setValue('preview_image', imageUrl);
+    } catch (err) {
+      console.error('Error uploading image:', err);
+      setError(err instanceof Error ? err.message : 'Failed to upload image');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeImage = () => {
+    setPreviewImage('');
+    setPreviewFile(null);
+    setValue('preview_image', '');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const onSubmit = async (data: ProductFormValues) => {
     setSaving(true);
+    setError(null);
     try {
-      const { error } = await supabase.from('products').insert([data]);
-      if (!error) {
+      console.log('Submitting product data:', data);
+      
+      const productData = {
+        title: data.title,
+        description: data.description,
+        price: data.price,
+        type: data.type,
+        preview_image: previewImage || data.preview_image || null,
+        download_file: data.download_file || null,
+      };
+
+      console.log('Product payload:', productData);
+      
+      const { data: result, error: insertError } = await supabase
+        .from('products')
+        .insert([productData])
+        .select();
+      
+      console.log('Insert result:', result, 'Error:', insertError);
+      
+      if (insertError) {
+        setError(insertError.message);
+        console.error('Supabase error:', insertError);
+      } else {
         onSuccess();
       }
-    } catch (error) {
-      console.error('Error saving product:', error);
+    } catch (err) {
+      console.error('Error saving product:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save product');
     } finally {
       setSaving(false);
     }
@@ -87,16 +164,62 @@ export default function ProductForm({ onSuccess }: { onSuccess: () => void }) {
         {errors.type && <p className="text-red-400 text-sm mt-1">{errors.type.message}</p>}
       </div>
       <div>
-        <label className="text-sm font-medium text-slate-200">Preview Image URL</label>
-        <Input {...register('preview_image')} placeholder="https://..." />
-        {errors.preview_image && <p className="text-red-400 text-sm mt-1">{errors.preview_image.message}</p>}
+        <label className="text-sm font-medium text-slate-200">Preview Image</label>
+        {previewImage ? (
+          <div className="relative mt-2">
+            <img 
+              src={previewImage} 
+              alt="Preview" 
+              className="w-full h-48 object-cover rounded-md"
+            />
+            <button
+              type="button"
+              onClick={removeImage}
+              className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="mt-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+              id="product-image-upload"
+            />
+            <label
+              htmlFor="product-image-upload"
+              className="flex items-center justify-center w-full h-32 border-2 border-dashed border-slate-600 rounded-md cursor-pointer hover:border-cyan-400 transition-colors"
+            >
+              <div className="text-center">
+                {uploading ? (
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto text-cyan-400" />
+                ) : (
+                  <>
+                    <Upload className="w-8 h-8 mx-auto text-slate-400" />
+                    <p className="text-sm text-slate-400 mt-2">Click to upload image</p>
+                  </>
+                )}
+              </div>
+            </label>
+          </div>
+        )}
+        {uploading && <p className="text-cyan-400 text-sm mt-2">Uploading...</p>}
       </div>
       <div>
-        <label className="text-sm font-medium text-slate-200">Download File URL</label>
+        <label className="text-sm font-medium text-slate-200">Download File URL (optional)</label>
         <Input {...register('download_file')} placeholder="https://..." />
         {errors.download_file && <p className="text-red-400 text-sm mt-1">{errors.download_file.message}</p>}
       </div>
-      <Button type="submit" className="w-full" disabled={saving}>
+      {error && (
+        <div className="p-3 bg-red-900/50 border border-red-500 rounded-md">
+          <p className="text-red-300 text-sm">{error}</p>
+        </div>
+      )}
+      <Button type="submit" className="w-full" disabled={saving || uploading}>
         {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
         {saving ? 'Saving...' : 'Add Product'}
       </Button>

@@ -24,23 +24,37 @@ export default function DashboardPage() {
     const fetchStats = async () => {
       const supabase = createClient();
 
-      const [
-        { count: freelancers },
-        { count: products },
-        { count: clientRequests }
-      ] = await Promise.all([
-        supabase.from('freelancers').select('*', { count: 'exact', head: true }),
-        supabase.from('products').select('*', { count: 'exact', head: true }),
-        supabase.from('requests').select('*', { count: 'exact', head: true })
-      ]);
+      try {
+        const [
+          { count: freelancers, error: freelancersError },
+          { count: products, error: productsError },
+          { count: clientRequests, error: requestsError },
+          { count: teamMembers, error: teamError }
+        ] = await Promise.all([
+          supabase.from('freelancers').select('*', { count: 'exact', head: true }),
+          supabase.from('products').select('*', { count: 'exact', head: true }),
+          supabase.from('requests').select('*', { count: 'exact', head: true }),
+          supabase.from('team_members').select('*', { count: 'exact', head: true })
+        ]);
 
-      setStats({
-        freelancers: freelancers || 0,
-        products: products || 0,
-        clientRequests: clientRequests || 0,
-        teamMembers: 0
-      });
-      setLoading(false);
+        console.log('Dashboard stats:', {
+          freelancers, freelancersError,
+          products, productsError,
+          clientRequests, requestsError,
+          teamMembers, teamError
+        });
+
+        setStats({
+          freelancers: freelancers || 0,
+          products: products || 0,
+          clientRequests: clientRequests || 0,
+          teamMembers: teamMembers || 0
+        });
+      } catch (error) {
+        console.error('Error fetching dashboard stats:', error);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchStats();

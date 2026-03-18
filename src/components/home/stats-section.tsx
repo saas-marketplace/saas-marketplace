@@ -49,7 +49,7 @@ export function StatsSection() {
     <section className="py-24 relative overflow-hidden">
       <div className="absolute inset-0 gradient-bg-subtle" />
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <ScrollReveal className="text-center mb-16">
+        <ScrollReveal className="text-center mb-16 ml-1">
           <Badge variant="secondary" className="mb-4">
             Our Impact
           </Badge>

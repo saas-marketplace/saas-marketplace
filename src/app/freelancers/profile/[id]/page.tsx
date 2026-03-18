@@ -39,7 +39,7 @@ export default function FreelancerProfilePage() {
   const [newComment, setNewComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
-  const [contactForm, setContactForm] = useState({ subject: "", message: "" });
+  const [contactForm, setContactForm] = useState({ subject_type: "project", custom_subject: "", message: "" });
   const [contactSubmitting, setContactSubmitting] = useState(false);
   const supabase = createClient();
   const { toast } = useToast();
@@ -71,16 +71,34 @@ export default function FreelancerProfilePage() {
       let avgRating = freelancerData.rating || 0;
       let reviewCount = freelancerData.review_count || 0;
       
-      const { data: newReviews, error: newReviewsError } = await supabase
+      let { data: newReviews, error: newReviewsError } = await supabase
         .from("reviews")
-        .select(`
-          *,
-          user:users(id, full_name, email)
-        `)
+        .select("*")
         .eq("freelancer_id", freelancerData.id)
         .order("created_at", { ascending: false });
 
       if (!newReviewsError && newReviews && newReviews.length > 0) {
+        // Fetch user data for each review from public.users table
+        const userIds = [...new Set(newReviews.map(r => r.user_id).filter(Boolean))];
+        if (userIds.length > 0) {
+          const { data: usersData } = await supabase
+            .from("users")
+            .select("id, full_name, email")
+            .in("id", userIds);
+          
+          // Merge user data into reviews - use email prefix as fallback for full_name
+          newReviews = newReviews.map(review => {
+            const user = usersData?.find(u => u.id === review.user_id);
+            return {
+              ...review,
+              user: user ? { 
+                ...user, 
+                // Use full_name if available, otherwise use email prefix, otherwise null
+                full_name: user.full_name || (user.email ? user.email.split('@')[0] : null) 
+              } : null
+            };
+          });
+        }
         // Use new reviews table
         reviewData = newReviews;
         reviewCount = newReviews.length;
@@ -99,7 +117,7 @@ export default function FreelancerProfilePage() {
       // Check if current user has already reviewed
       const { data: { user } } = await supabase.auth.getUser();
       if (user && reviewData) {
-        const existingReview = reviewData.find((r: Review) => r.user_id === user.id);
+        const existingReview = reviewData.find((r) => r.user_id === user.id);
         setUserReview(existingReview || null);
       }
     }
@@ -131,7 +149,7 @@ export default function FreelancerProfilePage() {
 
     setSubmitting(true);
     
-    // Try inserting into new reviews table first
+    // Try inserting into reviews table
     const { error: insertError } = await supabase.from("reviews").insert({
       freelancer_id: freelancer!.id,
       user_id: user.id,
@@ -179,7 +197,8 @@ export default function FreelancerProfilePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           freelancer_id: freelancer!.id,
-          subject: contactForm.subject,
+          subject_type: contactForm.subject_type,
+          title: contactForm.subject_type === 'custom' ? contactForm.custom_subject : undefined,
           message: contactForm.message,
           request_type: "freelancer",
         }),
@@ -200,9 +219,9 @@ export default function FreelancerProfilePage() {
         title: "Message sent!",
         description: `Your message has been sent to ${freelancer!.display_name}.`,
       });
-      setContactForm({ subject: "", message: "" });
+      setContactForm({ subject_type: "project", custom_subject: "", message: "" });
       setContactOpen(false);
-      router.push("/dashboard/requests");
+      router.push("/requests");
     } catch (err) {
       toast({
         title: "Error",
@@ -258,7 +277,14 @@ export default function FreelancerProfilePage() {
         </button>
 
         <ScrollReveal>
-          <div className="glass-card rounded-3xl p-8 mb-8">
+          <div className="glass-card rounded-3xl p-8 mb-8 relative">
+            {/* Experience Level Badge - Top Right */}
+            {freelancer.experience_level && (
+              <span className="absolute top-6 right-6 bg-white text-black border border-gray-200 rounded-full px-3 py-1 text-xs font-medium shadow-sm translate-y-[10px]">
+                {freelancer.experience_level}
+              </span>
+            )}
+
             <div className="flex flex-col sm:flex-row items-start gap-6">
               <div className="w-24 h-24 rounded-2xl gradient-bg flex items-center justify-center text-white text-3xl font-bold flex-shrink-0">
                 {freelancer.display_name
@@ -296,6 +322,12 @@ export default function FreelancerProfilePage() {
                 <p className="text-muted-foreground leading-relaxed mb-6">
                   {freelancer.bio}
                 </p>
+
+                {freelancer.description && (
+                  <p className="text-muted-foreground leading-relaxed mb-6">
+                    {freelancer.description}
+                  </p>
+                )}
 
                 <div className="flex flex-wrap gap-4 text-sm">
                   {freelancer.location && (
@@ -351,13 +383,28 @@ export default function FreelancerProfilePage() {
                   <form onSubmit={handleContactSubmit} className="space-y-4">
                     <div>
                       <label className="text-sm font-medium mb-2 block">Subject</label>
-                      <Input
-                        placeholder="Project inquiry"
-                        value={contactForm.subject}
-                        onChange={(e) => setContactForm({ ...contactForm, subject: e.target.value })}
-                        required
-                      />
+                      <select
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        value={contactForm.subject_type}
+                        onChange={(e) => setContactForm({ ...contactForm, subject_type: e.target.value })}
+                      >
+                        <option value="hire">Hire Freelancer</option>
+                        <option value="info">Request Information</option>
+                        <option value="project">Discuss Project</option>
+                        <option value="custom">Other (Custom)</option>
+                      </select>
                     </div>
+                    {contactForm.subject_type === 'custom' && (
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">Custom Subject</label>
+                        <Input
+                          placeholder="Enter your subject"
+                          value={contactForm.custom_subject}
+                          onChange={(e) => setContactForm({ ...contactForm, custom_subject: e.target.value })}
+                          required
+                        />
+                      </div>
+                    )}
                     <div>
                       <label className="text-sm font-medium mb-2 block">Message</label>
                       <Textarea
@@ -389,14 +436,11 @@ export default function FreelancerProfilePage() {
             </h2>
 
             <div className="glass-card rounded-2xl p-6 mb-6">
-              <h3 className="font-semibold mb-4">Leave a Review</h3>
+              <h3 className="font-semibold mb-1">Leave a Review</h3>
               {userReview ? (
-                <div className="text-center py-4">
+                <div className="py-2">
                   <p className="text-muted-foreground mb-2">You have already reviewed this freelancer.</p>
                   <StarRating rating={userReview.rating} size="sm" />
-                  {userReview.comment && (
-                    <p className="mt-2 text-sm text-muted-foreground">"{userReview.comment}"</p>
-                  )}
                 </div>
               ) : (
                 <>
@@ -438,8 +482,8 @@ export default function FreelancerProfilePage() {
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <p className="font-medium">
-                        {review.user?.full_name || review.user?.email || "User"}
+                      <p className="font-medium mb-1">
+                        {review.user?.full_name || review.user?.email || "Anonymous User"}
                       </p>
                       <StarRating rating={review.rating} size="sm" />
                     </div>

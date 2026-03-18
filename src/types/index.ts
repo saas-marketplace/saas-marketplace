@@ -27,6 +27,7 @@ export interface Freelancer {
   display_name: string;
   title: string | null;
   bio: string | null;
+  description: string | null;
   avatar_url: string | null;
   skills: string[];
   rating: number;
@@ -208,4 +209,24 @@ export interface ContactSubmission {
   subject?: string;
   message: string;
   phone?: string;
+}
+
+// Team Member with permissions
+export interface TeamMember {
+  id: string;
+  user_id: string;
+  display_name: string;
+  role_label: string;
+  permissions: import('./permissions').Permissions;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined user data
+  user?: {
+    id: string;
+    email: string;
+    full_name: string | null;
+    avatar_url: string | null;
+  } | null;
 }

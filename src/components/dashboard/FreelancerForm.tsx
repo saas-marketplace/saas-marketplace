@@ -3,17 +3,14 @@
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/client';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Upload, Loader2 } from 'lucide-react';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createClient();
 
 const schema = z.object({
   display_name: z.string().min(1, 'Name is required'),
@@ -37,13 +34,14 @@ interface Domain {
 interface FreelancerFormProps {
   onSuccess: () => void;
   domains?: Domain[];
-  initialData?: Partial<FreelancerFormValues> & { avatar_url?: string };
+  initialData?: Partial<FreelancerFormValues> & { avatar_url?: string; experience_level?: string };
 }
 
 export default function FreelancerForm({ onSuccess, domains = [], initialData }: FreelancerFormProps) {
   const [saving, setSaving] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(initialData?.avatar_url || '');
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const {
     register,
@@ -53,14 +51,20 @@ export default function FreelancerForm({ onSuccess, domains = [], initialData }:
     formState: { errors },
   } = useForm<FreelancerFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: initialData || {
+    defaultValues: initialData ? {
+      ...initialData,
+      experience_level: initialData.experience_level || '',
+    } : {
       is_available: true,
     },
   });
 
   const onSubmit = async (data: FreelancerFormValues) => {
     setSaving(true);
+    setError(null);
     try {
+      console.log('Submitting freelancer data:', data);
+      
       const skillsArray = data.skills
         .split(',')
         .map((s) => s.trim())
@@ -78,12 +82,21 @@ export default function FreelancerForm({ onSuccess, domains = [], initialData }:
         avatar_url: avatarUrl || null,
       };
 
-      const { error } = await supabase.from('freelancers').insert([freelancerData]);
-      if (!error) {
+      console.log('Freelancer payload:', freelancerData);
+      
+      const { data: result, error: insertError } = await supabase.from('freelancers').insert([freelancerData]).select();
+      
+      console.log('Insert result:', result, 'Error:', insertError);
+      
+      if (insertError) {
+        setError(insertError.message);
+        console.error('Supabase error:', insertError);
+      } else {
         onSuccess();
       }
-    } catch (error) {
-      console.error('Error saving freelancer:', error);
+    } catch (err) {
+      console.error('Error saving freelancer:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save freelancer');
     } finally {
       setSaving(false);
     }

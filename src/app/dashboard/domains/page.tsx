@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState, useCallback } from "react";
+import { useAccessControl } from "@/hooks/useAccessControl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +21,7 @@ import {
   Loader2,
   Folder,
   Users,
+  AlertTriangle,
 } from "lucide-react";
 import { IconSelector, getIconComponent } from "@/components/ui/icon-selector";
 
@@ -35,6 +37,7 @@ interface Domain {
 }
 
 export default function DomainsPage() {
+  const { isLoading, canAccessSection, canCreate, canUpdate, canDelete } = useAccessControl();
   const [domains, setDomains] = useState<Domain[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -46,13 +49,29 @@ export default function DomainsPage() {
     description: "",
     icon: "",
   });
-  const [expandedDescriptions, setExpandedDescriptions] = useState<
-    Record<string, boolean>
-  >({});
 
   const supabase = createClient();
 
-  const fetchDomains = useCallback(async () => {
+  // Access control check
+  if (!isLoading && !canAccessSection('domains')) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh]">
+        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
+        <h2 className="text-xl font-semibold text-slate-900 mb-2">
+          Access Restricted
+        </h2>
+        <p className="text-slate-500 text-center max-w-md">
+          You don't have permission to view this section. Contact your administrator for access.
+        </p>
+      </div>
+    );
+  }
+
+  useEffect(() => {
+    fetchDomains();
+  }, []);
+
+  async function fetchDomains() {
     setLoading(true);
     const { data, error } = await supabase
       .from("domains")
@@ -61,11 +80,7 @@ export default function DomainsPage() {
 
     if (!error && data) setDomains(data);
     setLoading(false);
-  }, [supabase]);
-
-  useEffect(() => {
-    fetchDomains();
-  }, [fetchDomains]);
+  }
 
   function generateSlug(name: string) {
     return name
@@ -103,44 +118,24 @@ export default function DomainsPage() {
     }
   }
 
-  function handleDescriptionChange(
-    e: React.ChangeEvent<HTMLTextAreaElement>
-  ) {
-    let value = e.target.value.trim();
-    // Limit to 100 characters
-    if (value.length > 100) {
-      value = value.substring(0, 100);
-    }
-    setFormData({ ...formData, description: value });
-  }
-
-  function toggleDescriptionExpansion(domainId: string) {
-    setExpandedDescriptions((prev) => ({
-      ...prev,
-      [domainId]: !prev[domainId],
-    }));
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    
+    // Check permission - use editingDomain to determine if create or update
+    const hasPermission = editingDomain ? canUpdate('domains') : canCreate('domains');
+    if (!hasPermission) {
+      alert('You do not have permission to perform this action');
+      return;
+    }
+    
     setSaving(true);
     try {
       const domainData = {
-        name: formData.name.trim(),
-        slug: formData.slug.trim(),
-        description: formData.description.trim() || null,
+        name: formData.name,
+        slug: formData.slug,
+        description: formData.description || null,
         icon: formData.icon || null,
       };
-
-      // Validate description length
-      if (
-        domainData.description &&
-        domainData.description.length > 100
-      ) {
-        alert("Description must be 100 characters or less");
-        setSaving(false);
-        return;
-      }
 
       if (editingDomain) {
         const { error } = await supabase
@@ -171,6 +166,13 @@ export default function DomainsPage() {
       )
     )
       return;
+    
+    // Check permission
+    if (!canDelete('domains')) {
+      alert('You do not have permission to delete domains');
+      return;
+    }
+    
     try {
       const { error } = await supabase.from("domains").delete().eq("id", id);
       if (error) throw error;
@@ -183,22 +185,25 @@ export default function DomainsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Domain Management</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage service categories for freelancers
-          </p>
-        </div>
+      {/* Header Card */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Domain Management</h1>
+            <p className="text-muted-foreground mt-1">
+              Manage service categories for freelancers
+            </p>
+          </div>
 
         {/* Add/Edit Domain Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openAddDialog} className="bg-primary text-white">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Domain
-            </Button>
+            {canCreate('domains') && (
+              <Button onClick={openAddDialog} className="bg-cyan-600 hover:bg-cyan-700 text-white">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Domain
+              </Button>
+            )}
           </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>
@@ -241,22 +246,14 @@ export default function DomainsPage() {
                 <Textarea
                   placeholder="Describe this domain..."
                   value={formData.description}
-                  onChange={handleDescriptionChange}
-                  rows={4}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value.slice(0, 200) })
+                  }
+                  rows={3}
                   className="resize-none"
                 />
-                <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                  <span>
-                    {formData.description.length} / 100 characters
-                  </span>
-                  {formData.description.length > 100 && (
-                    <span className="text-red-500">
-                      (Maximum 100 characters)
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Maximum recommended length for best display
+                <p className="text-xs text-muted-foreground">
+                  Maximum recommended length for best display ({formData.description.length}/200)
                 </p>
               </div>
 
@@ -272,10 +269,11 @@ export default function DomainsPage() {
                   type="button"
                   variant="outline"
                   onClick={() => setIsDialogOpen(false)}
+                  className="border-gray-300 text-gray-700 hover:bg-gray-50"
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={saving} className="bg-primary text-white">
+                <Button type="submit" disabled={saving} className="bg-cyan-600 hover:bg-cyan-700 text-white">
                   {saving && (
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   )}
@@ -285,6 +283,7 @@ export default function DomainsPage() {
             </form>
           </DialogContent>
         </Dialog>
+      </div>
       </div>
 
       {/* Domains Grid */}
@@ -296,76 +295,59 @@ export default function DomainsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {domains.map((domain) => {
             const Icon = getIconComponent(domain.icon);
-            const isExpanded = expandedDescriptions[domain.id] || false;
             return (
               <div
                 key={domain.id}
-                className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition p-5 flex flex-col gap-4 min-h-[200px] flex-1"
+                className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition p-5"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Icon className="w-5 h-5 text-primary" />
+                    <div className="w-10 h-10 rounded-lg bg-cyan-50 flex items-center justify-center">
+                      <Icon className="w-5 h-5 text-cyan-600" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900 truncate">
-                        {domain.name}
-                      </h3>
-                      <p className="text-xs text-muted-foreground">
+                      <h3 className="font-semibold text-gray-900">{domain.name}</h3>
+                      <p className="text-xs text-gray-500">
                         /{domain.slug}
                       </p>
                     </div>
                   </div>
 
-                  {/* Edit/Delete */}
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => openEditDialog(domain)}
-                      className="p-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-600 transition flex items-center justify-center"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(domain.id)}
-                      className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition flex items-center justify-center"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  {/* Edit/Delete - Only show if user has update or delete permission */}
+                  {(canUpdate('domains') || canDelete('domains')) && (
+                    <div className="flex items-center gap-1">
+                      {canUpdate('domains') && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEditDialog(domain)}
+                          className="text-cyan-600 hover:bg-cyan-50"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                      )}
+                      {canDelete('domains') && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(domain.id)}
+                          className="text-red-500 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {domain.description && (
-                  <div className="flex-1">
-                    <p
-                      className={`text-sm text-muted-foreground mb-3 line-clamp-3 ${
-                        isExpanded ? "line-clamp-none" : ""
-                      }`}
-                    >
-                      {domain.description}
-                    </p>
-                    {domain.description.length > 100 && (
-                      <button
-                        onClick={() => toggleDescriptionExpansion(domain.id)}
-                        className="text-xs text-primary hover:text-primary/80 flex items-center gap-1"
-                      >
-                        {isExpanded ? (
-                          <>
-                            Show less
-                            <Pencil className="w-3 h-3 rotate-180" />
-                          </>
-                        ) : (
-                          <>
-                            Read more
-                            <Pencil className="w-3 h-3" />
-                          </>
-                        )}
-                      </button>
-                    )}
-                  </div>
+                  <p className="text-sm text-gray-500 mb-3 line-clamp-2">
+                    {domain.description}
+                  </p>
                 )}
 
-                <Badge variant="secondary" className="flex items-center gap-1">
-                  <Users className="w-3 h-3" />
+                <Badge className="bg-cyan-50 text-cyan-700 border-cyan-200 font-medium">
+                  <Users className="w-3 h-3 mr-1" />
                   {domain.freelancer_count || 0} Freelancers
                 </Badge>
               </div>

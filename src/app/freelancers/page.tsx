@@ -41,7 +41,7 @@ export default function FreelancersPage() {
   }, [fetchDomains]);
 
   return (
-    <div className="min-h-screen pt-24 pb-16">
+    <div className="min-h-screen pt-24 ">
       {/* Hero */}
       <section className="relative pb-16">
         <div className="absolute inset-0 gradient-bg-subtle" />

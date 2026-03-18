@@ -47,7 +47,8 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id)
       .single();
     
-    const isAdmin = userData?.role === "admin";
+    // Check for both admin and super_admin
+    const isAdmin = userData?.role === "admin" || userData?.role === "super_admin";
 
     if (!isOwner && !isAdmin) {
       return NextResponse.json(
@@ -142,7 +143,8 @@ export async function GET(request: NextRequest) {
       .eq("id", user.id)
       .single();
     
-    const isAdmin = userData?.role === "admin";
+    // Check for both admin and super_admin
+    const isAdmin = userData?.role === "admin" || userData?.role === "super_admin";
 
     if (!isOwner && !isAdmin) {
       return NextResponse.json(

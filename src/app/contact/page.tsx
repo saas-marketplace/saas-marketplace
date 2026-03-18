@@ -113,7 +113,7 @@ export default function ContactPage() {
       });
       
       // Redirect to requests page
-      router.push("/dashboard/requests");
+      router.push("/requests");
     } catch (err) {
       toast({
         title: "Error",

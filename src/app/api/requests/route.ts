@@ -16,7 +16,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, message } = body;
+    const { 
+      title, 
+      message, 
+      freelancer_id, 
+      freelancer_domain, 
+      freelancer_characteristics,
+      subject_type = 'custom'
+    } = body;
 
     if (!message) {
       return NextResponse.json(
@@ -25,13 +32,82 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the request in the new requests table
+    // If freelancer_id is provided, fetch COMPLETE freelancer details for storing
+    let freelancerName: string | null = null;
+    let freelancerData: any = null;
+    if (freelancer_id) {
+      const { data: freelancer } = await supabase
+        .from('freelancers')
+        .select(`
+          display_name, 
+          title, 
+          domain_id, 
+          skills, 
+          experience_level, 
+          description, 
+          rating, 
+          review_count, 
+          completed_projects,
+          domains(name)
+        `)
+        .eq('id', freelancer_id)
+        .single();
+      
+      if (freelancer) {
+        freelancerName = freelancer.display_name;
+        // Build complete freelancer data object
+        // @ts-ignore - Supabase join types are complex
+        const domainObj = freelancer.domains;
+        const domainName = Array.isArray(domainObj) ? domainObj[0]?.name : null;
+        freelancerData = {
+          name: freelancer.display_name,
+          title: freelancer.title,
+          domain: domainName,
+          domain_id: freelancer.domain_id,
+          skills: freelancer.skills || [],
+          experience_level: freelancer.experience_level,
+          description: freelancer.description,
+          rating: freelancer.rating || 0,
+          reviews_count: freelancer.review_count || 0,
+          projects_count: freelancer.completed_projects || 0
+        };
+      }
+    }
+
+    // Generate subject based on type and freelancer
+    let finalSubject = '';
+    if (subject_type === 'hire' && freelancerName) {
+      finalSubject = `Freelance Hiring Request - ${freelancerName}`;
+    } else if (subject_type === 'info' && freelancerName) {
+      finalSubject = `Request for Information - ${freelancerName}`;
+    } else if (subject_type === 'project' && freelancerName) {
+      finalSubject = `Project Discussion - ${freelancerName}`;
+    } else if (subject_type === 'custom' && freelancerName && title) {
+      // For custom, append freelancer name to user's subject
+      finalSubject = `${title} - ${freelancerName}`;
+    } else if (title) {
+      finalSubject = title;
+    }
+
+    // Use the message as-is - freelancer info is now in freelancer_data
+    let fullMessage = message;
+
+    // Create the request in the requests table
     const { data: newRequest, error: requestError } = await supabase
       .from("requests")
       .insert({
         user_id: user.id,
-        title: title || null,
+        title: finalSubject || null,
         status: "pending",
+        freelancer_id: freelancer_id || null,
+        freelancer_domain: freelancer_domain || (freelancerData?.domain) || null,
+        freelancer_characteristics: freelancer_characteristics || {
+          skills: freelancerData?.skills || [],
+          experience_level: freelancerData?.experience_level,
+          title: freelancerData?.title
+        },
+        freelancer_data: freelancerData || null,
+        subject_type: subject_type || 'custom',
       })
       .select()
       .single();
@@ -50,12 +126,11 @@ export async function POST(request: NextRequest) {
       .insert({
         request_id: newRequest.id,
         sender_id: user.id,
-        message: message,
+        message: fullMessage,
       });
 
     if (messageError) {
       console.error("Error inserting initial message:", messageError);
-      // Still return the request, but warn about message
       return NextResponse.json({ 
         request: newRequest, 
         warning: "Request created but initial message failed to save" 
@@ -88,20 +163,21 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if user is admin
+    // Check if user is admin or super_admin
     const { data: userData } = await supabase
       .from("users")
       .select("role")
       .eq("id", user.id)
       .single();
     
-    const isAdmin = userData?.role === "admin";
+    const isAdmin = userData?.role === "admin" || userData?.role === "super_admin";
 
     let query = supabase
       .from("requests")
       .select(`
         *,
-        user:users(id, email, full_name)
+        user:users(id, email, full_name),
+        freelancer:freelancers(id, display_name, title, domain_id, skills, experience_level, description, rating, review_count, completed_projects, domains(name))
       `)
       .order("created_at", { ascending: false });
 

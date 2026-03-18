@@ -122,11 +122,18 @@ export default function DomainFreelancersPage() {
               <ScrollReveal key={freelancer.id} delay={index * 0.1}>
                 <motion.div
                   whileHover={{ y: -8 }}
-                  className="glass-card rounded-2xl p-6 group"
+                  className="glass-card rounded-2xl p-5 group relative h-[320px] flex flex-col"
                 >
+                  {/* Experience Level Badge - Top Right */}
+                  {freelancer.experience_level && (
+                    <span className="absolute bottom-3 left-3 bg-white text-black border border-gray-200 rounded-full px-3 py-1 text-xs font-medium shadow-sm translate-y-[-10px] ">
+                      {freelancer.experience_level}
+                    </span>
+                  )}
+
                   {/* Header */}
-                  <div className="flex items-start gap-4 mb-4">
-                    <div className="w-16 h-16 rounded-2xl gradient-bg flex items-center justify-center text-white text-xl font-bold flex-shrink-0">
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="w-12 h-12 rounded-2xl gradient-bg flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
                       {freelancer.display_name
                         .split(" ")
                         .map((n) => n[0])
@@ -148,24 +155,45 @@ export default function DomainFreelancersPage() {
                   </div>
 
                   {/* Rating */}
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-2">
                     <StarRating rating={freelancer.rating} size="sm" />
                     <span className="text-sm font-medium">
                       {freelancer.rating.toFixed(1)}
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      ({freelancer.review_count} reviews)
+                      ({freelancer.review_count})
                     </span>
                   </div>
 
-                  {/* Bio */}
-                  <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
+                  {/* Location and Projects - Moved up */}
+                  <div className="flex items-center gap-3 mb-3 text-xs text-muted-foreground">
+                    {freelancer.location && (
+                      <span className="flex items-center gap-1 truncate max-w-[80px]">
+                        <MapPin className="w-3 h-3" />
+                        {freelancer.location}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1">
+                      <Briefcase className="w-3 h-3" />
+                      {freelancer.completed_projects}
+                    </span>
+                  </div>
+
+                  {/* Bio - 2 lines max */}
+                  <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
                     {freelancer.bio}
                   </p>
 
-                  {/* Skills */}
-                  <div className="flex flex-wrap gap-1.5 mb-4">
-                    {freelancer.skills.slice(0, 4).map((skill) => (
+                  {/* Description - 2 lines max */}
+                  {freelancer.description && (
+                    <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                      {freelancer.description}
+                    </p>
+                  )}
+
+                  {/* Skills - max 3 */}
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {freelancer.skills.slice(0, 3).map((skill) => (
                       <Badge
                         key={skill}
                         variant="secondary"
@@ -174,37 +202,23 @@ export default function DomainFreelancersPage() {
                         {skill}
                       </Badge>
                     ))}
-                    {freelancer.skills.length > 4 && (
+                    {freelancer.skills.length > 3 && (
                       <Badge variant="secondary" className="text-xs">
-                        +{freelancer.skills.length - 4}
+                        +{freelancer.skills.length - 3}
                       </Badge>
                     )}
                   </div>
 
-                  {/* Info */}
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground mb-4">
-                    {freelancer.location && (
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        {freelancer.location}
-                      </span>
-                    )}
-                    <span className="flex items-center gap-1">
-                      <Briefcase className="w-3 h-3" />
-                      {freelancer.completed_projects} projects
-                    </span>
-                  </div>
-
                   {/* Footer */}
-                  <div className="flex items-center justify-end pt-4 border-t border-border/50">
+                  <div className="flex items-center justify-end mt-auto pt-3 border-t border-border/50">
                     <Link
                       href={`/freelancers/profile/${freelancer.id}`}
                     >
                       <Button
                         size="sm"
-                        className="gradient-bg text-white border-0 hover:opacity-90 rounded-full"
+                        className="gradient-bg text-white border-0 hover:opacity-90 rounded-full text-s px-6 py-2"
                       >
-                        View Profile
+                        View
                       </Button>
                     </Link>
                   </div>

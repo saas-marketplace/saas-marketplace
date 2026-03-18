@@ -1,7 +1,8 @@
 "use client";
 
-import { supabase } from "@/lib/supabase/client";
-import { useEffect, useState, useCallback } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useAccessControl } from "@/hooks/useAccessControl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,8 +22,13 @@ import {
   Image as ImageIcon,
   Calendar,
   User,
+  Upload,
+  X,
+  AlertTriangle,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+
+const supabase = createClient();
 
 interface Blog {
   id: string;
@@ -35,11 +41,29 @@ interface Blog {
 }
 
 export default function BlogPage() {
+  const { isLoading, canAccessSection, canCreate, canUpdate, canDelete } = useAccessControl();
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBlog, setEditingBlog] = useState<Blog | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Access control check
+  if (!isLoading && !canAccessSection('blogs')) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh]">
+        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
+        <h2 className="text-xl font-semibold text-slate-900 mb-2">
+          Access Restricted
+        </h2>
+        <p className="text-slate-500 text-center max-w-md">
+          You don't have permission to view this section. Contact your administrator for access.
+        </p>
+      </div>
+    );
+  }
 
   const [formData, setFormData] = useState({
     title: "",
@@ -48,6 +72,8 @@ export default function BlogPage() {
     image_url: "",
     author: "",
   });
+
+  const [previewImage, setPreviewImage] = useState<string>("");
 
   const fetchBlogs = useCallback(async () => {
     setLoading(true);
@@ -74,7 +100,11 @@ export default function BlogPage() {
       image_url: "",
       author: "",
     });
+    setPreviewImage("");
     setEditingBlog(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   }
 
   function openAddDialog() {
@@ -91,11 +121,20 @@ export default function BlogPage() {
       image_url: blog.image_url || "",
       author: blog.author || "",
     });
+    setPreviewImage(blog.image_url || "");
     setIsDialogOpen(true);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    
+    // Check permission - use editingBlog to determine if create or update
+    const hasPermission = editingBlog ? canUpdate('blogs') : canCreate('blogs');
+    if (!hasPermission) {
+      alert('You do not have permission to perform this action');
+      return;
+    }
+    
     setSaving(true);
 
     try {
@@ -103,7 +142,7 @@ export default function BlogPage() {
         title: formData.title,
         description: formData.description || null,
         content: formData.content || null,
-        image_url: formData.image_url || null,
+        image_url: previewImage || formData.image_url || null,
         author: formData.author || null,
       };
 
@@ -128,9 +167,55 @@ export default function BlogPage() {
 
   async function handleDelete(id: string) {
     if (!confirm("Are you sure you want to delete this blog post?")) return;
-
+    
+    // Check permission
+    if (!canDelete('blogs')) {
+      alert('You do not have permission to delete blog posts');
+      return;
+    }
+    
     await supabase.from("blogs").delete().eq("id", id);
     fetchBlogs();
+  }
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const fileName = `${Date.now()}-${file.name.replace(/\s+/g, '-')}`;
+      
+      const { data, error } = await supabase.storage
+        .from('blogs')
+        .upload(fileName, file);
+
+      if (error) {
+        console.error('Upload error:', error);
+        throw new Error(error.message);
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from('blogs')
+        .getPublicUrl(fileName);
+
+      const imageUrl = publicUrlData.publicUrl;
+      setPreviewImage(imageUrl);
+      setFormData({ ...formData, image_url: imageUrl });
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      alert('Failed to upload image');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function removeImage() {
+    setPreviewImage("");
+    setFormData({ ...formData, image_url: "" });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   }
 
   return (
@@ -139,10 +224,12 @@ export default function BlogPage() {
         <h1 className="text-2xl font-bold">Blog Management</h1>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openAddDialog} className="bg-primary text-white">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Blog Post
-            </Button>
+            {canCreate('blogs') && (
+              <Button onClick={openAddDialog} className="bg-primary text-white">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Blog Post
+              </Button>
+            )}
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -164,16 +251,51 @@ export default function BlogPage() {
                 />
               </div>
 
-              {/* Image URL */}
+              {/* Image Upload */}
               <div>
-                <label className="text-sm font-medium">Image URL</label>
-                <Input
-                  value={formData.image_url}
-                  onChange={(e) =>
-                    setFormData({ ...formData, image_url: e.target.value })
-                  }
-                  placeholder="https://example.com/image.jpg"
-                />
+                <label className="text-sm font-medium">Blog Image</label>
+                {previewImage ? (
+                  <div className="relative mt-2">
+                    <img 
+                      src={previewImage} 
+                      alt="Preview" 
+                      className="w-full h-48 object-cover rounded-md"
+                    />
+                    <button
+                      type="button"
+                      onClick={removeImage}
+                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      id="blog-image-upload"
+                    />
+                    <label
+                      htmlFor="blog-image-upload"
+                      className="flex items-center justify-center w-full h-32 border-2 border-dashed border-slate-600 rounded-md cursor-pointer hover:border-cyan-400 transition-colors"
+                    >
+                      <div className="text-center">
+                        {uploading ? (
+                          <Loader2 className="w-8 h-8 animate-spin mx-auto text-cyan-400" />
+                        ) : (
+                          <>
+                            <Upload className="w-8 h-8 mx-auto text-slate-400" />
+                            <p className="text-sm text-slate-400 mt-2">Click to upload image</p>
+                          </>
+                        )}
+                      </div>
+                    </label>
+                  </div>
+                )}
               </div>
 
               {/* Author */}
@@ -294,19 +416,23 @@ export default function BlogPage() {
 
               {/* Actions */}
               <div className="flex items-center justify-end gap-2">
-                <button
-                  onClick={() => openEditDialog(blog)}
-                  className="p-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-600 transition flex items-center justify-center"
-                >
-                  <Pencil className="w-4 h-4" />
-                </button>
+                {canUpdate('blogs') && (
+                  <button
+                    onClick={() => openEditDialog(blog)}
+                    className="p-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-600 transition flex items-center justify-center"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                )}
 
-                <button
-                  onClick={() => handleDelete(blog.id)}
-                  className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition flex items-center justify-center"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {canDelete('blogs') && (
+                  <button
+                    onClick={() => handleDelete(blog.id)}
+                    className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition flex items-center justify-center"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
           ))}

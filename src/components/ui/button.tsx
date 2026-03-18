@@ -11,7 +11,7 @@ const buttonVariants = cva(
       variant: {
         default: "bg-gradient-to-r from-cyan-500 to-blue-500 text-white hover:from-cyan-400 hover:to-blue-400 shadow-md hover:shadow-lg",
         destructive: "bg-red-500 text-white hover:bg-red-400 shadow-md hover:shadow-lg",
-        outline: "border border-slate-600 bg-transparent text-white hover:bg-slate-800 hover:border-slate-500",
+        outline: "border border-slate-600 bg-transparent hover:text-white hover:bg-slate-800 hover:border-slate-500",
         secondary: "bg-slate-700 text-white hover:bg-slate-600",
         ghost: "hover:bg-slate-800 hover:text-white",
         link: "text-cyan-400 underline-offset-4 hover:underline",

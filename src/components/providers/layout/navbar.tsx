@@ -57,7 +57,7 @@ function NavbarContent() {
           .from('users')
           .select('role')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
         setUserRole(data?.role || null);
       } else {
         setUserRole(null);
@@ -167,6 +167,7 @@ function NavbarContent() {
               className="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center"
             >
               <Sparkles className="w-4 h-4 text-white" />
+              
             </motion.div>
           </Link>
 

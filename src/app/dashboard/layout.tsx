@@ -25,7 +25,7 @@ async function getUserRole() {
     .from('users')
     .select('role')
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
 
   return userData?.role || null;
 }

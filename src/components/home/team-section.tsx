@@ -54,7 +54,7 @@ export function TeamSection() {
   return (
     <section className="py-24 bg-muted/30">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <ScrollReveal className="text-center mb-16">
+        <ScrollReveal className="text-center mb-16 m-f1">
           <Badge variant="secondary" className="mb-4">
             Our Team
           </Badge>

@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/client';
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { useAccessControl } from '@/hooks/useAccessControl';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +31,7 @@ import {
 
 interface Product {
   id: number;
+  user_id?: string | null;
   title: string;
   slug: string;
   description: string | null;
@@ -53,13 +55,25 @@ interface Product {
 }
 
 export default function ProductsPage() {
+  const { canUpdate, canDelete } = useAccessControl();
   const [products, setProducts] = useState<Product[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  
+  // Product categories for filter - must match database values
+  const categories = ['templates', 'ebooks', 'design', 'assets'];
+  
+  // Filter products by category
+  const filteredProducts = selectedCategory 
+    ? products.filter(p => p.category === selectedCategory)
+    : products;
+  
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [uploading, setUploading] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -85,6 +99,19 @@ export default function ProductsPage() {
   const checkUser = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     setUser(user);
+    
+    // Fetch user role from database
+    if (user) {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      
+      if (userData) {
+        setUserRole(userData.role);
+      }
+    }
   }, [supabase]);
 
   const fetchProducts = useCallback(async () => {
@@ -300,10 +327,12 @@ export default function ProductsPage() {
         
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openAddDialog}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Product
-            </Button>
+            {userRole !== 'admin' && (
+              <Button onClick={openAddDialog}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Product
+              </Button>
+            )}
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
@@ -503,26 +532,53 @@ export default function ProductsPage() {
         </Dialog>
       </div>
 
+      {/* Category Filter Bar */}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setSelectedCategory(null)}
+          className={selectedCategory === null 
+            ? "bg-cyan-600 hover:bg-cyan-700 text-white border-cyan-600" 
+            : "bg-slate-800 hover:bg-slate-700 text-white border-slate-600"}
+        >
+          All Projects
+        </Button>
+        {categories.map((cat) => (
+          <Button
+            key={cat}
+            variant="outline"
+            size="sm"
+            onClick={() => setSelectedCategory(cat)}
+            className={selectedCategory === cat 
+              ? "bg-cyan-600 hover:bg-cyan-700 text-white border-cyan-600" 
+              : "bg-slate-800 hover:bg-slate-700 text-white border-slate-600"}
+          >
+            {cat === 'templates' ? 'Templates' : cat === 'ebooks' ? 'E-Books' : cat === 'design' ? 'Design Assets' : 'Assets'}
+          </Button>
+        ))}
+      </div>
+
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
-      ) : products.length > 0 ? (
+      ) : filteredProducts.length > 0 ? (
         <div className="rounded-md border overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="text-left py-3 px-4 font-medium">Product</th>
-                <th className="text-left py-3 px-4 font-medium">Price</th>
-                <th className="text-left py-3 px-4 font-medium">Category</th>
-                <th className="text-left py-3 px-4 font-medium">Featured</th>
-                <th className="text-left py-3 px-4 font-medium">Status</th>
-                <th className="text-right py-3 px-4 font-medium">Actions</th>
+              <tr className="border-b bg-cyan-600 text-white">
+                 <th className="text-left py-3 px-4 font-semibold">Product</th>
+                <th className="text-left py-3 px-4 font-semibold">Price</th>
+                <th className="text-left py-3 px-4 font-semibold">Category</th>
+                <th className="text-left py-3 px-4 font-semibold">Featured</th>
+                <th className="text-left py-3 px-4 font-semibold">Status</th>
+                <th className="text-right py-3 px-4 font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {products.map((product) => (
-                <tr key={product.id} className="border-b">
+              {filteredProducts.map((product, index) => (
+                <tr key={product.id} className={index % 2 === 0 ? "border-b bg-white" : "border-b bg-slate-50"}>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-3">
                       {product.image_url ? (
@@ -532,13 +588,13 @@ export default function ProductsPage() {
                           className="w-12 h-12 object-cover rounded"
                         />
                       ) : (
-                        <div className="w-12 h-12 bg-muted rounded flex items-center justify-center">
-                          <Package className="w-6 h-6 text-muted-foreground" />
+                        <div className="w-12 h-12 bg-slate-200 rounded flex items-center justify-center">
+                          <Package className="w-6 h-6 text-slate-500" />
                         </div>
                       )}
                       <div>
-                        <p className="font-medium">{product.title}</p>
-                        <p className="text-sm text-muted-foreground truncate max-w-[200px]">
+                        <p className="font-medium text-black">{product.title}</p>
+                        <p className="text-sm text-slate-600 truncate max-w-[200px]">
                           {product.description}
                         </p>
                       </div>
@@ -546,54 +602,59 @@ export default function ProductsPage() {
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-1">
-                      <DollarSign className="w-4 h-4 text-muted-foreground" />
+                      <DollarSign className="w-4 h-4 text-slate-500" />
                       {product.sale_price ? (
                         <div className="flex items-center gap-1">
-                          <span className="font-medium">{formatPrice(product.sale_price)}</span>
-                          <span className="text-sm text-muted-foreground line-through text-xs">
+                          <span className="font-semibold text-black">{formatPrice(product.sale_price)}</span>
+                          <span className="text-sm text-slate-400 line-through text-xs">
                             {formatPrice(product.price)}
                           </span>
                         </div>
                       ) : (
-                        <span>{formatPrice(product.price)}</span>
+                        <span className="text-black">{formatPrice(product.price)}</span>
                       )}
                     </div>
                   </td>
                   <td className="py-3 px-4">
-                    <Badge variant="secondary">
+                    <Badge variant="outline" className="border-cyan-600 text-cyan-700 bg-cyan-50">
                       <Tag className="w-3 h-3 mr-1" />
                       {product.category}
                     </Badge>
                   </td>
                   <td className="py-3 px-4">
                     {product.is_featured ? (
-                      <Badge className="bg-yellow-500">Featured</Badge>
+                      <Badge className="bg-yellow-500 text-white">Featured</Badge>
                     ) : (
-                      <span className="text-muted-foreground">-</span>
+                      <span className="text-slate-400">-</span>
                     )}
                   </td>
                   <td className="py-3 px-4">
-                    <Badge variant={product.is_active ? 'default' : 'secondary'}>
+                    <Badge className={product.is_active ? "bg-green-600 text-white" : "bg-slate-400 text-white"}>
                       {product.is_active ? 'Active' : 'Inactive'}
                     </Badge>
                   </td>
                   <td className="py-3 px-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openEditDialog(product)}
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(product.id)}
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {userRole !== 'admin' && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => openEditDialog(product)}
+                            className="border-cyan-600 text-cyan-700 hover:bg-cyan-600 hover:text-white"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => handleDelete(product.id)}
+                            className="border-red-500 text-red-600 hover:bg-red-600 hover:text-white"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

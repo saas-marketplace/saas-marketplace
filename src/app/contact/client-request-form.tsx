@@ -89,18 +89,18 @@ export default function ClientRequestForm({ isAuthenticated }: ClientRequestForm
   // Guest view - show login/register prompt
   if (!isAuthenticated) {
     return (
-      <div className="text-center py-8">
+      <div className="text-center py-8 bg-white rounded-2xl border border-cyan-100 shadow-lg p-8">
         <div className="mb-4">
-          <h3 className="text-lg font-semibold mb-2">Sign in to Contact Us</h3>
-          <p className="text-muted-foreground">
+          <h3 className="text-lg font-semibold mb-2 text-slate-900">Sign in to Contact Us</h3>
+          <p className="text-slate-500">
             You need to be signed in to send us a message.
           </p>
         </div>
         <div className="flex gap-2 justify-center">
-          <Button asChild>
+          <Button asChild className="bg-gradient-to-r from-[#249fd3] to-cyan-400 hover:from-[#1e8ac0] hover:to-cyan-500 shadow-lg shadow-cyan-500/25">
             <a href="/auth/login">Sign In</a>
           </Button>
-          <Button variant="outline" asChild>
+          <Button variant="outline" asChild className="border-cyan-200 text-slate-600 hover:bg-cyan-50 hover:text-[#249fd3] hover:border-cyan-300">
             <a href="/auth/register">Register</a>
           </Button>
         </div>
@@ -109,9 +109,9 @@ export default function ClientRequestForm({ isAuthenticated }: ClientRequestForm
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4 bg-white rounded-2xl border border-cyan-100 shadow-lg p-6">
       <div>
-        <label htmlFor="name" className="block text-sm font-medium mb-1">
+        <label htmlFor="name" className="block text-sm font-medium mb-2 text-slate-700">
           Name
         </label>
         <input
@@ -119,12 +119,12 @@ export default function ClientRequestForm({ isAuthenticated }: ClientRequestForm
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full px-4 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+          className="w-full px-4 py-3 rounded-xl border border-cyan-200 bg-cyan-50/30 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#249fd3] focus:border-transparent transition-all duration-200"
           placeholder="Your name"
         />
       </div>
       <div>
-        <label htmlFor="email" className="block text-sm font-medium mb-1">
+        <label htmlFor="email" className="block text-sm font-medium mb-2 text-slate-700">
           Email
         </label>
         <input
@@ -132,25 +132,25 @@ export default function ClientRequestForm({ isAuthenticated }: ClientRequestForm
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full px-4 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+          className="w-full px-4 py-3 rounded-xl border border-cyan-200 bg-cyan-50/30 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#249fd3] focus:border-transparent transition-all duration-200"
           placeholder="your@email.com"
         />
       </div>
       <div>
-        <label htmlFor="message" className="block text-sm font-medium mb-1">
+        <label htmlFor="message" className="block text-sm font-medium mb-2 text-slate-700">
           Message
         </label>
         <textarea
           id="message"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          className="w-full px-4 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary min-h-[120px]"
+          className="w-full px-4 py-3 rounded-xl border border-cyan-200 bg-cyan-50/30 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#249fd3] focus:border-transparent transition-all duration-200 min-h-[120px] resize-none"
           placeholder="How can we help you?"
         />
       </div>
       <Button 
         type="submit" 
-        className="w-full gradient-bg"
+        className="w-full bg-gradient-to-r from-[#249fd3] to-cyan-400 hover:from-[#1e8ac0] hover:to-cyan-500 shadow-lg shadow-cyan-500/25 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
         disabled={loading}
       >
         {loading ? "Sending..." : "Send Message"}

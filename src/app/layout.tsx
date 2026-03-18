@@ -19,12 +19,10 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const AIChatWidget = dynamic(() => import("@/components/ai/AIChatWidget"), { ssr: false });
 
   return (
     <html lang="en" suppressHydrationWarning className={cn("font-sans", inter.variable)}>
       <body className={cn(inter.className, "bg-background text-foreground")}>
-        <AIChatWidget />
         <Providers>
           <LayoutWithConditionalNavFooter>{children}</LayoutWithConditionalNavFooter>
         </Providers>
