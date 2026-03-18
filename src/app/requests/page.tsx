@@ -232,25 +232,20 @@ export default function UserRequestsPage() {
     };
   }, [selectedRequest?.id, supabase]);
 
-  // Typing indicator subscription
+  // Typing indicator subscription using broadcast (faster than database)
   useEffect(() => {
     if (!selectedRequest?.id) return;
 
     const typingChannel = supabase
-      .channel('typing_status')
+      .channel('typing_broadcast')
       .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'request_typing'
-        },
+        'broadcast',
+        { event: 'typing' },
         (payload) => {
-          if (payload.new && selectedRequest) {
-            const typingData = payload.new as { request_id: string; user_id: string; is_typing: boolean };
-            if (typingData.request_id === selectedRequest.id && typingData.user_id !== currentUserId) {
-              setAdminIsTyping(typingData.is_typing);
-            }
+          const { requestId, userId, isTyping } = payload.payload;
+          // Only show typing if it's for the current request and not from self
+          if (requestId === selectedRequest.id && userId !== currentUserId) {
+            setAdminIsTyping(isTyping);
           }
         }
       )
@@ -290,20 +285,27 @@ export default function UserRequestsPage() {
     };
   }, [supabase]);
 
-  // Send typing status
+  // Send typing status via broadcast (faster than database)
+  const typingChannelRef = useRef<any>(null);
+  
   const sendTypingStatus = async (isTyping: boolean) => {
     if (!selectedRequest?.id || !currentUserId) return;
     
-    try {
-      await supabase.from('request_typing').upsert({
-        request_id: selectedRequest.id,
-        user_id: currentUserId,
-        is_typing: isTyping,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'request_id, user_id' });
-    } catch (error) {
-      console.error('Error sending typing status:', error);
+    // Create channel if not exists
+    if (!typingChannelRef.current) {
+      typingChannelRef.current = supabase.channel('typing_broadcast');
     }
+    
+    // Send broadcast typing event
+    typingChannelRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { 
+        requestId: selectedRequest.id, 
+        userId: currentUserId, 
+        isTyping 
+      }
+    });
   };
 
   // Handle typing input
@@ -383,13 +385,8 @@ export default function UserRequestsPage() {
 
       if (response.ok) {
         const data = await response.json();
-        // Add new message to the list (already sorted by API)
-        setMessages(prev => {
-          const newMessages = [...prev, data.message];
-          return newMessages.sort(
-            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-          );
-        });
+        // Don't manually add message - let realtime subscription handle it
+        // This prevents duplicates
         setNewMessage("");
         
         // Update request status locally
