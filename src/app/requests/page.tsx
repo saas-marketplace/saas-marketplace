@@ -437,13 +437,14 @@ export default function UserRequestsPage() {
           prev ? { ...prev, status: newStatus as Request["status"], last_message: newMessage.trim() } : null
         );
         // Scroll is handled by the unified useEffect on [messages, adminIsTyping]
-        // which fires when the realtime subscription delivers the new message.}
-    } 
-  } catch (error) {
-    console.error("Error sending message:", error);
-  } finally {
-    setSendingMessage(false);
-  }
+        // which fires when the realtime subscription delivers the new message.
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+    } finally {
+      setSendingMessage(false);
+    }
+  };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -891,5 +892,4 @@ export default function UserRequestsPage() {
       )}
     </div>
   );
-};
-};  
+}
