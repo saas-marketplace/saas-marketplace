@@ -79,14 +79,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update request status
-    // pending → received when user sends a message
-    // pending → answered when admin responds
-    const newStatus = isAdmin ? "answered" : "received";
-    await supabase
-      .from("requests")
-      .update({ status: newStatus })
-      .eq("id", request_id);
+    // Update request status - only set to "answered" when admin responds
+    // Do NOT change status when user sends a message
+    if (isAdmin) {
+      await supabase
+        .from("requests")
+        .update({ status: "answered" })
+        .eq("id", request_id);
+    }
 
     return NextResponse.json({ message: newMessage });
   } catch (error) {

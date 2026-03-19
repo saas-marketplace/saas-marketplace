@@ -231,14 +231,17 @@ export default function UserRequestsPage() {
     presenceChannel
       .on('presence', { event: 'sync' }, () => {
         const state = presenceChannel.presenceState();
-        const isAdminOnline = !!state[adminUserId];
+        // Only users in the state are online - get all keys from presence state
+        const onlineUserIds = Object.keys(state);
+        const isAdminOnline = onlineUserIds.includes(adminUserId);
+        
         setOnlineStatus(prev => ({
           ...prev,
           [adminUserId]: {
             online: isAdminOnline,
             // Only overwrite lastSeen when going offline; keep the previous value while online
             lastSeen: !isAdminOnline
-              ? (prev[adminUserId]?.lastSeen || new Date().toISOString())
+              ? (new Date().toISOString())
               : prev[adminUserId]?.lastSeen,
           },
         }));
@@ -305,18 +308,40 @@ export default function UserRequestsPage() {
 
   // Mark offline in DB on tab close (best-effort)
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const updateStatus = async (isOnline: boolean) => {
       if (currentUserId) {
-        supabase.from('user_status').upsert({
+        await supabase.from('user_status').upsert({
           user_id: currentUserId,
-          is_online: false,
+          is_online: isOnline,
           last_seen: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id' });
       }
     };
+
+    const handleBeforeUnload = () => {
+      updateStatus(false);
+    };
+
+    // Handle visibility change (tab switch, minimize, etc.)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // User left the tab - mark as offline temporarily, will be updated on activity
+        updateStatus(false);
+      } else if (document.visibilityState === 'visible') {
+        // User returned - mark as online
+        updateStatus(true);
+      }
+    };
+
     window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      updateStatus(false);
+    };
   }, [supabase, currentUserId]);
 
   // Real-time subscription for messages
@@ -348,6 +373,41 @@ export default function UserRequestsPage() {
 
     return () => {
       supabase.removeChannel(channel);
+    };
+  }, [selectedRequest?.id, supabase]);
+
+  // ── REAL-TIME STATUS SUBSCRIPTION ──
+  // Subscribe to request status changes to sync with admin actions
+  // This ensures user sees "received" when admin opens chat, "answered" when admin replies
+  useEffect(() => {
+    if (!selectedRequest?.id) return;
+
+    const statusChannel = supabase
+      .channel('request_status_updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'requests',
+          filter: `id=eq.${selectedRequest.id}`
+        },
+        (payload) => {
+          const newStatus = payload.new.status as Request['status'];
+          // Update the selected request status
+          setSelectedRequest(prev => prev ? { ...prev, status: newStatus } : null);
+          // Update the status in the requests list
+          setRequests(prev =>
+            prev.map(r =>
+              r.id === selectedRequest.id ? { ...r, status: newStatus } : r
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(statusChannel);
     };
   }, [selectedRequest?.id, supabase]);
 
@@ -469,17 +529,10 @@ export default function UserRequestsPage() {
 
       if (response.ok) {
         setNewMessage("");
-        const newStatus = "received";
-        setRequests(prev =>
-          prev.map(r =>
-            r.id === selectedRequest.id
-              ? { ...r, status: newStatus as Request["status"], last_message: newMessage.trim() }
-              : r
-          )
-        );
-        setSelectedRequest(prev =>
-          prev ? { ...prev, status: newStatus as Request["status"], last_message: newMessage.trim() } : null
-        );
+        // Status is now handled via real-time subscription
+        // Do NOT manually update status here - it will be updated by:
+        // 1. Admin opens conversation → "received"
+        // 2. Admin sends message → "answered"
         // Scroll is handled by the unified useEffect on [messages, adminIsTyping]
         // which fires when the realtime subscription delivers the new message.
       }

@@ -323,13 +323,39 @@ export default function AdminRequestsPage() {
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
     };
+
+    // Handle visibility change (tab switch, minimize, etc.)
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'hidden') {
+        // User left the tab - mark as offline temporarily
+        await presenceChannel.untrack();
+        await supabase.from('user_status').upsert({
+          user_id: currentUserId,
+          is_online: false,
+          last_seen: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      } else if (document.visibilityState === 'visible') {
+        // User returned - mark as online
+        await presenceChannel.track({ online_at: new Date().toISOString() });
+        await supabase.from('user_status').upsert({
+          user_id: currentUserId,
+          is_online: true,
+          last_seen: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      }
+    };
+
     window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener('mousemove', handleActivity);
       window.removeEventListener('keydown', handleActivity);
       window.removeEventListener('click', handleActivity);
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       presenceChannel.untrack();
       supabase.removeChannel(presenceChannel);
       updateAdminStatus(false);
@@ -382,11 +408,27 @@ export default function AdminRequestsPage() {
       })
       .subscribe();
 
-    // Also watch the shared presence channel for real-time join/leave events.
+    // Also watch the shared presence channel for real-time join/leave/sync events.
     // We create a second channel subscription here (read-only, no track call)
     // so that if the user goes offline abruptly (browser crash), we still catch it.
     const presenceWatcher = supabase.channel('chat_presence_watcher');
     presenceWatcher
+      .on('presence', { event: 'sync' }, () => {
+        const state = presenceWatcher.presenceState();
+        // Only users in the state are online
+        const onlineUserIds = Object.keys(state);
+        const isUserOnline = onlineUserIds.includes(userId);
+        
+        setOnlineStatus(prev => ({
+          ...prev,
+          [userId]: { 
+            online: isUserOnline, 
+            lastSeen: isUserOnline 
+              ? prev[userId]?.lastSeen 
+              : (new Date().toISOString())
+          },
+        }));
+      })
       .on('presence', { event: 'join' }, ({ key }: { key: string }) => {
         if (key === userId) {
           setOnlineStatus(prev => ({
@@ -498,6 +540,41 @@ export default function AdminRequestsPage() {
     return () => { supabase.removeChannel(messageChannel); };
   }, [selectedRequest?.id, supabase]);
 
+  // ── REAL-TIME STATUS SUBSCRIPTION ──
+  // Subscribe to request status changes to sync with user actions
+  // This ensures admin sees status updates when user sends new messages
+  useEffect(() => {
+    if (!selectedRequest?.id) return;
+
+    const statusChannel = supabase
+      .channel('admin_request_status_updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'requests',
+          filter: `id=eq.${selectedRequest.id}`
+        },
+        (payload) => {
+          const newStatus = payload.new.status as Request['status'];
+          // Update the selected request status
+          setSelectedRequest(prev => prev ? { ...prev, status: newStatus } : null);
+          // Update the status in the requests list
+          setRequests(prev =>
+            prev.map(r =>
+              r.id === selectedRequest.id ? { ...r, status: newStatus } : r
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(statusChannel);
+    };
+  }, [selectedRequest?.id, supabase]);
+
   // ── SCROLL FIX ──
   // Single source of truth for auto-scroll. Runs whenever messages arrive OR the
   // typing indicator appears/disappears. Targets messagesEndRef — a zero-height div
@@ -561,25 +638,19 @@ export default function AdminRequestsPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        setMessages(prev => {
-          const newMessages = [...prev, data.message];
-          return newMessages.sort(
-            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-          );
-        });
         setNewMessage("");
 
-        const newStatus = isAdmin ? "answered" : "received";
+        // Admin sending a reply always sets status to "answered"
+        // This status update comes from the API, but we update local state immediately
         setRequests(prev =>
           prev.map(r =>
             r.id === selectedRequest.id
-              ? { ...r, status: newStatus as Request["status"], last_message: newMessage.trim() }
+              ? { ...r, status: "answered" as Request["status"], last_message: newMessage.trim() }
               : r
           )
         );
         setSelectedRequest(prev =>
-          prev ? { ...prev, status: newStatus as Request["status"], last_message: newMessage.trim() } : null
+          prev ? { ...prev, status: "answered" as Request["status"], last_message: newMessage.trim() } : null
         );
 
         // Scroll is handled by the unified useEffect on [messages, userIsTyping]
@@ -592,7 +663,31 @@ export default function AdminRequestsPage() {
     }
   };
 
-  const handleSelectRequest = (request: Request) => {
+  const handleSelectRequest = async (request: Request) => {
+    // Mark as "received" when admin opens/view the conversation
+    // Only update if status is currently "pending" to avoid overwriting "answered"
+    if (request.status === "pending") {
+      try {
+        await supabase
+          .from("requests")
+          .update({ status: "received" })
+          .eq("id", request.id)
+          .eq("status", "pending"); // Prevent overwrite
+        
+        // Update local state immediately
+        setRequests(prev =>
+          prev.map(r =>
+            r.id === request.id ? { ...r, status: "received" as Request["status"] } : r
+          )
+        );
+        
+        // Update the request object with new status
+        request = { ...request, status: "received" as Request["status"] };
+      } catch (error) {
+        console.error("Error updating request status:", error);
+      }
+    }
+    
     setSelectedRequest(request);
     setIsMobileChatOpen(true);
   };
