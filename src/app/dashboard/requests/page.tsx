@@ -371,25 +371,46 @@ export default function AdminRequestsPage() {
       })
       .subscribe();
 
-    // Subscribe to typing via broadcast
-    const typingChannel = supabase
-      .channel('typing_broadcast')
-      .on('broadcast', { event: 'typing' }, (payload) => {
-        const { requestId, userId: senderId, isTyping } = payload.payload;
-        // Only show typing if it's for the current request and NOT from self (admin)
-        if (requestId === selectedRequest.id && senderId !== currentUserId) {
-          setUserIsTyping(isTyping);
-        }
-      })
-      .subscribe();
-
     return () => {
       supabase.removeChannel(statusChannel);
       supabase.removeChannel(presenceWatcher);
-      supabase.removeChannel(typingChannel);
-      setUserIsTyping(false);
     };
   }, [supabase, selectedRequest?.id, selectedRequest?.user_id, currentUserId]);
+
+  // ── TYPING FIX ──
+  // One channel instance per conversation — used for BOTH sending and receiving.
+  // Having two subscriptions to the same channel name from the same Supabase client
+  // causes only one to receive events, so broadcasts sent via the second instance
+  // are never delivered to the first listener. Using a single shared ref fixes this.
+  useEffect(() => {
+    if (!selectedRequest?.id || !currentUserId) return;
+
+    // Unique channel name per request so different conversations don't bleed into each other
+    const channelName = `typing_req_${selectedRequest.id}`;
+
+    const ch = supabase
+      .channel(channelName, { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        const { requestId, userId: senderId, isTyping } = payload.payload ?? {};
+        // Guard: only apply to this conversation, ignore own events
+        if (requestId === selectedRequest.id && senderId !== currentUserId) {
+          setUserIsTyping(Boolean(isTyping));
+        }
+      });
+
+    ch.subscribe((status: string) => {
+      if (status === 'SUBSCRIBED') {
+        // Store the subscribed channel so sendTypingStatus can use it immediately
+        typingChannelRef.current = ch;
+      }
+    });
+
+    return () => {
+      typingChannelRef.current = null;
+      supabase.removeChannel(ch);
+      setUserIsTyping(false);
+    };
+  }, [selectedRequest?.id, currentUserId, supabase]);
 
   // Fetch messages when a request is selected
   useEffect(() => {
@@ -462,14 +483,9 @@ export default function AdminRequestsPage() {
     if (userIsTyping) setTimeout(scrollToBottom, 50);
   }, [userIsTyping, scrollToBottom]);
 
-  // ── FIX: sendTypingStatus now uses typingChannelRef (useRef) correctly
-  const sendTypingStatus = async (isTyping: boolean) => {
-    if (!selectedRequest?.id || !currentUserId) return;
-
-    if (!typingChannelRef.current) {
-      typingChannelRef.current = supabase.channel('typing_broadcast');
-      await typingChannelRef.current.subscribe();
-    }
+  // Send typing status — uses the already-subscribed channel stored in the ref
+  const sendTypingStatus = (isTyping: boolean) => {
+    if (!selectedRequest?.id || !currentUserId || !typingChannelRef.current) return;
 
     typingChannelRef.current.send({
       type: 'broadcast',
@@ -481,7 +497,7 @@ export default function AdminRequestsPage() {
   const handleTyping = () => {
     sendTypingStatus(true);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => sendTypingStatus(false), 2000);
+    typingTimeoutRef.current = setTimeout(() => sendTypingStatus(false), 1500);
   };
 
   const handleSendMessage = async () => {
