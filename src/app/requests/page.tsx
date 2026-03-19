@@ -28,6 +28,7 @@ interface Request {
   status: "pending" | "received" | "answered";
   created_at: string;
   last_message?: string;
+  // Freelancer data fields
   freelancer_id?: string | null;
   freelancer_domain?: string | null;
   freelancer_data?: {
@@ -52,6 +53,10 @@ interface RequestMessage {
   created_at: string;
 }
 
+interface TypingStatus {
+  [requestId: string]: boolean;
+}
+
 interface OnlineStatus {
   [userId: string]: {
     online: boolean;
@@ -69,12 +74,14 @@ export default function UserRequestsPage() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
+  const [typingStatus, setTypingStatus] = useState<TypingStatus>({});
   const [onlineStatus, setOnlineStatus] = useState<OnlineStatus>({});
   const [adminIsTyping, setAdminIsTyping] = useState(false);
   const [adminUserId, setAdminUserId] = useState<string | null>(null);
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // useRef (not useState) so sendTypingStatus always has the latest channel synchronously
   const typingChannelRef = useRef<any>(null);
   const supabase = createClient();
 
@@ -86,6 +93,7 @@ export default function UserRequestsPage() {
       if (user) {
         setCurrentUserId(user.id);
         
+        // Fetch only this user's requests
         const { data } = await supabase
           .from("requests")
           .select("*")
@@ -93,10 +101,12 @@ export default function UserRequestsPage() {
           .order("created_at", { ascending: false });
 
         if (data) {
+          // Fetch all domains once → build id→name map to resolve domain_id in freelancer_data
           const { data: allDomains } = await supabase.from('domains').select('id, name');
           const domainNameMap = new Map<string, string>();
           allDomains?.forEach(d => domainNameMap.set(d.id, d.name));
 
+          // Inject the resolved domain name into freelancer_data for every request.
           const isUUID = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
           const injectDomain = (r: any) => {
             if (!r.freelancer_data) return r;
@@ -110,6 +120,7 @@ export default function UserRequestsPage() {
             return { ...r, freelancer_data: { ...fd, domain: domainName }, freelancer_domain: domainName ?? r.freelancer_domain };
           };
 
+          // Get last messages (ascending to get oldest first, then take last)
           const { data: lastMessages } = await supabase
             .from('request_messages')
             .select('request_id, message, created_at')
@@ -135,79 +146,143 @@ export default function UserRequestsPage() {
     fetchRequests();
   }, [supabase]);
 
-  // Fetch admin user ID
+  // ── PRESENCE FIX ──
+  // Step 1: Fetch the admin user ID once and read their last-known status from the DB.
   useEffect(() => {
-    const fetchAdminId = async () => {
+    const setupAdmin = async () => {
       const { data: adminUsers } = await supabase
         .from('users')
         .select('id')
         .in('role', ['admin', 'super_admin'])
         .limit(1);
-      
-      if (adminUsers && adminUsers.length > 0) {
-        setAdminUserId(adminUsers[0].id);
+
+      if (!adminUsers || adminUsers.length === 0) return;
+
+      const adminId = adminUsers[0].id;
+      setAdminUserId(adminId);
+
+      // Read last-known status so we can show "last seen …" on initial load
+      const { data: statusData } = await supabase
+        .from('user_status')
+        .select('is_online, last_seen')
+        .eq('user_id', adminId)
+        .maybeSingle();
+
+      if (statusData) {
+        setOnlineStatus(prev => ({
+          ...prev,
+          [adminId]: {
+            online: statusData.is_online,
+            lastSeen: statusData.last_seen,
+          },
+        }));
       }
     };
-    
-    fetchAdminId();
+
+    setupAdmin();
   }, [supabase]);
 
-  // Subscribe to admin online status from presence and database
+  // ── PRESENCE FIX ──
+  // Step 2: Join the shared `chat_presence` channel.
+  //   • Track OWN user ID (not the admin's) so the admin side can detect this user.
+  //   • Listen for the admin's join / leave / sync events to update their status locally.
   useEffect(() => {
-    if (!adminUserId) return;
-    
-    const presenceChannel = supabase.channel(`admin_presence:${adminUserId}`, {
-      config: {
-        presence: { key: adminUserId }
-      }
+    if (!currentUserId || !adminUserId) return;
+
+    const presenceChannel = supabase.channel('chat_presence', {
+      config: { presence: { key: currentUserId } },   // ← own ID, not adminUserId
     });
-    
-    // Listen for presence changes
-    presenceChannel.on('presence', { event: 'sync' }, () => {
-      const state = presenceChannel.presenceState();
-      const isOnline = !!state[adminUserId];
-      
-      setOnlineStatus(prev => ({
-        ...prev,
-        [adminUserId]: {
-          online: isOnline,
-          lastSeen: prev[adminUserId]?.lastSeen || new Date().toISOString()
+
+    presenceChannel
+      .on('presence', { event: 'sync' }, () => {
+        const state = presenceChannel.presenceState();
+        const isAdminOnline = !!state[adminUserId];
+        setOnlineStatus(prev => ({
+          ...prev,
+          [adminUserId]: {
+            online: isAdminOnline,
+            // Only overwrite lastSeen when going offline; keep the previous value while online
+            lastSeen: !isAdminOnline
+              ? (prev[adminUserId]?.lastSeen || new Date().toISOString())
+              : prev[adminUserId]?.lastSeen,
+          },
+        }));
+      })
+      .on('presence', { event: 'join' }, ({ key }: { key: string }) => {
+        if (key === adminUserId) {
+          setOnlineStatus(prev => ({
+            ...prev,
+            [adminUserId]: { online: true, lastSeen: prev[adminUserId]?.lastSeen },
+          }));
         }
-      }));
-    });
-    
-    // Listen for admin joining
-    presenceChannel.on('presence', { event: 'join' }, ({ key }) => {
-      if (key === adminUserId) {
-        setOnlineStatus(prev => ({
-          ...prev,
-          [adminUserId]: {
-            online: true,
-            lastSeen: new Date().toISOString()
-          }
-        }));
-      }
-    });
-    
-    // Listen for admin leaving - update last_seen
-    presenceChannel.on('presence', { event: 'leave' }, ({ key }) => {
-      if (key === adminUserId) {
-        setOnlineStatus(prev => ({
-          ...prev,
-          [adminUserId]: {
-            online: false,
-            lastSeen: new Date().toISOString()
-          }
-        }));
-      }
-    });
-    
-    presenceChannel.subscribe();
-    
+      })
+      .on('presence', { event: 'leave' }, ({ key }: { key: string }) => {
+        if (key === adminUserId) {
+          const now = new Date().toISOString();
+          setOnlineStatus(prev => ({
+            ...prev,
+            [adminUserId]: { online: false, lastSeen: now },
+          }));
+        }
+      })
+      .subscribe(async (status: string) => {
+        if (status === 'SUBSCRIBED') {
+          await presenceChannel.track({ online_at: new Date().toISOString() });
+        }
+      });
+
     return () => {
       supabase.removeChannel(presenceChannel);
     };
-  }, [supabase, adminUserId]);
+  }, [supabase, currentUserId, adminUserId]);
+
+  // Update user_status table so the admin side can also read a persistent lastSeen.
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    const updateUserStatus = async (isOnline: boolean) => {
+      try {
+        await supabase.from('user_status').upsert({
+          user_id: currentUserId,
+          is_online: isOnline,
+          last_seen: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      } catch (err) {
+        console.error('[User Status] Error:', err);
+      }
+    };
+
+    updateUserStatus(true);
+
+    const handleActivity = () => updateUserStatus(true);
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('keydown', handleActivity);
+    window.addEventListener('click', handleActivity);
+
+    return () => {
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('click', handleActivity);
+      updateUserStatus(false);
+    };
+  }, [supabase, currentUserId]);
+
+  // Mark offline in DB on tab close (best-effort)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (currentUserId) {
+        supabase.from('user_status').upsert({
+          user_id: currentUserId,
+          is_online: false,
+          last_seen: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [supabase, currentUserId]);
 
   // Real-time subscription for messages
   useEffect(() => {
@@ -241,9 +316,9 @@ export default function UserRequestsPage() {
     };
   }, [selectedRequest?.id, supabase]);
 
-  // Typing indicator subscription using broadcast
+  // Typing indicator subscription (broadcast channel)
   useEffect(() => {
-    if (!selectedRequest?.id || !currentUserId) return;
+    if (!selectedRequest?.id) return;
 
     const typingChannel = supabase
       .channel('typing_broadcast')
@@ -252,6 +327,7 @@ export default function UserRequestsPage() {
         { event: 'typing' },
         (payload) => {
           const { requestId, userId, isTyping } = payload.payload;
+          // Only show typing if it's for the current request and NOT from self
           if (requestId === selectedRequest.id && userId !== currentUserId) {
             setAdminIsTyping(isTyping);
           }
@@ -267,46 +343,34 @@ export default function UserRequestsPage() {
   // Send typing status via broadcast
   const sendTypingStatus = async (isTyping: boolean) => {
     if (!selectedRequest?.id || !currentUserId) return;
-    
+
     if (!typingChannelRef.current) {
       typingChannelRef.current = supabase.channel('typing_broadcast');
       await typingChannelRef.current.subscribe();
     }
-    
-    await typingChannelRef.current.send({
+
+    typingChannelRef.current.send({
       type: 'broadcast',
       event: 'typing',
-      payload: { 
-        requestId: selectedRequest.id, 
-        userId: currentUserId, 
-        isTyping 
-      }
+      payload: { requestId: selectedRequest.id, userId: currentUserId, isTyping },
     });
   };
 
   // Handle typing input
   const handleTyping = () => {
     sendTypingStatus(true);
-    
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-    
-    typingTimeoutRef.current = setTimeout(() => {
-      sendTypingStatus(false);
-    }, 1500);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => sendTypingStatus(false), 2000);
   };
 
   // Fetch messages when a request is selected
   useEffect(() => {
     const fetchMessages = async () => {
       if (!selectedRequest) return;
-      
       setMessagesLoading(true);
       try {
         const response = await fetch(`/api/requests/messages?request_id=${selectedRequest.id}`);
         const data = await response.json();
-        
         if (data.messages) {
           const sortedMessages = [...data.messages].sort(
             (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -319,7 +383,6 @@ export default function UserRequestsPage() {
         setMessagesLoading(false);
       }
     };
-
     fetchMessages();
   }, [selectedRequest?.id]);
 
@@ -333,7 +396,6 @@ export default function UserRequestsPage() {
     }
   }, []);
 
-  // Scroll to bottom on messages change
   useEffect(() => {
     if (!messagesLoading && messages.length > 0) {
       const timer = setTimeout(scrollToBottom, 100);
@@ -341,11 +403,16 @@ export default function UserRequestsPage() {
     }
   }, [messages, messagesLoading, scrollToBottom]);
 
+  // Scroll to bottom when typing indicator appears/disappears
+  useEffect(() => {
+    if (adminIsTyping) {
+      setTimeout(scrollToBottom, 50);
+    }
+  }, [adminIsTyping, scrollToBottom]);
+
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedRequest) return;
-    
     sendTypingStatus(false);
-    
     setSendingMessage(true);
     try {
       const response = await fetch("/api/requests/messages", {
@@ -359,20 +426,17 @@ export default function UserRequestsPage() {
 
       if (response.ok) {
         setNewMessage("");
-        
-        // Update request status locally
         const newStatus = "received";
-        setRequests(prev => 
-          prev.map(r => 
-            r.id === selectedRequest.id 
+        setRequests(prev =>
+          prev.map(r =>
+            r.id === selectedRequest.id
               ? { ...r, status: newStatus as Request["status"], last_message: newMessage.trim() }
               : r
           )
         );
-        setSelectedRequest(prev => 
+        setSelectedRequest(prev =>
           prev ? { ...prev, status: newStatus as Request["status"], last_message: newMessage.trim() } : null
         );
-        
         setTimeout(scrollToBottom, 150);
       }
     } catch (error) {
@@ -384,14 +448,10 @@ export default function UserRequestsPage() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "pending":
-        return <Clock className="w-4 h-4 text-yellow-500" />;
-      case "received":
-        return <CheckCircle className="w-4 h-4 text-[#249fd3]" />;
-      case "answered":
-        return <XCircle className="w-4 h-4 text-green-500" />;
-      default:
-        return <Clock className="w-4 h-4 text-gray-500" />;
+      case "pending": return <Clock className="w-4 h-4 text-yellow-500" />;
+      case "received": return <CheckCircle className="w-4 h-4 text-[#249fd3]" />;
+      case "answered": return <XCircle className="w-4 h-4 text-green-500" />;
+      default: return <Clock className="w-4 h-4 text-gray-500" />;
     }
   };
 
@@ -410,70 +470,69 @@ export default function UserRequestsPage() {
 
   const formatDate = (date: string) => {
     return new Date(date).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
+      year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
     });
   };
 
   const formatMessageTime = (date: string) => {
-    return new Date(date).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit"
-    });
+    return new Date(date).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   };
 
   const formatLastSeen = (lastSeen: string) => {
-    const date = new Date(lastSeen);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date(lastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // ── PRESENCE FIX ──
+  // getAdminStatus now ONLY returns online / last-seen text.
+  // The typing indicator is rendered as a chat bubble in the message area below.
   const getAdminStatus = () => {
-    if (adminIsTyping) {
+    if (!adminUserId) return <span className="text-xs text-slate-400">Offline</span>;
+
+    const adminStatus = onlineStatus[adminUserId];
+
+    if (adminStatus?.online) {
+      return <span className="text-xs text-green-500 dark:text-green-400">Online</span>;
+    }
+
+    if (adminStatus?.lastSeen) {
       return (
-        <span className="text-xs text-cyan-500 dark:text-cyan-400 flex items-center gap-1">
-          <span className="flex gap-0.5">
-            <span className="w-1.5 h-1.5 bg-cyan-500 dark:bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-            <span className="w-1.5 h-1.5 bg-cyan-500 dark:bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-            <span className="w-1.5 h-1.5 bg-cyan-500 dark:bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-          </span>
-          typing
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          {"last seen " + formatLastSeen(adminStatus.lastSeen)}
         </span>
       );
     }
-    
-    if (adminUserId) {
-      const adminStatus = onlineStatus[adminUserId];
-      
-      if (adminStatus?.online) {
-        return <span className="text-xs text-green-500 dark:text-green-400">Online</span>;
-      }
-      
-      if (adminStatus?.lastSeen) {
-        return <span className="text-xs text-slate-500 dark:text-slate-400">{"last seen " + formatLastSeen(adminStatus.lastSeen)}</span>;
-      }
-    }
-    
+
     return <span className="text-xs text-slate-400">Offline</span>;
   };
 
-  const isCurrentUserMessage = (senderId: string): boolean => {
-    return currentUserId === senderId;
-  };
+  const isCurrentUserMessage = (senderId: string): boolean => currentUserId === senderId;
 
   const handleViewFreelancer = (freelancerId: string) => {
     window.open(`/freelancers/profile/${freelancerId}`, '_blank');
   };
 
-  const getSenderDisplayName = (senderId: string, isCurrentUser: boolean) => {
-    if (isCurrentUser) {
-      return "You";
-    } else {
-      return "Admin";
-    }
-  };
+  // ── TYPING INDICATOR BUBBLE ──
+  // Reusable component rendered inside the chat scroll area, next to an avatar.
+  const TypingBubble = ({ mobile = false }: { mobile?: boolean }) => (
+    <motion.div
+      initial={{ opacity: 0, y: 8, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 8, scale: 0.95 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="flex justify-start items-end"
+    >
+      <div className={`${mobile ? 'w-8 h-8' : 'w-9 h-9'} rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center mr-2 shrink-0 shadow-md`}>
+        <User className={`${mobile ? 'w-4 h-4' : 'w-4 h-4'} text-white`} />
+      </div>
+      <div className="bg-cyan-50 dark:bg-cyan-950/30 rounded-2xl rounded-bl-sm border border-cyan-100 dark:border-cyan-900/30 px-4 py-3">
+        <span className="flex gap-1 items-center h-4">
+          <span className="w-2 h-2 bg-slate-400 dark:bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+          <span className="w-2 h-2 bg-slate-400 dark:bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+          <span className="w-2 h-2 bg-slate-400 dark:bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+        </span>
+      </div>
+    </motion.div>
+  );
 
   // ==================== CHAT VIEW ====================
   if (selectedRequest) {
@@ -497,6 +556,7 @@ export default function UserRequestsPage() {
                 <h2 className="font-semibold text-base truncate text-slate-900 dark:text-white">
                   Admin
                 </h2>
+                {/* Header shows ONLY online/offline — typing bubble is in the chat area */}
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {getAdminStatus()}
                 </p>
@@ -509,14 +569,14 @@ export default function UserRequestsPage() {
               ref={chatContainerRef}
               className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 p-3 sm:p-4 pb-28 bg-white dark:bg-[#111111]"
             >
-              {/* Subject - inside scroll container */}
+              {/* Subject */}
               {selectedRequest.title && (
                 <div className="p-3 bg-cyan-50 dark:bg-cyan-950/30 rounded-xl border border-cyan-100 dark:border-cyan-900/30 shrink-0">
                   <p className="font-medium text-sm text-slate-800 dark:text-slate-200">{selectedRequest.title}</p>
                 </div>
               )}
               
-              {/* Freelancer Mini Card - inside scroll container */}
+              {/* Freelancer Mini Card */}
               {selectedRequest.freelancer_data && (
                 <div className="shrink-0">
                   <FreelancerMiniCard 
@@ -525,15 +585,12 @@ export default function UserRequestsPage() {
                     compact
                     showExpand={true}
                     onViewProfile={() => {
-                      if (selectedRequest.freelancer_id) {
-                        handleViewFreelancer(selectedRequest.freelancer_id);
-                      }
+                      if (selectedRequest.freelancer_id) handleViewFreelancer(selectedRequest.freelancer_id);
                     }}
                   />
                 </div>
               )}
               
-              {/* Messages */}
               {messagesLoading ? (
                 <div className="flex items-center justify-center h-full">
                   <Loader2 className="w-6 h-6 animate-spin text-cyan-500" />
@@ -545,10 +602,8 @@ export default function UserRequestsPage() {
                 </div>
               ) : (
                 <div className="flex flex-col gap-4">
-                  {messages.map((msg, index) => {
+                  {messages.map((msg) => {
                     const isUserMsg = isCurrentUserMessage(msg.sender_id);
-                    const showAvatar = !isUserMsg;
-                    
                     return (
                       <motion.div
                         key={msg.id}
@@ -557,14 +612,11 @@ export default function UserRequestsPage() {
                         transition={{ duration: 0.2, ease: 'easeOut' }}
                         className={`flex ${isUserMsg ? "justify-end" : "justify-start"} items-end`}
                       >
-                        {/* Avatar for receiver */}
-                        {showAvatar && (
+                        {!isUserMsg && (
                           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center mr-2 shrink-0">
                             <User className="w-4 h-4 text-white" />
                           </div>
                         )}
-                        
-                        {/* Message bubble - Modern chat style */}
                         <div 
                           className={`max-w-[70%] sm:max-w-[70%] rounded-2xl px-3 py-2 sm:px-4 sm:py-3 transition-all duration-200 ${
                             isUserMsg
@@ -574,26 +626,23 @@ export default function UserRequestsPage() {
                         >
                           <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{msg.message}</p>
                           <div className={`text-right mt-1 ${isUserMsg ? 'text-white/70' : 'text-slate-400 dark:text-slate-500'}`}>
-                            <span className="text-xs">
-                              {formatMessageTime(msg.created_at)}
-                            </span>
+                            <span className="text-xs">{formatMessageTime(msg.created_at)}</span>
                           </div>
                         </div>
-                        
-                        {/* Spacer for sender to balance layout */}
                         {isUserMsg && <div className="w-10 shrink-0" />}
                       </motion.div>
                     );
                   })}
                   <div ref={(el) => {
                     if (el && !messagesLoading && messages.length > 0) {
-                      setTimeout(() => {
-                        el.scrollIntoView({ behavior: "smooth", block: "end" });
-                      }, 100);
+                      setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "end" }), 100);
                     }
                   }} />
                 </div>
               )}
+
+              {/* ── TYPING INDICATOR BUBBLE (mobile) ── */}
+              {adminIsTyping && <TypingBubble mobile />}
             </div>
 
             {/* Mobile Message Input */}
@@ -602,10 +651,7 @@ export default function UserRequestsPage() {
                 <input
                   type="text"
                   value={newMessage}
-                  onChange={(e) => {
-                    setNewMessage(e.target.value);
-                    handleTyping();
-                  }}
+                  onChange={(e) => { setNewMessage(e.target.value); handleTyping(); }}
                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
                   placeholder="Type a message..."
                   className="flex-1 px-4 py-2.5 sm:py-3 text-sm rounded-2xl border border-cyan-200 dark:border-cyan-800 bg-cyan-50/50 dark:bg-cyan-950/30 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#249fd3] focus:border-transparent transition-all duration-200"
@@ -616,11 +662,7 @@ export default function UserRequestsPage() {
                   disabled={!newMessage.trim() || sendingMessage}
                   className="bg-gradient-to-r from-[#249fd3] to-cyan-400 hover:from-[#1e8ac0] hover:to-cyan-500 rounded-2xl w-12 h-12 p-0 shadow-lg shadow-cyan-500/25 transition-all duration-200 hover:scale-105 active:scale-95"
                 >
-                  {sendingMessage ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Send className="w-5 h-5" />
-                  )}
+                  {sendingMessage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-5 h-5" />}
                 </Button>
               </div>
             </div>
@@ -641,9 +683,8 @@ export default function UserRequestsPage() {
               <User className="w-5 h-5 text-white" />
             </div>
             <div className="flex-1">
-              <h2 className="font-semibold text-slate-900 dark:text-white">
-                Admin
-              </h2>
+              <h2 className="font-semibold text-slate-900 dark:text-white">Admin</h2>
+              {/* Header shows ONLY online/offline — typing bubble is in the chat area */}
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {getAdminStatus()}
               </p>
@@ -672,9 +713,7 @@ export default function UserRequestsPage() {
                   compact
                   showExpand={true}
                   onViewProfile={() => {
-                    if (selectedRequest.freelancer_id) {
-                      handleViewFreelancer(selectedRequest.freelancer_id);
-                    }
+                    if (selectedRequest.freelancer_id) handleViewFreelancer(selectedRequest.freelancer_id);
                   }}
                 />
               </div>
@@ -693,8 +732,6 @@ export default function UserRequestsPage() {
               <>
                 {messages.map((msg) => {
                   const isUserMsg = isCurrentUserMessage(msg.sender_id);
-                  const showAvatar = !isUserMsg;
-                  
                   return (
                     <motion.div
                       key={msg.id}
@@ -703,14 +740,11 @@ export default function UserRequestsPage() {
                       transition={{ duration: 0.2, ease: 'easeOut' }}
                       className={`flex ${isUserMsg ? "justify-end" : "justify-start"} items-end`}
                     >
-                      {/* Avatar for receiver */}
-                      {showAvatar && (
+                      {!isUserMsg && (
                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center mr-2 shrink-0 shadow-md">
                           <User className="w-4 h-4 text-white" />
                         </div>
                       )}
-                      
-                      {/* Message bubble */}
                       <div 
                         className={`max-w-[70%] rounded-2xl px-4 py-3 transition-all duration-200 ${
                           isUserMsg
@@ -720,26 +754,24 @@ export default function UserRequestsPage() {
                       >
                         <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{msg.message}</p>
                         <div className={`text-right mt-1 ${isUserMsg ? 'text-white/70' : 'text-slate-400 dark:text-slate-500'}`}>
-                          <span className="text-xs">
-                            {formatMessageTime(msg.created_at)}
-                          </span>
+                          <span className="text-xs">{formatMessageTime(msg.created_at)}</span>
                         </div>
                       </div>
-                      
-                      {/* Spacer */}
                       {isUserMsg && <div className="w-11 shrink-0" />}
                     </motion.div>
                   );
                 })}
+                {/* Scroll anchor */}
                 <div ref={(el) => {
                   if (el && !messagesLoading && messages.length > 0) {
-                    setTimeout(() => {
-                      el.scrollIntoView({ behavior: "smooth", block: "end" });
-                    }, 100);
+                    setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "end" }), 100);
                   }
                 }} />
               </>
             )}
+
+            {/* ── TYPING INDICATOR BUBBLE (desktop) ── */}
+            {adminIsTyping && <TypingBubble />}
           </div>
 
           {/* Message Input */}
@@ -747,10 +779,7 @@ export default function UserRequestsPage() {
             <input
               type="text"
               value={newMessage}
-              onChange={(e) => {
-                setNewMessage(e.target.value);
-                handleTyping();
-              }}
+              onChange={(e) => { setNewMessage(e.target.value); handleTyping(); }}
               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
               placeholder="Type a message..."
               className="flex-1 px-5 py-3 text-sm rounded-2xl border border-cyan-200 dark:border-cyan-800 bg-white dark:bg-[#1a1a1a] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#249fd3] focus:border-transparent transition-all duration-200"
@@ -761,11 +790,7 @@ export default function UserRequestsPage() {
               disabled={!newMessage.trim() || sendingMessage}
               className="bg-gradient-to-r from-[#249fd3] to-cyan-400 hover:from-[#1e8ac0] hover:to-cyan-500 rounded-2xl w-12 h-12 p-0 shadow-lg shadow-cyan-500/25 transition-all duration-200 hover:scale-105 active:scale-95"
             >
-              {sendingMessage ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-5 h-5" />
-              )}
+              {sendingMessage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-5 h-5" />}
             </Button>
           </div>
         </div>
@@ -778,9 +803,7 @@ export default function UserRequestsPage() {
     <div className="p-4 md:p-6 lg:p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">My Requests</h1>
-        <p className="text-muted-foreground">
-          View your messages to Milit Company
-        </p>
+        <p className="text-muted-foreground">View your messages to Milit Company</p>
       </div>
       
       {loading ? (
@@ -793,9 +816,7 @@ export default function UserRequestsPage() {
         <div className="text-center py-12">
           <MessageSquare className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">No requests yet</h3>
-          <p className="text-gray-500 dark:text-gray-400 mb-4">
-            Contact Milit Company to start a conversation
-          </p>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">Contact Milit Company to start a conversation</p>
           <div className="flex gap-2 justify-center">
             <Button variant="outline" asChild>
               <a href="/contact">Contact Us</a>
@@ -804,8 +825,7 @@ export default function UserRequestsPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-          {requests.map((request, index) => {
-            return (
+          {requests.map((request, index) => (
             <ScrollReveal key={request.id} delay={index * 0.1}>
               <motion.div
                 whileHover={{ y: -2 }}
@@ -818,17 +838,11 @@ export default function UserRequestsPage() {
                       <User className="w-5 sm:w-6 h-5 sm:h-6 text-gray-600 dark:text-gray-400" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm sm:text-base truncate text-gray-900 dark:text-white">
-                        Admin
-                      </p>
-                      <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-                        {formatDate(request.created_at)}
-                      </p>
+                      <p className="font-semibold text-sm sm:text-base truncate text-gray-900 dark:text-white">Admin</p>
+                      <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{formatDate(request.created_at)}</p>
                     </div>
                   </div>
-                  <div className="shrink-0">
-                    {getStatusBadge(request.status)}
-                  </div>
+                  <div className="shrink-0">{getStatusBadge(request.status)}</div>
                 </div>
                 
                 {/* Subject */}
@@ -840,24 +854,22 @@ export default function UserRequestsPage() {
                 
                 {/* Freelancer Mini Card */}
                 {request.freelancer_data && (
-                    <FreelancerMiniCard 
-                      showExpand={false} 
-                      freelancer={request.freelancer_data}
-                      fallbackDomain={request.freelancer_domain}
-                      compact
-                      onViewProfile={() => {
-                        if (request.freelancer_id) {
-                          handleViewFreelancer(request.freelancer_id);
-                        }
-                      }}
-                    />
+                  <FreelancerMiniCard 
+                    showExpand={false} 
+                    freelancer={request.freelancer_data}
+                    fallbackDomain={request.freelancer_domain}
+                    compact
+                    onViewProfile={() => {
+                      if (request.freelancer_id) handleViewFreelancer(request.freelancer_id);
+                    }}
+                  />
                 )}
                 
                 {/* Last message preview */}
                 {request.last_message && (
                   <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 mb-4">
                     <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
-                      {request.last_message && request.last_message.length > 60 
+                      {request.last_message && request.last_message.length > 60
                         ? request.last_message.substring(0, 60) + "..."
                         : request.last_message || "No messages yet"}
                     </p>
@@ -882,7 +894,7 @@ export default function UserRequestsPage() {
                 </div>
               </motion.div>
             </ScrollReveal>
-          )})}
+          ))}
         </div>
       )}
     </div>
