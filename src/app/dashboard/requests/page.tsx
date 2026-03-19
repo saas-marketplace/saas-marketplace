@@ -108,6 +108,34 @@ interface FreelancerData {
   projects_count?: number | null;
 }
 
+// ── MODULE-LEVEL COMPONENT (critical) ──
+// Defined OUTSIDE the page component so its function reference never changes between
+// parent renders. When defined inside, React sees a new component type on every render
+// (because it's a new function object), unmounts the old instance and mounts a new one,
+// which restarts the Framer Motion animation and causes visible flickering.
+function TypingBubble({ mobile = false }: { mobile?: boolean }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 8, scale: 0.95 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="flex justify-start items-end"
+    >
+      <div className={`${mobile ? 'w-8 h-8' : 'w-9 h-9'} rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center mr-2 shrink-0 shadow-md`}>
+        <User className="w-4 h-4 text-white" />
+      </div>
+      <div className="bg-cyan-50 rounded-2xl rounded-bl-sm border border-cyan-100 px-4 py-3">
+        <span className="flex gap-1 items-center h-4">
+          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+        </span>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function AdminRequestsPage() {
   const { isLoading, canAccessSection, canCreate, permissions } = useAccessControl();
 
@@ -136,9 +164,10 @@ export default function AdminRequestsPage() {
   // scrollIntoView on this element is the single scroll mechanism for messages + typing.
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // Tracks whether we have already broadcast isTyping=true this session.
-  // Prevents sending the same "started typing" event on every keystroke.
-  const isTypingRef = useRef<boolean>(false);
+  // useState (not ref) for the local "am I currently typing?" guard.
+  // Using state means the guard value is always the committed value React sees,
+  // so handleTyping's closure is never stale after a re-render.
+  const [localIsTyping, setLocalIsTyping] = useState(false);
   // ── FIX: useRef (not useState) so sendTypingStatus always has the latest channel synchronously
   const typingChannelRef = useRef<any>(null);
 
@@ -383,37 +412,38 @@ export default function AdminRequestsPage() {
     };
   }, [supabase, selectedRequest?.id, selectedRequest?.user_id, currentUserId]);
 
-  // ── TYPING FIX ──
+  // ── TYPING CHANNEL ──
   // One channel instance per conversation — used for BOTH sending and receiving.
-  // Having two subscriptions to the same channel name from the same Supabase client
-  // causes only one to receive events, so broadcasts sent via the second instance
-  // are never delivered to the first listener. Using a single shared ref fixes this.
   useEffect(() => {
     if (!selectedRequest?.id || !currentUserId) return;
 
-    // Unique channel name per request so different conversations don't bleed into each other
     const channelName = `typing_req_${selectedRequest.id}`;
 
     const ch = supabase
       .channel(channelName, { config: { broadcast: { self: false } } })
       .on('broadcast', { event: 'typing' }, (payload) => {
         const { requestId, userId: senderId, isTyping } = payload.payload ?? {};
-        // Guard: only apply to this conversation, ignore own events
-        if (requestId === selectedRequest.id && senderId !== currentUserId) {
-          setUserIsTyping(Boolean(isTyping));
-        }
+        if (requestId !== selectedRequest.id || senderId === currentUserId) return;
+        // ── RECEIVER GUARD ──
+        // Functional update: only schedules a re-render when the value actually changes.
+        // Without this, every duplicate broadcast (e.g. from reconnects) would call
+        // setState and trigger a re-render even if userIsTyping was already true,
+        // which remounts child components and causes visible flickering.
+        setUserIsTyping(prev => {
+          const next = Boolean(isTyping);
+          return prev === next ? prev : next;
+        });
       });
 
     ch.subscribe((status: string) => {
       if (status === 'SUBSCRIBED') {
-        // Store the subscribed channel so sendTypingStatus can use it immediately
         typingChannelRef.current = ch;
       }
     });
 
     return () => {
       typingChannelRef.current = null;
-      isTypingRef.current = false;
+      setLocalIsTyping(false);
       supabase.removeChannel(ch);
       setUserIsTyping(false);
     };
@@ -491,21 +521,20 @@ export default function AdminRequestsPage() {
     });
   };
 
-  // ── DEBOUNCE FIX ──
-  // Only broadcast isTyping=true ONCE when the user starts typing (not on every keystroke).
-  // Only broadcast isTyping=false after 2 s of inactivity.
-  // This prevents rapid true/false toggles that cause the indicator to flicker.
+  // ── DEBOUNCE FIX (final) ──
+  // localIsTyping (useState) gates the "started typing" broadcast so it fires ONCE
+  // per typing burst — not on every keystroke.
+  // The inactivity timeout resets on every key and fires "stopped typing" after 2 s.
   const handleTyping = () => {
-    // Send "started typing" only on the first keystroke of a typing burst
-    if (!isTypingRef.current) {
-      isTypingRef.current = true;
+    if (!localIsTyping) {
+      // First keystroke of this burst → announce typing once
+      setLocalIsTyping(true);
       sendTypingStatus(true);
     }
-
-    // Reset the inactivity timer on every keystroke
+    // Restart the inactivity timer on every key
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
-      isTypingRef.current = false;
+      setLocalIsTyping(false);
       sendTypingStatus(false);
     }, 2000);
   };
@@ -520,7 +549,7 @@ export default function AdminRequestsPage() {
 
     // Stop typing indicator
     sendTypingStatus(false);
-    isTypingRef.current = false;
+    setLocalIsTyping(false);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
     setSendingMessage(true);
@@ -664,29 +693,6 @@ export default function AdminRequestsPage() {
     if (selectedRequest && senderId === selectedRequest.user_id) return isAdmin ? "User" : "You";
     return "Admin";
   };
-
-  // ── TYPING INDICATOR BUBBLE ──
-  // Reusable component rendered inside the chat scroll area, next to an avatar.
-  const TypingBubble = ({ mobile = false }: { mobile?: boolean }) => (
-    <motion.div
-      initial={{ opacity: 0, y: 8, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 8, scale: 0.95 }}
-      transition={{ duration: 0.2, ease: 'easeOut' }}
-      className="flex justify-start items-end"
-    >
-      <div className={`${mobile ? 'w-8 h-8' : 'w-9 h-9'} rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center mr-2 shrink-0 shadow-md`}>
-        <User className="w-4 h-4 text-white" />
-      </div>
-      <div className="bg-cyan-50 rounded-2xl rounded-bl-sm border border-cyan-100 px-4 py-3">
-        <span className="flex gap-1 items-center h-4">
-          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-        </span>
-      </div>
-    </motion.div>
-  );
 
   // ==================== CHAT VIEW ====================
   if (selectedRequest) {
