@@ -551,7 +551,7 @@ export default function UserRequestsPage() {
       }
       
       if (adminStatus?.lastSeen) {
-        return <span className="text-xs text-slate-500 dark:text-slate-400">{formatLastSeen(adminStatus.lastSeen)}</span>;
+        return <span className="text-xs text-slate-500 dark:text-slate-400">{"last seen " + formatLastSeen(adminStatus.lastSeen)}</span>;
       }
     }
     

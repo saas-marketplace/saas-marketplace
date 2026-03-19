@@ -740,7 +740,7 @@ export default function UserRequestsPage() {
     }
     
     if (userStatus?.lastSeen) {
-      return <span className="text-xs text-slate-500 dark:text-slate-400">{formatLastSeen(userStatus.lastSeen)}</span>;
+      return <span className="text-xs text-slate-500 dark:text-slate-400">{"last seen"+formatLastSeen(userStatus.lastSeen)}</span>;
     }
     
     // If no status data at all, show nothing or a default message
