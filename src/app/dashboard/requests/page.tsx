@@ -282,10 +282,25 @@ export default function UserRequestsPage() {
     fetchRequests();
   }, [supabase]);
 
-  // Update admin status when page loads
+  // Update admin presence using Supabase presence channel
   useEffect(() => {
     if (!currentUserId || !isAdmin) return;
     
+    // Create presence channel for admin
+    const presenceChannel = supabase.channel('admin_presence', {
+      config: {
+        presence: { key: currentUserId }
+      }
+    });
+    
+    // Track presence - admin is online
+    presenceChannel.track({
+      online_at: new Date().toISOString(),
+    }).then(() => {
+      console.log('[Admin Presence] Tracking started');
+    });
+    
+    // Update status in database
     const updateAdminStatus = async (isOnline: boolean) => {
       try {
         await supabase.from('user_status').upsert({
@@ -303,24 +318,17 @@ export default function UserRequestsPage() {
     updateAdminStatus(true);
     
     // Update on user activity
-    const handleActivity = () => updateAdminStatus(true);
+    const handleActivity = () => {
+      updateAdminStatus(true);
+      presenceChannel.track({ online_at: new Date().toISOString() });
+    };
     window.addEventListener('mousemove', handleActivity);
     window.addEventListener('keydown', handleActivity);
     window.addEventListener('click', handleActivity);
     
-    return () => {
-      window.removeEventListener('mousemove', handleActivity);
-      window.removeEventListener('keydown', handleActivity);
-      window.removeEventListener('click', handleActivity);
-      updateAdminStatus(false);
-    };
-  }, [supabase, currentUserId, isAdmin]);
-
-  // Update last_seen on beforeunload (when admin closes tab/browser)
-  useEffect(() => {
-    if (!currentUserId || !isAdmin) return;
-    
+    // Handle beforeunload - update last_seen and untrack
     const handleBeforeUnload = async () => {
+      await presenceChannel.untrack();
       await supabase.from('user_status').upsert({
         user_id: currentUserId,
         is_online: false,
@@ -328,11 +336,21 @@ export default function UserRequestsPage() {
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id' });
     };
-
+    
     window.addEventListener('beforeunload', handleBeforeUnload);
     
     return () => {
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('click', handleActivity);
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      
+      // Untrack presence and update status
+      presenceChannel.untrack().then(() => {
+        updateAdminStatus(false);
+      });
+      
+      supabase.removeChannel(presenceChannel);
     };
   }, [supabase, currentUserId, isAdmin]);
 

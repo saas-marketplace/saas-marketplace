@@ -144,7 +144,7 @@ export default function UserRequestsPage() {
     fetchRequests();
   }, [supabase]);
 
-  // Fetch admin user ID and subscribe to admin presence
+  // Track admin presence using Supabase presence channel
   useEffect(() => {
     const setupPresence = async () => {
       // Fetch admin users
@@ -181,38 +181,75 @@ export default function UserRequestsPage() {
     setupPresence();
   }, [supabase]);
 
-  // Subscribe to admin status changes using postgres_changes
+  // Subscribe to admin presence using Supabase presence channel
   useEffect(() => {
-    const statusChannel = supabase
-      .channel('admin_status监听')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'user_status'
-        },
-        (payload) => {
-          const payloadNew = payload.new as { user_id: string; is_online: boolean; last_seen: string } | null;
-          if (!payloadNew) return;
-          
-          // Check if this is an admin
-          if (adminUserId && payloadNew.user_id === adminUserId) {
-            console.log('[Admin Presence] Status update received:', payloadNew);
-            setOnlineStatus(prev => ({
-              ...prev,
-              [payloadNew.user_id]: {
-                online: payloadNew.is_online,
-                lastSeen: payloadNew.last_seen
-              }
-            }));
-          }
+    if (!adminUserId) return;
+    
+    // Create presence channel
+    const presenceChannel = supabase.channel('admin_presence', {
+      config: {
+        presence: { key: adminUserId }
+      }
+    });
+    
+    // Listen for sync event - when presence state changes
+    presenceChannel.on('presence', { event: 'sync' }, () => {
+      const state = presenceChannel.presenceState();
+      console.log('[Admin Presence] Sync state:', state);
+      
+      // Check if admin is in presence state
+      const isOnline = !!state[adminUserId];
+      
+      setOnlineStatus(prev => ({
+        ...prev,
+        [adminUserId]: {
+          online: isOnline,
+          lastSeen: prev[adminUserId]?.lastSeen || new Date().toISOString()
         }
-      )
-      .subscribe();
+      }));
+    });
+    
+    // Listen for join event - admin came online
+    presenceChannel.on('presence', { event: 'join' }, ({ key, newPresences }) => {
+      console.log('[Admin Presence] Admin joined:', key);
+      if (key === adminUserId) {
+        setOnlineStatus(prev => ({
+          ...prev,
+          [adminUserId]: {
+            online: true,
+            lastSeen: new Date().toISOString()
+          }
+        }));
+      }
+    });
+    
+    // Listen for leave event - admin went offline
+    presenceChannel.on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+      console.log('[Admin Presence] Admin left:', key);
+      if (key === adminUserId) {
+        // Update last_seen in database
+        supabase.from('user_status').upsert({
+          user_id: adminUserId,
+          is_online: false,
+          last_seen: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+        
+        setOnlineStatus(prev => ({
+          ...prev,
+          [adminUserId]: {
+            online: false,
+            lastSeen: new Date().toISOString()
+          }
+        }));
+      }
+    });
+    
+    // Subscribe to the channel
+    presenceChannel.subscribe();
     
     return () => {
-      supabase.removeChannel(statusChannel);
+      supabase.removeChannel(presenceChannel);
     };
   }, [supabase, adminUserId]);
 
