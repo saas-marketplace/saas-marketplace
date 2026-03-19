@@ -506,11 +506,44 @@ export default function UserRequestsPage() {
   // TypingBubble — so it is always in the DOM and always below the bubble.
   useEffect(() => {
     if (messagesLoading) return;
-    const timer = setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }, 80);
-    return () => clearTimeout(timer);
+    
+    const scrollToBottom = () => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ 
+          behavior: 'auto', 
+          block: 'end' 
+        });
+      }
+    };
+
+    // Immediate scroll for new messages
+    scrollToBottom();
+    
+    // Additional scroll after a short delay for mobile/tablet
+    const timer = setTimeout(scrollToBottom, 100);
+    const timer2 = setTimeout(scrollToBottom, 300);
+    
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(timer2);
+    };
   }, [messages, adminIsTyping, messagesLoading]);
+
+  // ── RESIZE SCROLL FIX ──
+  // Re-scroll when window is resized (tablet/mobile orientation changes)
+  useEffect(() => {
+    const handleResize = () => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ 
+          behavior: 'auto', 
+          block: 'end' 
+        });
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedRequest) return;
@@ -717,7 +750,7 @@ export default function UserRequestsPage() {
             </div>
 
             {/* Mobile Message Input */}
-            <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4 bg-white dark:bg-[#111111] border-t border-cyan-100 dark:border-cyan-900/30 shadow-lg shadow-slate-100 dark:shadow-none">
+            <div className="shrink-0 p-3 sm:p-4 bg-white dark:bg-[#111111] border-t border-cyan-100 dark:border-cyan-900/30 shadow-lg shadow-slate-100 dark:shadow-none">
               <div className="flex gap-2">
                 <input
                   type="text"
