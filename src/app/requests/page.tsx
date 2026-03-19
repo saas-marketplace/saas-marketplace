@@ -28,7 +28,6 @@ interface Request {
   status: "pending" | "received" | "answered";
   created_at: string;
   last_message?: string;
-  // Freelancer data fields
   freelancer_id?: string | null;
   freelancer_domain?: string | null;
   freelancer_data?: {
@@ -53,10 +52,6 @@ interface RequestMessage {
   created_at: string;
 }
 
-interface TypingStatus {
-  [requestId: string]: boolean;
-}
-
 interface OnlineStatus {
   [userId: string]: {
     online: boolean;
@@ -74,13 +69,13 @@ export default function UserRequestsPage() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
-  const [typingStatus, setTypingStatus] = useState<TypingStatus>({});
   const [onlineStatus, setOnlineStatus] = useState<OnlineStatus>({});
   const [adminIsTyping, setAdminIsTyping] = useState(false);
   const [adminUserId, setAdminUserId] = useState<string | null>(null);
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingChannelRef = useRef<any>(null);
   const supabase = createClient();
 
   // Fetch current user and requests
@@ -91,7 +86,6 @@ export default function UserRequestsPage() {
       if (user) {
         setCurrentUserId(user.id);
         
-        // Fetch only this user's requests
         const { data } = await supabase
           .from("requests")
           .select("*")
@@ -99,12 +93,10 @@ export default function UserRequestsPage() {
           .order("created_at", { ascending: false });
 
         if (data) {
-          // Fetch all domains once → build id→name map to resolve domain_id in freelancer_data
           const { data: allDomains } = await supabase.from('domains').select('id, name');
           const domainNameMap = new Map<string, string>();
           allDomains?.forEach(d => domainNameMap.set(d.id, d.name));
 
-          // Inject the resolved domain name into freelancer_data for every request.
           const isUUID = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
           const injectDomain = (r: any) => {
             if (!r.freelancer_data) return r;
@@ -118,7 +110,6 @@ export default function UserRequestsPage() {
             return { ...r, freelancer_data: { ...fd, domain: domainName }, freelancer_domain: domainName ?? r.freelancer_domain };
           };
 
-          // Get last messages (ascending to get oldest first, then take last)
           const { data: lastMessages } = await supabase
             .from('request_messages')
             .select('request_id, message, created_at')
@@ -144,10 +135,9 @@ export default function UserRequestsPage() {
     fetchRequests();
   }, [supabase]);
 
-  // Track admin presence using Supabase presence channel
+  // Fetch admin user ID
   useEffect(() => {
-    const setupPresence = async () => {
-      // Fetch admin users
+    const fetchAdminId = async () => {
       const { data: adminUsers } = await supabase
         .from('users')
         .select('id')
@@ -155,49 +145,26 @@ export default function UserRequestsPage() {
         .limit(1);
       
       if (adminUsers && adminUsers.length > 0) {
-        const adminId = adminUsers[0].id;
-        setAdminUserId(adminId);
-        console.log('[Admin Presence] Admin ID:', adminId);
-        
-        // Fetch initial admin status from user_status table
-        const { data: adminStatus } = await supabase
-          .from('user_status')
-          .select('*')
-          .eq('user_id', adminId)
-          .maybeSingle();
-        
-        if (adminStatus) {
-          setOnlineStatus(prev => ({
-            ...prev,
-            [adminId]: {
-              online: adminStatus.is_online,
-              lastSeen: adminStatus.last_seen
-            }
-          }));
-        }
+        setAdminUserId(adminUsers[0].id);
       }
     };
     
-    setupPresence();
+    fetchAdminId();
   }, [supabase]);
 
-  // Subscribe to admin presence using Supabase presence channel
+  // Subscribe to admin online status from presence and database
   useEffect(() => {
     if (!adminUserId) return;
     
-    // Create presence channel
-    const presenceChannel = supabase.channel('admin_presence', {
+    const presenceChannel = supabase.channel(`admin_presence:${adminUserId}`, {
       config: {
         presence: { key: adminUserId }
       }
     });
     
-    // Listen for sync event - when presence state changes
+    // Listen for presence changes
     presenceChannel.on('presence', { event: 'sync' }, () => {
       const state = presenceChannel.presenceState();
-      console.log('[Admin Presence] Sync state:', state);
-      
-      // Check if admin is in presence state
       const isOnline = !!state[adminUserId];
       
       setOnlineStatus(prev => ({
@@ -209,9 +176,8 @@ export default function UserRequestsPage() {
       }));
     });
     
-    // Listen for join event - admin came online
-    presenceChannel.on('presence', { event: 'join' }, ({ key, newPresences }) => {
-      console.log('[Admin Presence] Admin joined:', key);
+    // Listen for admin joining
+    presenceChannel.on('presence', { event: 'join' }, ({ key }) => {
       if (key === adminUserId) {
         setOnlineStatus(prev => ({
           ...prev,
@@ -223,18 +189,9 @@ export default function UserRequestsPage() {
       }
     });
     
-    // Listen for leave event - admin went offline
-    presenceChannel.on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-      console.log('[Admin Presence] Admin left:', key);
+    // Listen for admin leaving - update last_seen
+    presenceChannel.on('presence', { event: 'leave' }, ({ key }) => {
       if (key === adminUserId) {
-        // Update last_seen in database
-        supabase.from('user_status').upsert({
-          user_id: adminUserId,
-          is_online: false,
-          last_seen: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
-        
         setOnlineStatus(prev => ({
           ...prev,
           [adminUserId]: {
@@ -245,89 +202,12 @@ export default function UserRequestsPage() {
       }
     });
     
-    // Subscribe to the channel
     presenceChannel.subscribe();
     
     return () => {
       supabase.removeChannel(presenceChannel);
     };
   }, [supabase, adminUserId]);
-
-  // Update user status when page loads and on activity
-  useEffect(() => {
-    console.log('[User Status] Effect running, currentUserId:', currentUserId);
-    
-    if (!currentUserId) {
-      console.log('[User Status] No user ID, waiting...');
-      return;
-    }
-
-    // Function to update user status
-    const updateUserStatus = async (isOnline: boolean) => {
-      try {
-        console.log('[User Status] Attempting to update:', isOnline ? 'online' : 'offline', 'for user:', currentUserId);
-        
-        const { data, error } = await supabase.from('user_status').upsert({
-          user_id: currentUserId,
-          is_online: isOnline,
-          last_seen: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
-        
-        if (error) {
-          console.error('[User Status] Supabase error:', error);
-        } else {
-          console.log('[User Status] Updated successfully:', isOnline ? 'online' : 'offline', data);
-        }
-      } catch (error) {
-        console.error('[User Status] Error updating status:', error);
-      }
-    };
-
-    // Set user as online on mount
-    console.log('[User Status] Setting user as online...');
-    updateUserStatus(true);
-
-    // Update last_seen on user activity
-    const handleActivity = () => {
-      console.log('[User Status] Activity detected, updating...');
-      updateUserStatus(true);
-    };
-
-    // Listen for user activity
-    window.addEventListener('mousemove', handleActivity);
-    window.addEventListener('keydown', handleActivity);
-    window.addEventListener('click', handleActivity);
-
-    // Set user as offline on unmount
-    return () => {
-      console.log('[User Status] Unmounting, setting offline...');
-      window.removeEventListener('mousemove', handleActivity);
-      window.removeEventListener('keydown', handleActivity);
-      window.removeEventListener('click', handleActivity);
-      updateUserStatus(false);
-    };
-  }, [supabase, currentUserId]);
-
-  // Update last_seen on beforeunload (when user closes tab/browser)
-  useEffect(() => {
-    const handleBeforeUnload = async () => {
-      if (currentUserId) {
-        await supabase.from('user_status').upsert({
-          user_id: currentUserId,
-          is_online: false,
-          last_seen: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [supabase, currentUserId]);
 
   // Real-time subscription for messages
   useEffect(() => {
@@ -345,7 +225,6 @@ export default function UserRequestsPage() {
         },
         (payload) => {
           const newMessage = payload.new as RequestMessage;
-          // Avoid duplicate messages
           setMessages(prev => {
             if (prev.some(m => m.id === newMessage.id)) return prev;
             const newMessages = [...prev, newMessage];
@@ -364,7 +243,7 @@ export default function UserRequestsPage() {
 
   // Typing indicator subscription using broadcast
   useEffect(() => {
-    if (!selectedRequest?.id) return;
+    if (!selectedRequest?.id || !currentUserId) return;
 
     const typingChannel = supabase
       .channel('typing_broadcast')
@@ -373,8 +252,6 @@ export default function UserRequestsPage() {
         { event: 'typing' },
         (payload) => {
           const { requestId, userId, isTyping } = payload.payload;
-          console.log('[Typing] Received:', { requestId, userId, isTyping, currentRequest: selectedRequest.id, currentUser: currentUserId });
-          // Only show typing if it's for the current request and not from self
           if (requestId === selectedRequest.id && userId !== currentUserId) {
             setAdminIsTyping(isTyping);
           }
@@ -387,20 +264,16 @@ export default function UserRequestsPage() {
     };
   }, [selectedRequest?.id, currentUserId, supabase]);
 
-  // Send typing status via broadcast (faster than database)
-  const typingChannelRef = useRef<any>(null);
-  
+  // Send typing status via broadcast
   const sendTypingStatus = async (isTyping: boolean) => {
     if (!selectedRequest?.id || !currentUserId) return;
     
-    // Create channel if not exists and subscribe
     if (!typingChannelRef.current) {
       typingChannelRef.current = supabase.channel('typing_broadcast');
       await typingChannelRef.current.subscribe();
     }
     
-    // Send broadcast typing event
-    typingChannelRef.current.send({
+    await typingChannelRef.current.send({
       type: 'broadcast',
       event: 'typing',
       payload: { 
@@ -421,7 +294,7 @@ export default function UserRequestsPage() {
     
     typingTimeoutRef.current = setTimeout(() => {
       sendTypingStatus(false);
-    }, 2000);
+    }, 1500);
   };
 
   // Fetch messages when a request is selected
@@ -435,7 +308,6 @@ export default function UserRequestsPage() {
         const data = await response.json();
         
         if (data.messages) {
-          // Ensure messages are sorted by created_at ascending (oldest first)
           const sortedMessages = [...data.messages].sort(
             (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           );
@@ -461,7 +333,7 @@ export default function UserRequestsPage() {
     }
   }, []);
 
-  // Scroll to bottom on messages change (after they're loaded)
+  // Scroll to bottom on messages change
   useEffect(() => {
     if (!messagesLoading && messages.length > 0) {
       const timer = setTimeout(scrollToBottom, 100);
@@ -472,7 +344,6 @@ export default function UserRequestsPage() {
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedRequest) return;
     
-    // Clear typing status when sending
     sendTypingStatus(false);
     
     setSendingMessage(true);
@@ -487,9 +358,6 @@ export default function UserRequestsPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        // Don't manually add message - let realtime subscription handle it
-        // This prevents duplicates
         setNewMessage("");
         
         // Update request status locally
@@ -505,7 +373,6 @@ export default function UserRequestsPage() {
           prev ? { ...prev, status: newStatus as Request["status"], last_message: newMessage.trim() } : null
         );
         
-        // Scroll to bottom after sending
         setTimeout(scrollToBottom, 150);
       }
     } catch (error) {
@@ -558,13 +425,11 @@ export default function UserRequestsPage() {
     });
   };
 
-  // Format last seen time - shows exact time in HH:MM AM/PM format
   const formatLastSeen = (lastSeen: string) => {
     const date = new Date(lastSeen);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Get admin status (typing or online/offline)
   const getAdminStatus = () => {
     if (adminIsTyping) {
       return (
@@ -579,7 +444,6 @@ export default function UserRequestsPage() {
       );
     }
     
-    // Check admin status from onlineStatus state
     if (adminUserId) {
       const adminStatus = onlineStatus[adminUserId];
       
@@ -592,31 +456,22 @@ export default function UserRequestsPage() {
       }
     }
     
-    // Default to offline if no status found
     return <span className="text-xs text-slate-400">Offline</span>;
   };
 
-  // Check if message is from current user
   const isCurrentUserMessage = (senderId: string): boolean => {
     return currentUserId === senderId;
   };
 
-  // Handle viewing freelancer profile
   const handleViewFreelancer = (freelancerId: string) => {
     window.open(`/freelancers/profile/${freelancerId}`, '_blank');
   };
 
-  // Get sender display name
   const getSenderDisplayName = (senderId: string, isCurrentUser: boolean) => {
     if (isCurrentUser) {
       return "You";
     } else {
-      // Check if sender is the request owner
-      if (selectedRequest && senderId === selectedRequest.user_id) {
-        return "You";
-      } else {
-        return "Admin";
-      }
+      return "Admin";
     }
   };
 
@@ -679,7 +534,6 @@ export default function UserRequestsPage() {
               )}
               
               {/* Messages */}
-              
               {messagesLoading ? (
                 <div className="flex items-center justify-center h-full">
                   <Loader2 className="w-6 h-6 animate-spin text-cyan-500" />
@@ -775,7 +629,7 @@ export default function UserRequestsPage() {
 
         {/* Desktop Chat View */}
         <div className="hidden lg:flex max-w-4xl mx-auto h-[calc(100vh-200px)] flex-col bg-white dark:bg-[#111111] rounded-2xl border border-cyan-100 dark:border-cyan-900/30 shadow-xl shadow-slate-200/50 dark:shadow-none overflow-hidden mc-1">
-          {/* Chat Header - Unified with rounded top */}
+          {/* Chat Header */}
           <div className="flex items-center gap-4 px-6 py-4 border-b border-cyan-100 dark:border-cyan-900/30 bg-gradient-to-l from-white dark:from-[#111111] via-cyan-50 dark:via-cyan-950/30 to-cyan-100 dark:to-cyan-900/20 rounded-t-2xl shrink-0 ">
             <button 
               onClick={() => setSelectedRequest(null)}
@@ -802,14 +656,14 @@ export default function UserRequestsPage() {
             ref={chatContainerRef}
             className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 px-6 py-4 pb-6 bg-white dark:bg-[#111111]"
           >
-            {/* Subject - now inside scroll container */}
+            {/* Subject */}
             {selectedRequest.title && (
               <div className="p-4 bg-cyan-50 dark:bg-cyan-950/30 rounded-xl border border-cyan-100 dark:border-cyan-900/30 shrink-0">
                 <p className="font-medium text-slate-800 dark:text-slate-200">{selectedRequest.title}</p>
               </div>
             )}
 
-            {/* Freelancer Mini Card - now inside scroll container */}
+            {/* Freelancer Mini Card */}
             {selectedRequest.freelancer_data && (
               <div className="shrink-0">
                 <FreelancerMiniCard 
@@ -856,7 +710,7 @@ export default function UserRequestsPage() {
                         </div>
                       )}
                       
-                      {/* Message bubble - Modern chat style */}
+                      {/* Message bubble */}
                       <div 
                         className={`max-w-[70%] rounded-2xl px-4 py-3 transition-all duration-200 ${
                           isUserMsg
@@ -872,12 +726,11 @@ export default function UserRequestsPage() {
                         </div>
                       </div>
                       
-                      {/* Spacer for sender to balance layout */}
+                      {/* Spacer */}
                       {isUserMsg && <div className="w-11 shrink-0" />}
                     </motion.div>
                   );
                 })}
-                {/* Invisible element to auto-scroll to */}
                 <div ref={(el) => {
                   if (el && !messagesLoading && messages.length > 0) {
                     setTimeout(() => {
@@ -987,7 +840,6 @@ export default function UserRequestsPage() {
                 
                 {/* Freelancer Mini Card */}
                 {request.freelancer_data && (
-
                     <FreelancerMiniCard 
                       showExpand={false} 
                       freelancer={request.freelancer_data}

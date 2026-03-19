@@ -33,7 +33,6 @@ interface Request {
   status: "pending" | "received" | "answered";
   created_at: string;
   last_message?: string;
-  // New fields for freelancer data
   freelancer_id?: string | null;
   freelancer_domain?: string | null;
   freelancer_characteristics?: any | null;
@@ -65,10 +64,6 @@ interface RequestMessage {
   created_at: string;
 }
 
-interface TypingStatus {
-  [requestId: string]: boolean;
-}
-
 interface OnlineStatus {
   [userId: string]: {
     online: boolean;
@@ -98,25 +93,8 @@ interface FreelancerInfo {
   } | null;
 }
 
-interface FreelancerData {
-  name: string;
-  title?: string;
-  domain?: string | null;
-  domain_id?: string | null;
-  skills?: string[] | null;
-  experience_level?: string | null;
-  description?: string | null;
-  rating?: number | null;
-  reviews_count?: number | null;
-  projects_count?: number | null;
-}
-
 export default function UserRequestsPage() {
   const { isLoading, canAccessSection, canCreate, permissions } = useAccessControl();
-  
-  // Debug: Log permissions for requests section
-  console.log('[Requests] Permissions:', permissions);
-  console.log('[Requests] canCreate(requests):', canCreate('requests'));
   
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
@@ -131,13 +109,13 @@ export default function UserRequestsPage() {
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [freelancerInfoMap, setFreelancerInfoMap] = useState<Map<string, FreelancerInfo>>(new Map());
   const [selectedFreelancer, setSelectedFreelancer] = useState<FreelancerInfo | null>(null);
-  const [typingStatus, setTypingStatus] = useState<TypingStatus>({});
   const [onlineStatus, setOnlineStatus] = useState<OnlineStatus>({});
   const [userIsTyping, setUserIsTyping] = useState(false);
-  const [typingChannelRef, setTypingChannelRef] = useState<any>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [typingTimeoutRef, setTypingTimeoutRef] = useState<NodeJS.Timeout | null>(null);
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const typingChannelRef = useRef<any>(null);
+  const presenceChannelRef = useRef<any>(null);
   const supabase = createClient();
 
   // Access control check
@@ -163,7 +141,6 @@ export default function UserRequestsPage() {
       if (user) {
         setCurrentUserId(user.id);
         
-        // Check if user is admin or super_admin
         const { data: userData } = await supabase
           .from('users')
           .select('role')
@@ -178,37 +155,29 @@ export default function UserRequestsPage() {
           .select("*")
           .order("created_at", { ascending: false });
         
-        // If admin or super_admin, show all requests; otherwise show only user's requests
         if (!isAdminUser) {
           query = query.eq("user_id", user.id);
         }
         const { data } = await query;
         
         if (data) {
-          // Fetch all domains once → build id→name map to resolve domain_id in freelancer_data
           const { data: allDomains } = await supabase.from('domains').select('id, name');
           const domainNameMap = new Map<string, string>();
           allDomains?.forEach(d => domainNameMap.set(d.id, d.name));
 
-          // Inject the resolved domain name into freelancer_data for every request.
-          // freelancer_data is a raw JSON column — it only stores domain_id (a UUID),
-          // never the human-readable name. We resolve it here so the card can display it.
           const isUUID = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
           const injectDomain = (r: any) => {
             if (!r.freelancer_data) return r;
             const fd = r.freelancer_data;
-            // Already a real name? Keep it. Otherwise resolve from domain_id.
             const existing = typeof fd.domain === 'string' && fd.domain.trim() !== '' && !isUUID(fd.domain)
               ? fd.domain : null;
             const fromCol = typeof r.freelancer_domain === 'string' && r.freelancer_domain.trim() !== '' && !isUUID(r.freelancer_domain)
               ? r.freelancer_domain : null;
             const fromMap = typeof fd.domain_id === 'string' ? (domainNameMap.get(fd.domain_id) ?? null) : null;
             const domainName = existing || fromCol || fromMap || null;
-            console.log(`[domain] "${fd.name}" domain_id=${fd.domain_id} → "${domainName}"`);
             return { ...r, freelancer_data: { ...fd, domain: domainName }, freelancer_domain: domainName ?? r.freelancer_domain };
           };
 
-          // If admin or super_admin, fetch user info for each request and get last messages
           if (isAdminUser && data.length > 0) {
             const userIds = Array.from(new Set(data.map(r => r.user_id)));
             const { data: usersData } = await supabase
@@ -216,12 +185,10 @@ export default function UserRequestsPage() {
               .select('id, email, full_name')
               .in('id', userIds);
             
-            // Create user info map
             const map = new Map<string, UserInfo>();
             usersData?.forEach(u => map.set(u.id, u));
             setUserInfoMap(map);
             
-            // Fetch freelancer data for requests with freelancer_id
             const freelancerIds = Array.from(new Set(data.filter(r => r.freelancer_id).map(r => r.freelancer_id)));
             if (freelancerIds.length > 0) {
               const { data: freelancersData } = await supabase
@@ -234,7 +201,6 @@ export default function UserRequestsPage() {
               setFreelancerInfoMap(freelancerMap);
             }
             
-            // Get last messages for each request (ascending to get oldest first, then take last)
             const { data: lastMessages } = await supabase
               .from('request_messages')
               .select('request_id, message, created_at')
@@ -242,7 +208,6 @@ export default function UserRequestsPage() {
             
             const lastMsgMap = new Map<string, string>();
             lastMessages?.forEach(m => {
-              // Keep overwriting to get the LAST message (since sorted ascending)
               lastMsgMap.set(m.request_id, m.message);
             });
             
@@ -255,7 +220,6 @@ export default function UserRequestsPage() {
               }));
             setRequests(requestsWithUsers);
           } else {
-            // For regular users, get last messages (ascending to get oldest first, then take last)
             const { data: lastMessages } = await supabase
               .from('request_messages')
               .select('request_id, message, created_at')
@@ -263,7 +227,6 @@ export default function UserRequestsPage() {
             
             const lastMsgMap = new Map<string, string>();
             lastMessages?.forEach(m => {
-              // Keep overwriting to get the LAST message (since sorted ascending)
               lastMsgMap.set(m.request_id, m.message);
             });
             
@@ -282,77 +245,89 @@ export default function UserRequestsPage() {
     fetchRequests();
   }, [supabase]);
 
-  // Update admin presence using Supabase presence channel
+  // Setup admin presence tracking - admin joins presence channel so users can see their online status
   useEffect(() => {
     if (!currentUserId || !isAdmin) return;
     
-    // Create presence channel for admin
-    const presenceChannel = supabase.channel('admin_presence', {
-      config: {
-        presence: { key: currentUserId }
-      }
-    });
-    
-    // Track presence - admin is online
-    presenceChannel.track({
-      online_at: new Date().toISOString(),
-    }).then(() => {
-      console.log('[Admin Presence] Tracking started');
-    });
-    
-    // Update status in database
-    const updateAdminStatus = async (isOnline: boolean) => {
-      try {
-        await supabase.from('user_status').upsert({
-          user_id: currentUserId,
-          is_online: isOnline,
-          last_seen: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
-      } catch (error) {
-        console.error('[Admin Status] Error updating status:', error);
-      }
-    };
-    
-    // Set admin as online on mount
-    updateAdminStatus(true);
-    
-    // Update on user activity
-    const handleActivity = () => {
-      updateAdminStatus(true);
-      presenceChannel.track({ online_at: new Date().toISOString() });
-    };
-    window.addEventListener('mousemove', handleActivity);
-    window.addEventListener('keydown', handleActivity);
-    window.addEventListener('click', handleActivity);
-    
-    // Handle beforeunload - update last_seen and untrack
-    const handleBeforeUnload = async () => {
-      await presenceChannel.untrack();
+    const setupPresence = async () => {
+      const presenceChannel = supabase.channel(`admin_presence:${currentUserId}`, {
+        config: {
+          presence: { key: currentUserId }
+        }
+      });
+      
+      presenceChannelRef.current = presenceChannel;
+      
+      // Track admin presence - user will be marked as online
+      await presenceChannel.track({
+        online_at: new Date().toISOString(),
+      });
+      
+      // Update status in database
       await supabase.from('user_status').upsert({
         user_id: currentUserId,
-        is_online: false,
+        is_online: true,
         last_seen: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id' });
+      
+      presenceChannel.subscribe();
+      
+      // Update on user activity
+      const handleActivity = () => {
+        presenceChannel.track({ online_at: new Date().toISOString() });
+      };
+      
+      window.addEventListener('mousemove', handleActivity);
+      window.addEventListener('keydown', handleActivity);
+      window.addEventListener('click', handleActivity);
+      
+      return () => {
+        window.removeEventListener('mousemove', handleActivity);
+        window.removeEventListener('keydown', handleActivity);
+        window.removeEventListener('click', handleActivity);
+      };
     };
     
+    setupPresence();
+    
+    return () => {
+      if (presenceChannelRef.current) {
+        presenceChannelRef.current.untrack().then(() => {
+          supabase.from('user_status').upsert({
+            user_id: currentUserId,
+            is_online: false,
+            last_seen: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'user_id' });
+        });
+        supabase.removeChannel(presenceChannelRef.current);
+      }
+    };
+  }, [supabase, currentUserId, isAdmin]);
+
+  // Update last_seen on beforeunload
+  useEffect(() => {
+    const handleBeforeUnload = async () => {
+      if (currentUserId) {
+        if (presenceChannelRef.current) {
+          await presenceChannelRef.current.untrack();
+        }
+        await supabase.from('user_status').upsert({
+          user_id: currentUserId,
+          is_online: false,
+          last_seen: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+      }
+    };
+
     window.addEventListener('beforeunload', handleBeforeUnload);
     
     return () => {
-      window.removeEventListener('mousemove', handleActivity);
-      window.removeEventListener('keydown', handleActivity);
-      window.removeEventListener('click', handleActivity);
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      
-      // Untrack presence and update status
-      presenceChannel.untrack().then(() => {
-        updateAdminStatus(false);
-      });
-      
-      supabase.removeChannel(presenceChannel);
     };
-  }, [supabase, currentUserId, isAdmin]);
+  }, [supabase, currentUserId]);
 
   // Fetch messages when a request is selected
   useEffect(() => {
@@ -365,7 +340,6 @@ export default function UserRequestsPage() {
         const data = await response.json();
         
         if (data.messages) {
-          // Ensure messages are sorted by created_at ascending (oldest first)
           const sortedMessages = [...data.messages].sort(
             (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           );
@@ -380,7 +354,7 @@ export default function UserRequestsPage() {
     fetchMessages();
   }, [selectedRequest?.id]);
 
-  // Real-time subscription for messages (to receive user messages instantly)
+  // Real-time subscription for messages
   useEffect(() => {
     if (!selectedRequest?.id) return;
 
@@ -396,7 +370,6 @@ export default function UserRequestsPage() {
         },
         (payload) => {
           const newMessage = payload.new as RequestMessage;
-          // Avoid duplicate messages
           setMessages(prev => {
             if (prev.some(m => m.id === newMessage.id)) return prev;
             const newMessages = [...prev, newMessage];
@@ -423,37 +396,27 @@ export default function UserRequestsPage() {
     }
   }, []);
 
-  // Scroll to bottom on messages change (after they're loaded)
+  // Scroll to bottom on messages change
   useEffect(() => {
     if (!messagesLoading && messages.length > 0) {
-      // Small delay to ensure DOM is updated
       const timer = setTimeout(scrollToBottom, 100);
       return () => clearTimeout(timer);
     }
   }, [messages, messagesLoading, scrollToBottom]);
 
-  // Online status and typing subscription
+  // Subscribe to user online status and typing indicator
   useEffect(() => {
-    if (!selectedRequest?.user_id) {
-      console.log('[Admin Presence] No user_id in selectedRequest, skipping');
-      return;
-    }
+    if (!selectedRequest?.user_id) return;
     
-    console.log('[Admin Presence] Subscribing for user:', selectedRequest.user_id);
-    
-    // First, try to fetch existing status
+    // Fetch initial user status
     const fetchInitialStatus = async () => {
-      console.log('[Admin Presence] Fetching initial status for:', selectedRequest.user_id);
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('user_status')
         .select('*')
         .eq('user_id', selectedRequest.user_id)
         .maybeSingle();
       
-      if (error) {
-        console.log('[Admin Presence] Error fetching status:', error);
-      } else if (data) {
-        console.log('[Admin Presence] Initial status data:', data);
+      if (data) {
         setOnlineStatus(prev => ({
           ...prev,
           [data.user_id]: {
@@ -461,14 +424,12 @@ export default function UserRequestsPage() {
             lastSeen: data.last_seen
           }
         }));
-      } else {
-        console.log('[Admin Presence] No status found for user (they may not have visited the requests page yet)');
       }
     };
     
     fetchInitialStatus();
     
-    // Subscribe to user_status table for online status
+    // Subscribe to user_status table for online status changes
     const statusChannel = supabase
       .channel('admin_user_status')
       .on(
@@ -480,10 +441,8 @@ export default function UserRequestsPage() {
           filter: `user_id=eq.${selectedRequest.user_id}`
         },
         (payload) => {
-          console.log('[Admin Presence] Status change:', payload);
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const statusData = payload.new as { user_id: string; is_online: boolean; last_seen: string };
-            console.log('[Admin Presence] Setting status:', statusData);
             setOnlineStatus(prev => ({
               ...prev,
               [statusData.user_id]: {
@@ -496,7 +455,7 @@ export default function UserRequestsPage() {
       )
       .subscribe();
 
-    // Subscribe to typing via broadcast (faster than database)
+    // Subscribe to typing indicator via broadcast
     const typingChannel = supabase
       .channel('typing_broadcast')
       .on(
@@ -504,9 +463,7 @@ export default function UserRequestsPage() {
         { event: 'typing' },
         (payload) => {
           const { requestId, userId, isTyping } = payload.payload;
-          // Only show typing if it's for the current request and not from self (admin)
           if (requestId === selectedRequest.id && userId !== currentUserId) {
-            console.log('[Admin Presence] User typing via broadcast:', isTyping);
             setUserIsTyping(isTyping);
           }
         }
@@ -514,7 +471,6 @@ export default function UserRequestsPage() {
       .subscribe();
 
     return () => {
-      console.log('[Admin Presence] Cleaning up subscriptions');
       supabase.removeChannel(statusChannel);
       supabase.removeChannel(typingChannel);
     };
@@ -524,17 +480,12 @@ export default function UserRequestsPage() {
   const sendTypingStatus = async (isTyping: boolean) => {
     if (!selectedRequest?.id || !currentUserId) return;
     
-    console.log('[Typing] Sending:', { requestId: selectedRequest.id, userId: currentUserId, isTyping });
-    
-    // Create channel if not exists and subscribe
     if (!typingChannelRef.current) {
-      const channel = supabase.channel('typing_broadcast');
-      await channel.subscribe();
-      setTypingChannelRef(channel);
+      typingChannelRef.current = supabase.channel('typing_broadcast');
+      await typingChannelRef.current.subscribe();
     }
     
-    // Send broadcast typing event
-    typingChannelRef.current.send({
+    await typingChannelRef.current.send({
       type: 'broadcast',
       event: 'typing',
       payload: { 
@@ -549,26 +500,29 @@ export default function UserRequestsPage() {
   const handleTyping = () => {
     sendTypingStatus(true);
     
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
+    if (typingTimeoutRef) {
+      clearTimeout(typingTimeoutRef);
     }
     
-    typingTimeoutRef.current = setTimeout(() => {
+    const timeout = setTimeout(() => {
       sendTypingStatus(false);
-    }, 2000);
+    }, 1500);
+    
+    setTypingTimeoutRef(timeout);
   };
 
   // Handle sending a new message
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedRequest) return;
     
-    // Check permission - users need create permission on requests to send messages
     if (!canCreate('requests')) {
       alert('You do not have permission to send messages');
       return;
     }
     
+    sendTypingStatus(false);
     setSendingMessage(true);
+    
     try {
       const response = await fetch("/api/requests/messages", {
         method: "POST",
@@ -580,14 +534,6 @@ export default function UserRequestsPage() {
       });
       
       if (response.ok) {
-        const data = await response.json();
-        // Add new message to the list (already sorted by API)
-        setMessages(prev => {
-          const newMessages = [...prev, data.message];
-          return newMessages.sort(
-            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-          );
-        });
         setNewMessage("");
         
         // Update request status locally
@@ -603,7 +549,6 @@ export default function UserRequestsPage() {
           prev ? { ...prev, status: newStatus as Request["status"], last_message: newMessage.trim() } : null
         );
         
-        // Scroll to bottom after sending
         setTimeout(scrollToBottom, 150);
       }
     } catch (error) {
@@ -651,18 +596,15 @@ export default function UserRequestsPage() {
     }
   };
 
-  // Get display name - shows actual user info
   const getRequestDisplayName = (request: Request) => {
     if (isAdmin) {
       const userInfo = request.users || userInfoMap.get(request.user_id);
       return userInfo?.full_name || userInfo?.email || "Unknown User";
     } else {
-      // For regular users, show "Admin" or fetch admin name
       return "Admin";
     }
   };
 
-  // Get user email for admin view
   const getUserEmail = (request: Request) => {
     if (isAdmin) {
       const userInfo = request.users || userInfoMap.get(request.user_id);
@@ -688,24 +630,6 @@ export default function UserRequestsPage() {
     });
   };
 
-  // Get preview message - returns shortened latest message
-  const getPreviewMessage = (messages: { message: string; created_at: string }[]): string => {
-    if (!messages || messages.length === 0) {
-      return "No messages yet";
-    }
-    // Sort by created_at descending to get latest message first
-    const sortedMessages = [...messages].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-    const latestMessage = sortedMessages[0]?.message || "No messages yet";
-    // Shorten to max 60 characters
-    if (latestMessage.length > 60) {
-      return latestMessage.substring(0, 60) + "...";
-    }
-    return latestMessage;
-  };
-
-  // Truncate message for preview (max 60 characters)
   const truncateMessage = (message: string | undefined | null): string => {
     if (!message) return "No messages yet";
     if (message.length > 60) {
@@ -714,17 +638,14 @@ export default function UserRequestsPage() {
     return message;
   };
 
-  // Check if message is from current user
   const isCurrentUserMessage = (senderId: string): boolean => {
     return currentUserId === senderId;
   };
 
-  // Handle viewing freelancer profile
   const handleViewFreelancer = (freelancerId: string) => {
     window.open(`/freelancers/profile/${freelancerId}`, '_blank');
   };
 
-  // Format last seen time - shows exact time in HH:MM AM/PM format
   const formatLastSeen = (lastSeen: string) => {
     const date = new Date(lastSeen);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -734,12 +655,10 @@ export default function UserRequestsPage() {
   const getUserStatus = () => {
     if (!selectedRequest?.user_id) return null;
     
-    console.log('[Admin UI] Getting status for user:', selectedRequest.user_id, 'Status:', onlineStatus[selectedRequest.user_id]);
-    
     // Check if user is typing
-    if (typingStatus[selectedRequest.id]) {
+    if (userIsTyping) {
       return (
-        <span className="flex items-center gap-1 text-xs text-cyan-600 dark:text-cyan-400">
+        <span className="flex items-center gap-1 text-xs text-cyan-500 dark:text-cyan-400">
           <span className="flex gap-0.5">
             <span className="w-1.5 h-1.5 bg-cyan-500 dark:bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
             <span className="w-1.5 h-1.5 bg-cyan-500 dark:bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -751,26 +670,22 @@ export default function UserRequestsPage() {
     }
     
     const userStatus = onlineStatus[selectedRequest.user_id];
-    console.log('[Admin UI] User status object:', userStatus);
     
     if (userStatus?.online) {
       return <span className="text-xs text-green-500 dark:text-green-400">Online</span>;
     }
     
     if (userStatus?.lastSeen) {
-      return <span className="text-xs text-slate-500 dark:text-slate-400">{"last seen "+formatLastSeen(userStatus.lastSeen)}</span>;
+      return <span className="text-xs text-slate-500 dark:text-slate-400">{"last seen " + formatLastSeen(userStatus.lastSeen)}</span>;
     }
     
-    // If no status data at all, show nothing or a default message
     return <span className="text-xs text-slate-400">Offline</span>;
   };
 
-  // Get sender display name
   const getSenderDisplayName = (senderId: string, isCurrentUser: boolean) => {
     if (isCurrentUser) {
       return isAdmin ? "Admin" : "You";
     } else {
-      // Check if sender is the request owner
       if (selectedRequest && senderId === selectedRequest.user_id) {
         return isAdmin ? "User" : "You";
       } else if (isAdmin) {
@@ -786,24 +701,24 @@ export default function UserRequestsPage() {
     return (
       <>
         {/* Mobile Chat View - Full Screen */}
-        <div className={`fixed inset-0 z-50 bg-white lg:hidden ${isMobileChatOpen ? 'block' : 'hidden'}`}>
-          <div className="h-full flex flex-col bg-white rounded-t-2xl overflow-hidden">
+        <div className={`fixed inset-0 z-50 bg-white dark:bg-[#111111] lg:hidden ${isMobileChatOpen ? 'block' : 'hidden'}`}>
+          <div className="h-full flex flex-col bg-white dark:bg-[#111111] rounded-t-2xl overflow-hidden">
             {/* Mobile Chat Header */}
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-cyan-100 bg-gradient-to-l from-white via-cyan-50 to-cyan-100 rounded-t-2xl shrink-0">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-cyan-100 dark:border-cyan-900/30 bg-gradient-to-l from-white dark:from-[#111111] via-cyan-50 dark:via-cyan-950/30 to-cyan-100 dark:to-cyan-900/20 rounded-t-2xl shrink-0">
               <button 
                 onClick={handleCloseMobileChat}
-                className="p-2 -ml-2 text-slate-700 hover:text-[#249fd3] hover:bg-cyan-50 rounded-full transition-all duration-200"
+                className="p-2 -ml-2 text-slate-700 dark:text-slate-300 hover:text-[#249fd3] hover:bg-cyan-50 dark:hover:bg-cyan-950/30 rounded-full transition-all duration-200"
               >
                 <ChevronLeft className="w-6 h-6" />
               </button>
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center shrink-0 shadow-md">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center shrink-0 shadow-md shadow-cyan-500/20">
                 <User className="w-4 h-4 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <h2 className="font-semibold text-base truncate text-slate-900">
+                <h2 className="font-semibold text-base truncate text-slate-900 dark:text-white">
                   {getRequestDisplayName(selectedRequest)}
                 </h2>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   {isAdmin && selectedRequest.user_id ? getUserStatus() : formatDate(selectedRequest.created_at)}
                 </p>
               </div>
@@ -813,16 +728,16 @@ export default function UserRequestsPage() {
             {/* Mobile Chat Messages */}
             <div 
               ref={chatContainerRef}
-              className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 p-3 sm:p-4 pb-24 bg-white"
+              className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 p-3 sm:p-4 pb-24 bg-white dark:bg-[#111111]"
             >
-              {/* Subject - inside scroll container */}
+              {/* Subject */}
               {selectedRequest.title && (
-                <div className="p-3 bg-cyan-50 rounded-xl border border-cyan-100 shrink-0">
-                  <p className="font-medium text-sm text-slate-800">{selectedRequest.title}</p>
+                <div className="p-3 bg-cyan-50 dark:bg-cyan-950/30 rounded-xl border border-cyan-100 dark:border-cyan-900/30 shrink-0">
+                  <p className="font-medium text-sm text-slate-800 dark:text-slate-200">{selectedRequest.title}</p>
                 </div>
               )}
               
-              {/* Freelancer Mini Card - inside scroll container */}
+              {/* Freelancer Mini Card */}
               {selectedRequest.freelancer_data && (
                 <div className="shrink-0">
                   <FreelancerMiniCard 
@@ -841,14 +756,13 @@ export default function UserRequestsPage() {
               )}
               
               {/* Messages */}
-              
               {messagesLoading ? (
                 <div className="flex items-center justify-center h-full">
                   <Loader2 className="w-6 h-6 animate-spin text-cyan-500" />
                 </div>
               ) : messages.length === 0 ? (
-                <div className="text-center py-8 text-slate-500">
-                  <MessageSquare className="w-8 h-8 mx-auto mb-2 text-cyan-300" />
+                <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                  <MessageSquare className="w-8 h-8 mx-auto mb-2 text-cyan-300 dark:text-cyan-600" />
                   <p>No messages yet. Start the conversation!</p>
                 </div>
               ) : (
@@ -872,23 +786,23 @@ export default function UserRequestsPage() {
                           </div>
                         )}
                         
-                        {/* Message bubble - Modern chat style */}
+                        {/* Message bubble */}
                         <div 
                           className={`max-w-[70%] sm:max-w-[70%] rounded-2xl px-3 py-2 sm:px-4 sm:py-3 transition-all duration-200 ${
                             isUserMsg
                               ? "bg-gradient-to-br from-[#249fd3] to-cyan-500 text-white rounded-br-sm shadow-md shadow-cyan-500/20"
-                              : "bg-cyan-50 text-slate-800 rounded-bl-sm border border-cyan-100"
+                              : "bg-cyan-50 dark:bg-cyan-950/30 text-slate-800 dark:text-slate-200 rounded-bl-sm border border-cyan-100 dark:border-cyan-900/30"
                           }`}
                         >
                           <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{msg.message}</p>
-                          <div className={`text-right mt-1 ${isUserMsg ? 'text-white/70' : 'text-slate-400'}`}>
+                          <div className={`text-right mt-1 ${isUserMsg ? 'text-white/70' : 'text-slate-400 dark:text-slate-500'}`}>
                             <span className="text-xs">
                               {formatMessageTime(msg.created_at)}
                             </span>
                           </div>
                         </div>
                         
-                        {/* Spacer for sender to balance layout */}
+                        {/* Spacer */}
                         {isUserMsg && <div className="w-10 shrink-0" />}
                       </motion.div>
                     );
@@ -905,7 +819,7 @@ export default function UserRequestsPage() {
             </div>
 
             {/* Mobile Message Input */}
-            <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4 bg-white border-t border-cyan-100 shadow-lg shadow-slate-100">
+            <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4 bg-white dark:bg-[#111111] border-t border-cyan-100 dark:border-cyan-900/30 shadow-lg shadow-slate-100 dark:shadow-none">
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -916,7 +830,7 @@ export default function UserRequestsPage() {
                   }}
                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
                   placeholder="Type a message..."
-                  className="flex-1 px-4 py-2.5 sm:py-3 text-sm rounded-2xl border border-cyan-200 bg-cyan-50/50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#249fd3] focus:border-transparent transition-all duration-200"
+                  className="flex-1 px-4 py-2.5 sm:py-3 text-sm rounded-2xl border border-cyan-200 dark:border-cyan-800 bg-cyan-50/50 dark:bg-cyan-950/30 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#249fd3] focus:border-transparent transition-all duration-200"
                   disabled={sendingMessage}
                 />
                 <Button 
@@ -936,12 +850,12 @@ export default function UserRequestsPage() {
         </div>
 
         {/* Desktop Chat View */}
-        <div className="hidden lg:flex max-w-4xl mx-auto h-[calc(100vh-200px)] flex-col bg-white rounded-2xl border border-cyan-100 shadow-xl shadow-slate-200/50 overflow-hidden r1-w">
-          {/* Chat Header - Unified with rounded top */}
-          <div className="flex items-center gap-4 px-6 py-4 border-b border-cyan-100 bg-gradient-to-l from-white via-cyan-50 to-cyan-100 rounded-t-2xl shrink-0">
+        <div className="hidden lg:flex max-w-4xl mx-auto h-[calc(100vh-200px)] flex-col bg-white dark:bg-[#111111] rounded-2xl border border-cyan-100 dark:border-cyan-900/30 shadow-xl shadow-slate-200/50 dark:shadow-none overflow-hidden r1-w">
+          {/* Chat Header */}
+          <div className="flex items-center gap-4 px-6 py-4 border-b border-cyan-100 dark:border-cyan-900/30 bg-gradient-to-l from-white dark:from-[#111111] via-cyan-50 dark:via-cyan-950/30 to-cyan-100 dark:to-cyan-900/20 rounded-t-2xl shrink-0">
             <button 
               onClick={() => setSelectedRequest(null)}
-              className="p-2 -ml-2 text-slate-700 hover:text-[#249fd3] hover:bg-cyan-50 rounded-full transition-all duration-200"
+              className="p-2 -ml-2 text-slate-700 dark:text-slate-300 hover:text-[#249fd3] hover:bg-cyan-50 dark:hover:bg-cyan-950/30 rounded-full transition-all duration-200"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
@@ -949,10 +863,10 @@ export default function UserRequestsPage() {
               <User className="w-5 h-5 text-white" />
             </div>
             <div className="flex-1">
-              <h2 className="font-semibold text-slate-900">
+              <h2 className="font-semibold text-slate-900 dark:text-white">
                 {getRequestDisplayName(selectedRequest)}
               </h2>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
                 {isAdmin && selectedRequest.user_id ? getUserStatus() : formatDate(selectedRequest.created_at)}
               </p>
             </div>
@@ -962,16 +876,16 @@ export default function UserRequestsPage() {
           {/* Messages Container */}
           <div 
             ref={chatContainerRef}
-            className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 px-6 py-4 bg-white"
+            className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 px-6 py-4 bg-white dark:bg-[#111111]"
           >
-            {/* Subject - now inside scroll container */}
+            {/* Subject */}
             {selectedRequest.title && (
-              <div className="p-4 bg-cyan-50 rounded-xl border border-cyan-100 shrink-0">
-                <p className="font-medium text-slate-800">{selectedRequest.title}</p>
+              <div className="p-4 bg-cyan-50 dark:bg-cyan-950/30 rounded-xl border border-cyan-100 dark:border-cyan-900/30 shrink-0">
+                <p className="font-medium text-slate-800 dark:text-slate-200">{selectedRequest.title}</p>
               </div>
             )}
 
-            {/* Freelancer Mini Card - now inside scroll container */}
+            {/* Freelancer Mini Card */}
             {selectedRequest.freelancer_data && (
               <div className="shrink-0">
                 <FreelancerMiniCard 
@@ -994,8 +908,8 @@ export default function UserRequestsPage() {
                 <Loader2 className="w-6 h-6 animate-spin text-cyan-500" />
               </div>
             ) : messages.length === 0 ? (
-              <div className="text-center py-8 text-slate-500">
-                <MessageSquare className="w-8 h-8 mx-auto mb-2 text-cyan-300" />
+              <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                <MessageSquare className="w-8 h-8 mx-auto mb-2 text-cyan-300 dark:text-cyan-600" />
                 <p>No messages yet. Start the conversation!</p>
               </div>
             ) : (
@@ -1019,28 +933,27 @@ export default function UserRequestsPage() {
                         </div>
                       )}
                       
-                      {/* Message bubble - Modern chat style */}
+                      {/* Message bubble */}
                       <div 
                         className={`max-w-[70%] rounded-2xl px-4 py-3 transition-all duration-200 ${
                           isUserMsg
                             ? "bg-gradient-to-br from-[#249fd3] to-cyan-500 text-white rounded-br-sm shadow-lg shadow-cyan-500/20"
-                            : "bg-cyan-50 text-slate-800 rounded-bl-sm border border-cyan-100"
+                            : "bg-cyan-50 dark:bg-cyan-950/30 text-slate-800 dark:text-slate-200 rounded-bl-sm border border-cyan-100 dark:border-cyan-900/30"
                         }`}
                       >
                         <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{msg.message}</p>
-                        <div className={`text-right mt-1 ${isUserMsg ? 'text-white/70' : 'text-slate-400'}`}>
+                        <div className={`text-right mt-1 ${isUserMsg ? 'text-white/70' : 'text-slate-400 dark:text-slate-500'}`}>
                           <span className="text-xs">
                             {formatMessageTime(msg.created_at)}
                           </span>
                         </div>
                       </div>
                       
-                      {/* Spacer for sender to balance layout */}
+                      {/* Spacer */}
                       {isUserMsg && <div className="w-11 shrink-0" />}
                     </motion.div>
                   );
                 })}
-                {/* Invisible element to auto-scroll to */}
                 <div ref={(el) => {
                   if (el && !messagesLoading && messages.length > 0) {
                     setTimeout(() => {
@@ -1053,7 +966,7 @@ export default function UserRequestsPage() {
           </div>
 
           {/* Message Input */}
-          <div className="flex gap-3 px-6 py-4 border-t border-cyan-100 bg-gradient-to-r from-white to-cyan-50">
+          <div className="flex gap-3 px-6 py-4 border-t border-cyan-100 dark:border-cyan-900/30 bg-gradient-to-r from-white dark:from-[#111111] to-cyan-50 dark:to-cyan-950/20">
             <input
               type="text"
               value={newMessage}
@@ -1063,7 +976,7 @@ export default function UserRequestsPage() {
               }}
               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
               placeholder="Type a message..."
-              className="flex-1 px-5 py-3 text-sm rounded-2xl border border-cyan-200 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#249fd3] focus:border-transparent transition-all duration-200"
+              className="flex-1 px-5 py-3 text-sm rounded-2xl border border-cyan-200 dark:border-cyan-800 bg-white dark:bg-[#1a1a1a] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#249fd3] focus:border-transparent transition-all duration-200"
               disabled={sendingMessage}
             />
             <Button 
@@ -1087,7 +1000,7 @@ export default function UserRequestsPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">{isAdmin ? "All Requests" : "My Requests"}</h1>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{isAdmin ? "All Requests" : "My Requests"}</h1>
         <p className="text-muted-foreground">
           {isAdmin 
             ? "Manage user requests and communications" 
@@ -1099,14 +1012,14 @@ export default function UserRequestsPage() {
       {loading ? (
         <div className="flex flex-col gap-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-32 bg-gray-100 rounded-2xl animate-pulse" />
+            <div key={i} className="h-32 bg-gray-100 dark:bg-gray-800 rounded-2xl animate-pulse" />
           ))}
         </div>
       ) : requests.length === 0 ? (
         <div className="text-center py-12">
-          <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold mb-2 text-gray-900">{isAdmin ? "No requests yet" : "No requests yet"}</h3>
-          <p className="text-gray-500 mb-4">
+          <MessageSquare className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">{isAdmin ? "No requests yet" : "No requests yet"}</h3>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">
             {isAdmin 
               ? "User requests will appear here" 
               : "Contact Milit Company to start a conversation"
@@ -1123,30 +1036,29 @@ export default function UserRequestsPage() {
       ) : (
         <div className="flex flex-col gap-4">
           {requests.map((request, index) => {
-            const freelancer = request.freelancer_id ? freelancerInfoMap.get(request.freelancer_id) : null;
             return (
             <ScrollReveal key={request.id} delay={index * 0.1}>
               <motion.div
                 whileHover={{ y: -2 }}
-                className="bg-white rounded-2xl border border-gray-200 p-4 md:p-6 cursor-pointer shadow-sm hover:shadow-md transition-all duration-200"
+                className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-200 dark:border-gray-800 p-4 md:p-6 cursor-pointer shadow-sm hover:shadow-md transition-all duration-200"
               >
                 {/* Header */}
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3 sm:gap-4">
-                    <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-                      <User className="w-5 sm:w-6 h-5 sm:h-6 text-gray-600" />
+                    <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center shrink-0">
+                      <User className="w-5 sm:w-6 h-5 sm:h-6 text-gray-600 dark:text-gray-400" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm sm:text-base truncate text-gray-900">
+                      <p className="font-semibold text-sm sm:text-base truncate text-gray-900 dark:text-white">
                         {getRequestDisplayName(request)}
                       </p>
                       {isAdmin && getUserEmail(request) && (
-                        <p className="text-xs sm:text-sm text-gray-500 flex items-center gap-1 truncate">
+                        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1 truncate">
                           <Mail className="w-3 h-3 shrink-0" />
                           {getUserEmail(request)}
                         </p>
                       )}
-                      <p className="text-xs sm:text-sm text-gray-500">
+                      <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
                         {formatDate(request.created_at)}
                       </p>
                     </div>
@@ -1159,13 +1071,13 @@ export default function UserRequestsPage() {
                 {/* Subject */}
                 {request.title && (
                   <div className="mb-4">
-                    <p className="text-lg font-semibold text-gray-900">{request.title}</p>
+                    <p className="text-lg font-semibold text-gray-900 dark:text-white">{request.title}</p>
                   </div>
                 )}
                 
                 {/* Freelancer Mini Card */}
                 {request.freelancer_data && (
-                  <div className="mb-4 bg-gray-50 border border-gray-200 rounded-xl p-4">
+                  <div className="mb-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
                     <FreelancerMiniCard 
                       freelancer={request.freelancer_data}
                       fallbackDomain={request.freelancer_domain}
@@ -1183,24 +1095,24 @@ export default function UserRequestsPage() {
                 
                 {/* Last message preview */}
                 {request.last_message && (
-                  <div className="bg-gray-50 rounded-xl p-3 mb-4">
-                    <p className="text-sm text-gray-700 line-clamp-2">
+                  <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 mb-4">
+                    <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
                       {truncateMessage(request.last_message)}
                     </p>
                   </div>
                 )}
                 
-                <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-2">
                     {getStatusIcon(request.status)}
-                    <span className="text-xs sm:text-sm text-gray-500 whitespace-nowrap">
+                    <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       {request.status === "pending" && "Waiting for response"}
                       {request.status === "received" && "Received response"}
                       {request.status === "answered" && "Answered"}
                     </span>
                   </div>
                   {canCreate('requests') && (
-                    <Button variant="ghost" size="sm" className="shrink-0 text-gray-600 hover:text-gray-900 hover:bg-gray-100" onClick={() => handleSelectRequest(request)}>
+                    <Button variant="ghost" size="sm" className="shrink-0 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => handleSelectRequest(request)}>
                       Open Chat →
                     </Button>
                   )}
@@ -1212,5 +1124,4 @@ export default function UserRequestsPage() {
       )}
     </div>
   );
-
 }
