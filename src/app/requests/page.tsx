@@ -84,6 +84,9 @@ export default function UserRequestsPage() {
   // scrollIntoView on this element is the single scroll mechanism for messages + typing.
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Tracks whether we have already broadcast isTyping=true this session.
+  // Prevents sending the same "started typing" event on every keystroke.
+  const isTypingRef = useRef<boolean>(false);
   // useRef (not useState) so sendTypingStatus always has the latest channel synchronously
   const typingChannelRef = useRef<any>(null);
   const supabase = createClient();
@@ -349,6 +352,7 @@ export default function UserRequestsPage() {
 
     return () => {
       typingChannelRef.current = null;
+      isTypingRef.current = false;
       supabase.removeChannel(ch);
       // Make sure the indicator is cleared when leaving the conversation
       setAdminIsTyping(false);
@@ -358,7 +362,6 @@ export default function UserRequestsPage() {
   // Send typing status — uses the already-subscribed channel stored in the ref
   const sendTypingStatus = (isTyping: boolean) => {
     if (!selectedRequest?.id || !currentUserId || !typingChannelRef.current) return;
-
     typingChannelRef.current.send({
       type: 'broadcast',
       event: 'typing',
@@ -366,11 +369,23 @@ export default function UserRequestsPage() {
     });
   };
 
-  // Handle typing input
+  // ── DEBOUNCE FIX ──
+  // Only broadcast isTyping=true ONCE when the user starts typing (not on every keystroke).
+  // Only broadcast isTyping=false after 2 s of inactivity.
+  // This prevents rapid true/false toggles that cause the indicator to flicker.
   const handleTyping = () => {
-    sendTypingStatus(true);
+    // Send "started typing" only on the first keystroke of a typing burst
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      sendTypingStatus(true);
+    }
+
+    // Reset the inactivity timer on every keystroke
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => sendTypingStatus(false), 1500);
+    typingTimeoutRef.current = setTimeout(() => {
+      isTypingRef.current = false;
+      sendTypingStatus(false);
+    }, 2000);
   };
 
   // Fetch messages when a request is selected
@@ -412,7 +427,8 @@ export default function UserRequestsPage() {
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedRequest) return;
     sendTypingStatus(false);
-    setSendingMessage(true);
+    isTypingRef.current = false;
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     try {
       const response = await fetch("/api/requests/messages", {
         method: "POST",
@@ -692,7 +708,7 @@ export default function UserRequestsPage() {
           {/* Messages Container */}
           <div 
             ref={chatContainerRef}
-            className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 px-6 py-4 pb-6 bg-white dark:bg-[#111111]"
+            className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 px-6 py-4 pb-20 bg-white dark:bg-[#111111]"
           >
             {/* Subject */}
             {selectedRequest.title && (

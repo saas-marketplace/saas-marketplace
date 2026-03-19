@@ -136,6 +136,9 @@ export default function AdminRequestsPage() {
   // scrollIntoView on this element is the single scroll mechanism for messages + typing.
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Tracks whether we have already broadcast isTyping=true this session.
+  // Prevents sending the same "started typing" event on every keystroke.
+  const isTypingRef = useRef<boolean>(false);
   // ── FIX: useRef (not useState) so sendTypingStatus always has the latest channel synchronously
   const typingChannelRef = useRef<any>(null);
 
@@ -410,6 +413,7 @@ export default function AdminRequestsPage() {
 
     return () => {
       typingChannelRef.current = null;
+      isTypingRef.current = false;
       supabase.removeChannel(ch);
       setUserIsTyping(false);
     };
@@ -480,7 +484,6 @@ export default function AdminRequestsPage() {
   // Send typing status — uses the already-subscribed channel stored in the ref
   const sendTypingStatus = (isTyping: boolean) => {
     if (!selectedRequest?.id || !currentUserId || !typingChannelRef.current) return;
-
     typingChannelRef.current.send({
       type: 'broadcast',
       event: 'typing',
@@ -488,10 +491,23 @@ export default function AdminRequestsPage() {
     });
   };
 
+  // ── DEBOUNCE FIX ──
+  // Only broadcast isTyping=true ONCE when the user starts typing (not on every keystroke).
+  // Only broadcast isTyping=false after 2 s of inactivity.
+  // This prevents rapid true/false toggles that cause the indicator to flicker.
   const handleTyping = () => {
-    sendTypingStatus(true);
+    // Send "started typing" only on the first keystroke of a typing burst
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      sendTypingStatus(true);
+    }
+
+    // Reset the inactivity timer on every keystroke
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => sendTypingStatus(false), 1500);
+    typingTimeoutRef.current = setTimeout(() => {
+      isTypingRef.current = false;
+      sendTypingStatus(false);
+    }, 2000);
   };
 
   const handleSendMessage = async () => {
@@ -504,6 +520,8 @@ export default function AdminRequestsPage() {
 
     // Stop typing indicator
     sendTypingStatus(false);
+    isTypingRef.current = false;
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
     setSendingMessage(true);
     try {
@@ -831,7 +849,7 @@ export default function AdminRequestsPage() {
           {/* Messages Container */}
           <div 
             ref={chatContainerRef}
-            className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 px-6 py-4 bg-white"
+            className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 px-6 py-4 pb-20 bg-white"
           >
             {/* Subject */}
             {selectedRequest.title && (
