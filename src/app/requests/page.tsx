@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { 
   MessageSquare, 
@@ -80,6 +80,9 @@ export default function UserRequestsPage() {
   const [adminUserId, setAdminUserId] = useState<string | null>(null);
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  // Anchor element always rendered as the last child of the scroll container.
+  // scrollIntoView on this element is the single scroll mechanism for messages + typing.
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // useRef (not useState) so sendTypingStatus always has the latest channel synchronously
   const typingChannelRef = useRef<any>(null);
@@ -393,29 +396,18 @@ export default function UserRequestsPage() {
     fetchMessages();
   }, [selectedRequest?.id]);
 
-  // Auto-scroll to bottom when messages change
-  const scrollToBottom = useCallback(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTo({
-        top: chatContainerRef.current.scrollHeight,
-        behavior: "smooth",
-      });
-    }
-  }, []);
-
+  // ── SCROLL FIX ──
+  // Single source of truth for auto-scroll. Runs whenever messages arrive OR the
+  // typing indicator appears/disappears. Targets messagesEndRef — a zero-height div
+  // rendered as the absolute last child of the scroll container, placed after the
+  // TypingBubble — so it is always in the DOM and always below the bubble.
   useEffect(() => {
-    if (!messagesLoading && messages.length > 0) {
-      const timer = setTimeout(scrollToBottom, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [messages, messagesLoading, scrollToBottom]);
-
-  // Scroll to bottom when typing indicator appears/disappears
-  useEffect(() => {
-    if (adminIsTyping) {
-      setTimeout(scrollToBottom, 50);
-    }
-  }, [adminIsTyping, scrollToBottom]);
+    if (messagesLoading) return;
+    const timer = setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [messages, adminIsTyping, messagesLoading]);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedRequest) return;
@@ -444,14 +436,14 @@ export default function UserRequestsPage() {
         setSelectedRequest(prev =>
           prev ? { ...prev, status: newStatus as Request["status"], last_message: newMessage.trim() } : null
         );
-        setTimeout(scrollToBottom, 150);
-      }
-    } catch (error) {
-      console.error("Error sending message:", error);
-    } finally {
-      setSendingMessage(false);
-    }
-  };
+        // Scroll is handled by the unified useEffect on [messages, adminIsTyping]
+        // which fires when the realtime subscription delivers the new message.}
+    } 
+  } catch (error) {
+    console.error("Error sending message:", error);
+  } finally {
+    setSendingMessage(false);
+  }
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -640,16 +632,13 @@ export default function UserRequestsPage() {
                       </motion.div>
                     );
                   })}
-                  <div ref={(el) => {
-                    if (el && !messagesLoading && messages.length > 0) {
-                      setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "end" }), 100);
-                    }
-                  }} />
                 </div>
               )}
 
               {/* ── TYPING INDICATOR BUBBLE (mobile) ── */}
               {adminIsTyping && <TypingBubble mobile />}
+              {/* ── SCROLL ANCHOR: always the last DOM node in this container ── */}
+              <div ref={messagesEndRef} />
             </div>
 
             {/* Mobile Message Input */}
@@ -768,17 +757,13 @@ export default function UserRequestsPage() {
                     </motion.div>
                   );
                 })}
-                {/* Scroll anchor */}
-                <div ref={(el) => {
-                  if (el && !messagesLoading && messages.length > 0) {
-                    setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "end" }), 100);
-                  }
-                }} />
               </>
             )}
 
             {/* ── TYPING INDICATOR BUBBLE (desktop) ── */}
             {adminIsTyping && <TypingBubble />}
+            {/* ── SCROLL ANCHOR: always the last DOM node in this container ── */}
+            <div ref={messagesEndRef} />
           </div>
 
           {/* Message Input */}
@@ -906,4 +891,5 @@ export default function UserRequestsPage() {
       )}
     </div>
   );
-}
+};
+};  
