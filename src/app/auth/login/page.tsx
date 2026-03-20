@@ -131,7 +131,12 @@ export default function LoginPage() {
       if (redirectPath !== "/dashboard") {
           router.push(redirectPath);
           router.refresh();
-        } else {
+        } 
+        else if (redirectPath === "/") {
+          router.push("/");
+          router.refresh();
+        }
+        else {
           toast({ title: "Login successful", description: "Welcome back!" });
           router.push("/dashboard");
         }
