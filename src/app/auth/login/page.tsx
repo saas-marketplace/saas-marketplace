@@ -16,8 +16,8 @@ type UserRole = "super_admin" | "admin" | "user" | null;
 // Function to fetch user role and access status from database
 // Fetches from users table for role and team_members for team member status
 // Uses fresh data from DB to avoid caching issues
-async function getUserStatus(supabase: ReturnType<typeof createClient>, userId: string): Promise<{ isAdmin: boolean; isTeamMember: boolean; isRemoved: boolean; needsAccessRestored: boolean }> {
-  // Fetch role from users table
+async function getUserStatus(supabase: ReturnType<typeof createClient>, userId: string): Promise<{ role: UserRole; isTeamMember: boolean; needsAccessRestored: boolean }> {
+  // Fetch role from users table - always get fresh data from DB
   const { data: userData, error: userError } = await supabase
     .from("users")
     .select("role")
@@ -26,17 +26,27 @@ async function getUserStatus(supabase: ReturnType<typeof createClient>, userId: 
 
   if (userError) {
     console.error("Error fetching user role:", userError);
-    return { isAdmin: false, isTeamMember: false, isRemoved: true, needsAccessRestored: false };
+    return { role: null, isTeamMember: false, needsAccessRestored: false };
   }
 
   const userRole = userData?.role as UserRole;
 
-  // Check if user is admin or super_admin
-  if (userRole === "super_admin" || userRole === "admin") {
-    return { isAdmin: true, isTeamMember: false, isRemoved: false, needsAccessRestored: false };
+  // If role is null, user was explicitly removed - show access removed screen
+  if (userRole === null || userRole === undefined) {
+    return { role: null, isTeamMember: false, needsAccessRestored: false };
   }
 
-  // Check if user exists in team_members table
+  // If role is "user" (normal user), redirect to homepage
+  if (userRole === "user") {
+    return { role: "user", isTeamMember: false, needsAccessRestored: false };
+  }
+
+  // If role is admin or super_admin, go to dashboard
+  if (userRole === "super_admin" || userRole === "admin") {
+    return { role: userRole, isTeamMember: false, needsAccessRestored: false };
+  }
+
+  // For any other cases, check team_members table
   const { data: teamMember, error: tmError } = await supabase
     .from("team_members")
     .select("needs_access_restored, is_active")
@@ -47,42 +57,42 @@ async function getUserStatus(supabase: ReturnType<typeof createClient>, userId: 
     console.error("Error fetching team member:", tmError);
   }
 
-  // If no team member record, user is a removed team member
-  if (!teamMember) {
-    return { isAdmin: false, isTeamMember: false, isRemoved: true, needsAccessRestored: false };
-  }
-
   // If team member exists and is active, check if they need access restored
-  const isTeamMember = teamMember.is_active === true;
-  const needsAccessRestored = teamMember.needs_access_restored === true && teamMember.is_active === true;
+  const isTeamMember = teamMember?.is_active === true;
+  const needsAccessRestored = teamMember?.needs_access_restored === true && teamMember?.is_active === true;
 
-  return { isAdmin: false, isTeamMember, isRemoved: false, needsAccessRestored };
+  return { role: userRole, isTeamMember, needsAccessRestored };
 }
 
 // Function to determine redirect path based on role
 // Also checks if user needs to verify access
-function getRedirectPath(isAdmin: boolean, isTeamMember: boolean, isRemoved: boolean, needsAccessRestored: boolean, returnUrl?: string | null): string {
+function getRedirectPath(role: UserRole, isTeamMember: boolean, needsAccessRestored: boolean, returnUrl?: string | null): string {
   // If user needs to verify access (reactivated team member), redirect there first
   if (needsAccessRestored) {
     return "/verify-access";
   }
 
-  // If there's a return URL, respect it for all users (except removed users)
-  if (returnUrl && returnUrl !== "/auth/login" && returnUrl !== "/auth/signup" && !isRemoved) {
-    return returnUrl;
-  }
-
-  // Removed team members go to verify-access (shows removed alert)
-  if (isRemoved) {
+  // If role is null, user was explicitly removed - show access removed screen
+  if (role === null) {
     return "/verify-access";
   }
 
-  // Admin or team member goes to dashboard
-  if (isAdmin || isTeamMember) {
+  // If there's a return URL, respect it for all users
+  if (returnUrl && returnUrl !== "/auth/login" && returnUrl !== "/auth/signup") {
+    return returnUrl;
+  }
+
+  // Admin or super_admin goes to dashboard
+  if (role === "super_admin" || role === "admin") {
     return "/dashboard";
   }
 
-  // Regular users go to home page
+  // Team member goes to dashboard
+  if (isTeamMember) {
+    return "/dashboard";
+  }
+
+  // Role "user" (normal user) goes to home page
   return "/";
 }
 
@@ -112,12 +122,12 @@ export default function LoginPage() {
 
     // Login successful - fetch user role and access status from DB (no caching)
     if (data?.user) {
-      const { isAdmin, isTeamMember, isRemoved, needsAccessRestored } = await getUserStatus(supabase, data.user.id);
+      const { role, isTeamMember, needsAccessRestored } = await getUserStatus(supabase, data.user.id);
       
       // Get returnUrl from URL search params (set by middleware when redirecting to login)
       const returnUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("returnUrl") : null;
       
-      const redirectPath = getRedirectPath(isAdmin, isTeamMember, isRemoved, needsAccessRestored, returnUrl);
+      const redirectPath = getRedirectPath(role, isTeamMember, needsAccessRestored, returnUrl);
       if (redirectPath !== "/dashboard") {
           router.push(redirectPath);
           router.refresh();

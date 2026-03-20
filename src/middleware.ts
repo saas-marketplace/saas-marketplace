@@ -91,12 +91,29 @@ export async function middleware(request: NextRequest) {
     .eq("user_id", user.id)
     .maybeSingle();
 
-  // If no team member record, user is a removed team member - redirect to verify-access
-  // This shows the removed access alert
-  if (!teamMember) {
-    // Redirect to verify-access to show removed access alert
+  // Check user's role in users table
+  // null = explicitly removed, "user" = normal user, "admin"/"super_admin" = admin
+  if (userRole === null || userRole === undefined) {
+    // User was explicitly removed - show access removed screen
     if (!pathname.startsWith("/verify-access")) {
       return redirectTo("/verify-access");
+    }
+    return response;
+  }
+
+  // If role is "user" (normal user), they can only access public pages
+  if (userRole === "user") {
+    // Redirect to home if trying to access protected routes
+    if (pathname.startsWith("/dashboard") || pathname.startsWith("/requests")) {
+      return redirectTo("/");
+    }
+    return response;
+  }
+
+  // If no team member record and not admin, treat as regular user
+  if (!teamMember) {
+    if (pathname.startsWith("/dashboard") || pathname.startsWith("/requests")) {
+      return redirectTo("/");
     }
     return response;
   }
