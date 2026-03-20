@@ -118,13 +118,13 @@ export default function LoginPage() {
       const returnUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("returnUrl") : null;
       
       const redirectPath = getRedirectPath(isAdmin, isTeamMember, isRemoved, needsAccessRestored, returnUrl);
-      
-      toast({ title: "Login successful", description: `Welcome back! Redirecting...` });
-      router.push(redirectPath);
-      router.refresh();
-    } else {
-      toast({ title: "Login successful", description: "Welcome back!" });
-      router.push("/dashboard");
+      if (redirectPath !== "/dashboard") {
+          router.push(redirectPath);
+          router.refresh();
+        } else {
+          toast({ title: "Login successful", description: "Welcome back!" });
+          router.push("/dashboard");
+        }
     }
 
     setLoading(false);
@@ -212,3 +212,4 @@ export default function LoginPage() {
     </div>
   );
 }
+
