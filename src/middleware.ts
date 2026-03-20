@@ -91,10 +91,12 @@ export async function middleware(request: NextRequest) {
     .eq("user_id", user.id)
     .maybeSingle();
 
-  // If no team member record, user is a regular user - redirect to home
+  // If no team member record, user is a removed team member - redirect to verify-access
+  // This shows the removed access alert
   if (!teamMember) {
-    if (pathname.startsWith("/dashboard") || pathname.startsWith("/requests")) {
-      return redirectTo("/");
+    // Redirect to verify-access to show removed access alert
+    if (!pathname.startsWith("/verify-access")) {
+      return redirectTo("/verify-access");
     }
     return response;
   }

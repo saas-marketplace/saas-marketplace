@@ -16,7 +16,7 @@ type UserRole = "super_admin" | "admin" | "user" | null;
 // Function to fetch user role and access status from database
 // Fetches from users table for role and team_members for team member status
 // Uses fresh data from DB to avoid caching issues
-async function getUserStatus(supabase: ReturnType<typeof createClient>, userId: string): Promise<{ isAdmin: boolean; isTeamMember: boolean; needsAccessRestored: boolean }> {
+async function getUserStatus(supabase: ReturnType<typeof createClient>, userId: string): Promise<{ isAdmin: boolean; isTeamMember: boolean; isRemoved: boolean; needsAccessRestored: boolean }> {
   // Fetch role from users table
   const { data: userData, error: userError } = await supabase
     .from("users")
@@ -26,14 +26,14 @@ async function getUserStatus(supabase: ReturnType<typeof createClient>, userId: 
 
   if (userError) {
     console.error("Error fetching user role:", userError);
-    return { isAdmin: false, isTeamMember: false, needsAccessRestored: false };
+    return { isAdmin: false, isTeamMember: false, isRemoved: true, needsAccessRestored: false };
   }
 
   const userRole = userData?.role as UserRole;
 
   // Check if user is admin or super_admin
   if (userRole === "super_admin" || userRole === "admin") {
-    return { isAdmin: true, isTeamMember: false, needsAccessRestored: false };
+    return { isAdmin: true, isTeamMember: false, isRemoved: false, needsAccessRestored: false };
   }
 
   // Check if user exists in team_members table
@@ -47,29 +47,34 @@ async function getUserStatus(supabase: ReturnType<typeof createClient>, userId: 
     console.error("Error fetching team member:", tmError);
   }
 
-  // If no team member record, user is a regular user
+  // If no team member record, user is a removed team member
   if (!teamMember) {
-    return { isAdmin: false, isTeamMember: false, needsAccessRestored: false };
+    return { isAdmin: false, isTeamMember: false, isRemoved: true, needsAccessRestored: false };
   }
 
   // If team member exists and is active, check if they need access restored
   const isTeamMember = teamMember.is_active === true;
   const needsAccessRestored = teamMember.needs_access_restored === true && teamMember.is_active === true;
 
-  return { isAdmin: false, isTeamMember, needsAccessRestored };
+  return { isAdmin: false, isTeamMember, isRemoved: false, needsAccessRestored };
 }
 
 // Function to determine redirect path based on role
 // Also checks if user needs to verify access
-function getRedirectPath(isAdmin: boolean, isTeamMember: boolean, needsAccessRestored: boolean, returnUrl?: string | null): string {
+function getRedirectPath(isAdmin: boolean, isTeamMember: boolean, isRemoved: boolean, needsAccessRestored: boolean, returnUrl?: string | null): string {
   // If user needs to verify access (reactivated team member), redirect there first
   if (needsAccessRestored) {
     return "/verify-access";
   }
 
-  // If there's a return URL, respect it for all users
-  if (returnUrl && returnUrl !== "/auth/login" && returnUrl !== "/auth/signup") {
+  // If there's a return URL, respect it for all users (except removed users)
+  if (returnUrl && returnUrl !== "/auth/login" && returnUrl !== "/auth/signup" && !isRemoved) {
     return returnUrl;
+  }
+
+  // Removed team members go to verify-access (shows removed alert)
+  if (isRemoved) {
+    return "/verify-access";
   }
 
   // Admin or team member goes to dashboard
@@ -107,12 +112,12 @@ export default function LoginPage() {
 
     // Login successful - fetch user role and access status from DB (no caching)
     if (data?.user) {
-      const { isAdmin, isTeamMember, needsAccessRestored } = await getUserStatus(supabase, data.user.id);
+      const { isAdmin, isTeamMember, isRemoved, needsAccessRestored } = await getUserStatus(supabase, data.user.id);
       
       // Get returnUrl from URL search params (set by middleware when redirecting to login)
       const returnUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("returnUrl") : null;
       
-      const redirectPath = getRedirectPath(isAdmin, isTeamMember, needsAccessRestored, returnUrl);
+      const redirectPath = getRedirectPath(isAdmin, isTeamMember, isRemoved, needsAccessRestored, returnUrl);
       
       toast({ title: "Login successful", description: `Welcome back! Redirecting...` });
       router.push(redirectPath);
