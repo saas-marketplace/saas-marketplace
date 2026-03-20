@@ -10,34 +10,75 @@ import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 
-// Role type matching database schema
-type UserRole = "user" | "admin" ;
+// Role type matching database schema - roles stored in users table
+type UserRole = "super_admin" | "admin" | "user" | null;
 
-// Function to fetch user role from database
-async function getUserRole(supabase: ReturnType<typeof createClient>, userId: string): Promise<UserRole | null> {
-  const { data, error } = await supabase
+// Function to fetch user role and access status from database
+// Fetches from users table for role and team_members for team member status
+// Uses fresh data from DB to avoid caching issues
+async function getUserStatus(supabase: ReturnType<typeof createClient>, userId: string): Promise<{ isAdmin: boolean; isTeamMember: boolean; needsAccessRestored: boolean }> {
+  // Fetch role from users table
+  const { data: userData, error: userError } = await supabase
     .from("users")
     .select("role")
     .eq("id", userId)
     .maybeSingle();
 
-  if (error) {
-    console.error("Error fetching user role:", error);
-    return null;
+  if (userError) {
+    console.error("Error fetching user role:", userError);
+    return { isAdmin: false, isTeamMember: false, needsAccessRestored: false };
   }
 
-  return data?.role as UserRole | null;
+  const userRole = userData?.role as UserRole;
+
+  // Check if user is admin or super_admin
+  if (userRole === "super_admin" || userRole === "admin") {
+    return { isAdmin: true, isTeamMember: false, needsAccessRestored: false };
+  }
+
+  // Check if user exists in team_members table
+  const { data: teamMember, error: tmError } = await supabase
+    .from("team_members")
+    .select("needs_access_restored, is_active")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (tmError) {
+    console.error("Error fetching team member:", tmError);
+  }
+
+  // If no team member record, user is a regular user
+  if (!teamMember) {
+    return { isAdmin: false, isTeamMember: false, needsAccessRestored: false };
+  }
+
+  // If team member exists and is active, check if they need access restored
+  const isTeamMember = teamMember.is_active === true;
+  const needsAccessRestored = teamMember.needs_access_restored === true && teamMember.is_active === true;
+
+  return { isAdmin: false, isTeamMember, needsAccessRestored };
 }
 
 // Function to determine redirect path based on role
-function getRedirectPath(role: UserRole | null): string {
-  switch (role) {
-    case "admin":
-      return "/dashboard";
-    case "user":
-    default:
-      return "/"; // Regular users go to home page
+// Also checks if user needs to verify access
+function getRedirectPath(isAdmin: boolean, isTeamMember: boolean, needsAccessRestored: boolean, returnUrl?: string | null): string {
+  // If user needs to verify access (reactivated team member), redirect there first
+  if (needsAccessRestored) {
+    return "/verify-access";
   }
+
+  // If there's a return URL, respect it for all users
+  if (returnUrl && returnUrl !== "/auth/login" && returnUrl !== "/auth/signup") {
+    return returnUrl;
+  }
+
+  // Admin or team member goes to dashboard
+  if (isAdmin || isTeamMember) {
+    return "/dashboard";
+  }
+
+  // Regular users go to home page
+  return "/";
 }
 
 export default function LoginPage() {
@@ -64,12 +105,16 @@ export default function LoginPage() {
       return;
     }
 
-    // Login successful - fetch user role and redirect accordingly
+    // Login successful - fetch user role and access status from DB (no caching)
     if (data?.user) {
-      const userRole = await getUserRole(supabase, data.user.id);
-      const redirectPath = getRedirectPath(userRole);
+      const { isAdmin, isTeamMember, needsAccessRestored } = await getUserStatus(supabase, data.user.id);
       
-      toast({ title: "Login successful", description: `Welcome back! Redirecting to ${redirectPath}...` });
+      // Get returnUrl from URL search params (set by middleware when redirecting to login)
+      const returnUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("returnUrl") : null;
+      
+      const redirectPath = getRedirectPath(isAdmin, isTeamMember, needsAccessRestored, returnUrl);
+      
+      toast({ title: "Login successful", description: `Welcome back! Redirecting...` });
       router.push(redirectPath);
       router.refresh();
     } else {

@@ -53,36 +53,80 @@ export async function middleware(request: NextRequest) {
       return response;
     }
     
-    // Redirect to login for protected routes
-    return redirectTo("/auth/login");
+    // Redirect to login for protected routes, preserving the intended destination
+    const returnUrl = pathname;
+    return redirectTo(`/auth/login?returnUrl=${encodeURIComponent(returnUrl)}`);
   }
 
-  // ── Authenticated users ───────────────────────────────────────────────────
+  // ── Authenticated users ─────────────────────────────────────────────────
   
-  // Check if user needs access restored
+  // If already on /verify-access, let them through (page handles logic)
+  if (pathname === "/verify-access") {
+    return response;
+  }
+
+  // Fetch user's role from database (not cached)
+  const { data: userData } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const userRole = userData?.role ?? null;
+  const isAdmin = userRole === "super_admin" || userRole === "admin";
+
+  // Admins and super admins always go to dashboard
+  if (isAdmin) {
+    // If trying to access root, redirect to dashboard
+    if (pathname === "/") {
+      return redirectTo("/dashboard");
+    }
+    return response;
+  }
+
+  // Check team_members table for team member status
   const { data: teamMember } = await supabase
     .from("team_members")
-    .select("needs_access_restored")
+    .select("needs_access_restored, is_active")
     .eq("user_id", user.id)
     .maybeSingle();
 
-  // If on /verify-access and needs_access_restored is false, redirect to dashboard
-  // This prevents stuck states and manual access
-  if (pathname === "/verify-access" && teamMember?.needs_access_restored !== true) {
-    return redirectTo("/dashboard");
+  // If no team member record, user is a regular user - redirect to home
+  if (!teamMember) {
+    if (pathname.startsWith("/dashboard") || pathname.startsWith("/requests")) {
+      return redirectTo("/");
+    }
+    return response;
   }
 
-  // If needs_access_restored is true and not on verify-access, redirect to verify-access
-  if (pathname !== "/verify-access" && teamMember?.needs_access_restored === true) {
+  // If needs_access_restored is true and user is active, redirect to /verify-access
+  if (teamMember.needs_access_restored === true && teamMember.is_active === true) {
     return redirectTo("/verify-access");
   }
 
-  // Otherwise, allow normal navigation (NO redirect back to verify-access)
+  // If team member is suspended, redirect to /verify-access (which will show suspended screen)
+  if (teamMember.is_active === false) {
+    return redirectTo("/verify-access");
+  }
+
+  // If user is on root, redirect team members to dashboard
+  if (pathname === "/") {
+    return redirectTo("/dashboard");
+  }
+
+  // Otherwise, allow normal navigation
   return response;
 }
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)",
+    "/",
+    "/dashboard/:path*",
+    "/auth/:path*",
+    "/requests/:path*",
+    "/verify-access",
+    "/access-restored",
+    "/suspended-access",
+    "/access-removed",
   ],
 };
