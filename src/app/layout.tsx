@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import dynamic from "next/dynamic";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import LayoutWithConditionalNavFooter from "@/components/providers/LayoutWithConditionalNavFooter";
 import { cn } from "@/lib/utils";
+import { AccessBlocker } from "@/components/ui/access-blocker";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -19,12 +19,13 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-
   return (
     <html lang="en" suppressHydrationWarning className={cn("font-sans", inter.variable)}>
       <body className={cn(inter.className, "bg-background text-foreground")}>
         <Providers>
-          <LayoutWithConditionalNavFooter>{children}</LayoutWithConditionalNavFooter>
+          <AccessBlocker>
+            <LayoutWithConditionalNavFooter>{children}</LayoutWithConditionalNavFooter>
+          </AccessBlocker>
         </Providers>
       </body>
     </html>

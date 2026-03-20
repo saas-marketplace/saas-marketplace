@@ -7,11 +7,22 @@ import { Footer } from "../providers/layout/footer";
 export default function LayoutWithConditionalNavFooter({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isDashboard = pathname?.startsWith("/dashboard");
+  
+  // Routes that should NOT show navbar/footer (full-screen standalone pages)
+  const hideLayoutRoutes = [
+    "/verify-access",
+    "/access-restored",
+    "/suspended-access",
+    "/access-removed",
+    "/dashboard"
+  ];
+  const isStandalonePage = hideLayoutRoutes.some(route => pathname === route);
+  
   return (
     <>
-      {!isDashboard && <Navbar />}
-      <main className={!isDashboard ? "min-h-screen pt-16" : undefined}>{children}</main>
-      {!isDashboard && <Footer />}
+      {!isDashboard && !isStandalonePage && <Navbar />}
+      <main className={!isDashboard && !isStandalonePage ? "min-h-screen pt-16" : "min-h-screen"}>{children}</main>
+      {!isDashboard && !isStandalonePage && <Footer />}
     </>
   );
 }

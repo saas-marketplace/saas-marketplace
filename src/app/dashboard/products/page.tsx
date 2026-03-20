@@ -55,7 +55,7 @@ interface Product {
 }
 
 export default function ProductsPage() {
-  const { canUpdate, canDelete } = useAccessControl();
+  const { canCreate, canUpdate, canDelete } = useAccessControl();
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   
@@ -327,7 +327,7 @@ export default function ProductsPage() {
         
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            {userRole !== 'admin' && (
+            {canCreate('products') && (
               <Button onClick={openAddDialog}>
                 <Plus className="w-4 h-4 mr-2" />
                 Add Product
@@ -635,25 +635,25 @@ export default function ProductsPage() {
                   </td>
                   <td className="py-3 px-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {userRole !== 'admin' && (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => openEditDialog(product)}
-                            className="border-cyan-600 text-cyan-700 hover:bg-cyan-600 hover:text-white"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => handleDelete(product.id)}
-                            className="border-red-500 text-red-600 hover:bg-red-600 hover:text-white"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </>
+                      {canUpdate('products') && (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => openEditDialog(product)}
+                          className="border-cyan-600 text-cyan-700 hover:bg-cyan-600 hover:text-white"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                      )}
+                      {canDelete('products') && (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleDelete(product.id)}
+                          className="border-red-500 text-red-600 hover:bg-red-600 hover:text-white"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       )}
                     </div>
                   </td>

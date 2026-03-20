@@ -10,15 +10,15 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from '@/components/ui/table';
-import { 
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -26,13 +26,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/components/ui/use-toast';
-import { 
-  Plus, 
-  MoreHorizontal, 
-  Pencil, 
-  Trash2, 
-  Shield, 
-  Eye, 
+import {
+  Plus,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Shield,
+  Eye,
   UsersRound,
   Loader2,
   AlertTriangle
@@ -42,7 +42,7 @@ export default function TeamPage() {
   const { isLoading, canAccessSection, canCreate, canUpdate, canDelete } = useAccessControl();
   const { toast } = useToast();
   const supabase = createClient();
-  
+
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -105,7 +105,6 @@ export default function TeamPage() {
   const fetchTeamMembers = async () => {
     setLoading(true);
     try {
-      // First get team members
       const { data: membersData, error: membersError } = await supabase
         .from('team_members')
         .select('*')
@@ -116,9 +115,8 @@ export default function TeamPage() {
       if (membersError) throw membersError;
 
       if (membersData && membersData.length > 0) {
-        // Get user IDs to fetch user details
         const userIds = membersData.map(m => m.user_id);
-        
+
         const { data: usersData, error: usersError } = await supabase
           .from('users')
           .select('id, email, full_name, avatar_url')
@@ -126,7 +124,6 @@ export default function TeamPage() {
 
         if (usersError) throw usersError;
 
-        // Merge the data
         const mergedData = membersData.map(member => ({
           ...member,
           user: usersData?.find(u => u.id === member.user_id) || null
@@ -159,13 +156,13 @@ export default function TeamPage() {
     }
 
     try {
-      // First, revert the user's role back to 'user'
+      // Revert the user's role back to 'user'
       await supabase
         .from('users')
         .update({ role: 'user' })
         .eq('id', member.user_id);
 
-      // Then delete the team member record
+      // Delete the team member record
       const { error } = await supabase
         .from('team_members')
         .delete()
@@ -190,17 +187,27 @@ export default function TeamPage() {
   };
 
   const handleToggleActive = async (member: TeamMember) => {
+    // true  → we are about to deactivate (suspend)
+    // false → we are about to reactivate
+    const isDeactivating = member.is_active;
+
     try {
+      // All access state lives on team_members only — never touch users.role
+      // or any column that doesn't exist on the users table.
+      const teamMemberUpdate = isDeactivating
+        ? { is_active: false }                               // suspend
+        : { is_active: true, needs_access_restored: true }; // reactivate → flag triggers /access-restored
+
       const { error } = await supabase
         .from('team_members')
-        .update({ is_active: !member.is_active })
+        .update(teamMemberUpdate)
         .eq('id', member.id);
 
       if (error) throw error;
 
       toast({
         title: 'Success',
-        description: `Team member ${member.is_active ? 'deactivated' : 'activated'} successfully`,
+        description: `Team member ${isDeactivating ? 'deactivated' : 'activated'} successfully`,
       });
 
       fetchTeamMembers();
@@ -225,16 +232,16 @@ export default function TeamPage() {
     const sections = Object.keys(permissions).filter(
       key => !!(permissions[key as keyof Permissions]?.length)
     );
-    
+
     if (sections.length === 0) return 'No permissions';
-    
+
     const summary = sections.map(section => {
       const sectionKey = section as keyof Permissions;
       const actions = permissions[sectionKey] || [];
       const readableSection = section.charAt(0).toUpperCase() + section.slice(1);
       return `${readableSection}: ${actions.join(', ')}`;
     });
-    
+
     return summary.slice(0, 2).join(' | ') + (summary.length > 2 ? ' ...' : '');
   };
 
@@ -264,7 +271,7 @@ export default function TeamPage() {
           </p>
         </div>
         {isSuperAdmin && (
-          <Button 
+          <Button
             onClick={() => {
               setEditingMember(null);
               setDialogOpen(true);
@@ -338,7 +345,7 @@ export default function TeamPage() {
                 Add team members to give them admin access with custom permissions
               </p>
               {isSuperAdmin && (
-                <Button 
+                <Button
                   onClick={() => setDialogOpen(true)}
                   variant="outline"
                 >
@@ -415,7 +422,7 @@ export default function TeamPage() {
                               {member.is_active ? 'Deactivate' : 'Activate'}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               onClick={() => handleDelete(member)}
                               className="text-red-600"
                             >

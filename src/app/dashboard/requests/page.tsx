@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useAccessControl } from "@/hooks/useAccessControl";
 import { 
@@ -18,7 +18,8 @@ import {
   Globe,
   Eye,
   Star,
-  Folder
+  Folder,
+  ChevronDown
 } from "lucide-react";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { Badge } from "@/components/ui/badge";
@@ -159,19 +160,59 @@ export default function AdminRequestsPage() {
   const [onlineStatus, setOnlineStatus] = useState<OnlineStatus>({});
   const [userIsTyping, setUserIsTyping] = useState(false);
 
+  // ── SCROLL TO BOTTOM BUTTON STATE ──
+  const [showScrollButton, setShowScrollButton] = useState(false);
+
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  // Anchor element always rendered as the last child of the scroll container.
-  // scrollIntoView on this element is the single scroll mechanism for messages + typing.
+  // ── SCROLL: single anchor div always rendered as the absolute last child ──
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // useState (not ref) for the local "am I currently typing?" guard.
-  // Using state means the guard value is always the committed value React sees,
-  // so handleTyping's closure is never stale after a re-render.
+  const scrollRafRef = useRef<number | null>(null);
   const [localIsTyping, setLocalIsTyping] = useState(false);
-  // ── FIX: useRef (not useState) so sendTypingStatus always has the latest channel synchronously
   const typingChannelRef = useRef<any>(null);
 
   const supabase = createClient();
+
+  // ── SCROLL HELPER ──
+  // Uses the scroll container's scrollTop directly (most reliable cross-device method).
+  // Falls back to scrollIntoView on the anchor div.
+  // Wrapped in requestAnimationFrame so it always runs after the DOM has painted
+  // the new message / typing bubble — avoiding the "one message behind" problem.
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    // Cancel any pending RAF to avoid stacking
+    if (scrollRafRef.current !== null) {
+      cancelAnimationFrame(scrollRafRef.current);
+    }
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+
+      // Primary: scroll the container element directly — works on all devices/keyboards
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        return;
+      }
+
+      // Fallback: scroll the anchor into view
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior, block: 'end' });
+      }
+    });
+  }, []);
+
+  // ── SCROLL TO BOTTOM BUTTON HANDLER ──
+  const handleScrollToBottom = useCallback(() => {
+    scrollToBottom('smooth');
+  }, [scrollToBottom]);
+
+  // ── SCROLL DETECTION FOR SHOW/HIDE BUTTON ──
+  const handleScroll = useCallback(() => {
+    if (!chatContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+    // Show button when user has scrolled up (not at bottom)
+    // scrollTop + clientHeight < scrollHeight - 50 (50px threshold)
+    const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50;
+    setShowScrollButton(!isAtBottom);
+  }, []);
 
   // Access control check
   if (!isLoading && !canAccessSection('requests')) {
@@ -273,15 +314,12 @@ export default function AdminRequestsPage() {
     fetchRequests();
   }, [supabase]);
 
-  // ── PRESENCE FIX ──
-  // Admin tracks their own presence on the shared `chat_presence` channel using
-  // their own userId as key. The user page joins the same channel with the user's
-  // own userId as key, so each side can simply check state[otherUserId].
+  // ── PRESENCE: admin tracks their own presence ──
   useEffect(() => {
     if (!currentUserId || !isAdmin) return;
 
     const presenceChannel = supabase.channel('chat_presence', {
-      config: { presence: { key: currentUserId } },   // ← admin's own ID as key
+      config: { presence: { key: currentUserId } },
     });
 
     presenceChannel.subscribe(async (status: string) => {
@@ -290,7 +328,6 @@ export default function AdminRequestsPage() {
       }
     });
 
-    // Also persist status in user_status table so users can read lastSeen on refresh
     const updateAdminStatus = async (isOnline: boolean) => {
       try {
         await supabase.from('user_status').upsert({
@@ -324,10 +361,8 @@ export default function AdminRequestsPage() {
       }, { onConflict: 'user_id' });
     };
 
-    // Handle visibility change (tab switch, minimize, etc.)
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'hidden') {
-        // User left the tab - mark as offline temporarily
         await presenceChannel.untrack();
         await supabase.from('user_status').upsert({
           user_id: currentUserId,
@@ -336,7 +371,6 @@ export default function AdminRequestsPage() {
           updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id' });
       } else if (document.visibilityState === 'visible') {
-        // User returned - mark as online
         await presenceChannel.track({ online_at: new Date().toISOString() });
         await supabase.from('user_status').upsert({
           user_id: currentUserId,
@@ -362,17 +396,12 @@ export default function AdminRequestsPage() {
     };
   }, [supabase, currentUserId, isAdmin]);
 
-  // ── PRESENCE FIX ──
-  // When admin opens a request, subscribe to the shared `chat_presence` channel
-  // (listener-only, no track — admin already tracked above) to get real-time
-  // online/offline events for the selected user.
-  // Also subscribe to user_status postgres changes as a fallback / initial load.
+  // ── PRESENCE: watch selected user's online status ──
   useEffect(() => {
     if (!selectedRequest?.user_id) return;
 
     const userId = selectedRequest.user_id;
 
-    // Read initial status from user_status table
     const fetchInitialStatus = async () => {
       const { data } = await supabase
         .from('user_status')
@@ -389,7 +418,6 @@ export default function AdminRequestsPage() {
     };
     fetchInitialStatus();
 
-    // Listen to user_status table changes (covers tab-close / page-leave updates)
     const statusChannel = supabase
       .channel('admin_user_status_watch')
       .on('postgres_changes', {
@@ -408,17 +436,12 @@ export default function AdminRequestsPage() {
       })
       .subscribe();
 
-    // Also watch the shared presence channel for real-time join/leave/sync events.
-    // We create a second channel subscription here (read-only, no track call)
-    // so that if the user goes offline abruptly (browser crash), we still catch it.
     const presenceWatcher = supabase.channel('chat_presence_watcher');
     presenceWatcher
       .on('presence', { event: 'sync' }, () => {
         const state = presenceWatcher.presenceState();
-        // Only users in the state are online
         const onlineUserIds = Object.keys(state);
         const isUserOnline = onlineUserIds.includes(userId);
-        
         setOnlineStatus(prev => ({
           ...prev,
           [userId]: { 
@@ -455,7 +478,6 @@ export default function AdminRequestsPage() {
   }, [supabase, selectedRequest?.id, selectedRequest?.user_id, currentUserId]);
 
   // ── TYPING CHANNEL ──
-  // One channel instance per conversation — used for BOTH sending and receiving.
   useEffect(() => {
     if (!selectedRequest?.id || !currentUserId) return;
 
@@ -466,11 +488,6 @@ export default function AdminRequestsPage() {
       .on('broadcast', { event: 'typing' }, (payload) => {
         const { requestId, userId: senderId, isTyping } = payload.payload ?? {};
         if (requestId !== selectedRequest.id || senderId === currentUserId) return;
-        // ── RECEIVER GUARD ──
-        // Functional update: only schedules a re-render when the value actually changes.
-        // Without this, every duplicate broadcast (e.g. from reconnects) would call
-        // setState and trigger a re-render even if userIsTyping was already true,
-        // which remounts child components and causes visible flickering.
         setUserIsTyping(prev => {
           const next = Boolean(isTyping);
           return prev === next ? prev : next;
@@ -541,8 +558,6 @@ export default function AdminRequestsPage() {
   }, [selectedRequest?.id, supabase]);
 
   // ── REAL-TIME STATUS SUBSCRIPTION ──
-  // Subscribe to request status changes to sync with user actions
-  // This ensures admin sees status updates when user sends new messages
   useEffect(() => {
     if (!selectedRequest?.id) return;
 
@@ -558,9 +573,7 @@ export default function AdminRequestsPage() {
         },
         (payload) => {
           const newStatus = payload.new.status as Request['status'];
-          // Update the selected request status
           setSelectedRequest(prev => prev ? { ...prev, status: newStatus } : null);
-          // Update the status in the requests list
           setRequests(prev =>
             prev.map(r =>
               r.id === selectedRequest.id ? { ...r, status: newStatus } : r
@@ -575,53 +588,69 @@ export default function AdminRequestsPage() {
     };
   }, [selectedRequest?.id, supabase]);
 
-  // ── SCROLL FIX ──
-  // Single source of truth for auto-scroll. Runs whenever messages arrive OR the
-  // typing indicator appears/disappears. Targets messagesEndRef — a zero-height div
-  // rendered as the absolute last child of the scroll container, placed after the
-  // TypingBubble — so it is always in the DOM and always below the bubble.
+  // ── AUTO-SCROLL: messages or typing indicator changed ──
+  // No early return guard on messagesLoading — we want to scroll after load completes too.
+  // RAF ensures the DOM has painted the new node before we measure scrollHeight.
   useEffect(() => {
-    if (messagesLoading) return;
-    
-    const scrollToBottom = () => {
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({ 
-          behavior: 'auto', 
-          block: 'end' 
-        });
-      }
-    };
+    scrollToBottom('smooth');
+  }, [messages, userIsTyping, scrollToBottom]);
 
-    // Immediate scroll for new messages
-    scrollToBottom();
-    
-    // Additional scroll after a short delay for mobile/tablet
-    const timer = setTimeout(scrollToBottom, 100);
-    const timer2 = setTimeout(scrollToBottom, 300);
-    
+  // ── AUTO-SCROLL: initial load — jump instantly (no animation) ──
+  useEffect(() => {
+    if (!messagesLoading) {
+      scrollToBottom('instant' as ScrollBehavior);
+    }
+  }, [messagesLoading, scrollToBottom]);
+
+  // ── AUTO-SCROLL: container / keyboard resize (mobile keyboards, orientation) ──
+  // Attached only while a chat is open. Uses ResizeObserver on the container
+  // (fires whenever its height changes, e.g. mobile soft keyboard) and
+  // visualViewport for extra reliability on iOS Safari.
+  useEffect(() => {
+    if (!selectedRequest?.id) return;
+
+    const container = chatContainerRef.current;
+
+    // ResizeObserver fires whenever the container's bounding rect changes —
+    // covers orientation flip, keyboard open/close, sidebar collapse, etc.
+    let ro: ResizeObserver | null = null;
+    if (container && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => scrollToBottom('smooth'));
+      ro.observe(container);
+    }
+
+    // visualViewport fires on iOS Safari when the soft keyboard appears/disappears
+    const handleVVResize = () => scrollToBottom('smooth');
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleVVResize);
+      window.visualViewport.addEventListener('scroll', handleVVResize);
+    }
+
+    // Add scroll event listener for scroll button visibility
+    const handleScroll = () => {
+      if (!chatContainerRef.current) return;
+      const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50;
+      setShowScrollButton(!isAtBottom);
+    };
+    container?.addEventListener('scroll', handleScroll);
+
     return () => {
-      clearTimeout(timer);
-      clearTimeout(timer2);
-    };
-  }, [messages, userIsTyping, messagesLoading]);
-
-  // ── RESIZE SCROLL FIX ──
-  // Re-scroll when window is resized (tablet/mobile orientation changes)
-  useEffect(() => {
-    const handleResize = () => {
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({ 
-          behavior: 'auto', 
-          block: 'end' 
-        });
+      ro?.disconnect();
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleVVResize);
+        window.visualViewport.removeEventListener('scroll', handleVVResize);
+      }
+      container?.removeEventListener('scroll', handleScroll);
+      // Cancel any pending RAF on unmount
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
       }
     };
+  }, [selectedRequest?.id, scrollToBottom]);
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Send typing status — uses the already-subscribed channel stored in the ref
+  // Send typing status
   const sendTypingStatus = (isTyping: boolean) => {
     if (!selectedRequest?.id || !currentUserId || !typingChannelRef.current) return;
     typingChannelRef.current.send({
@@ -631,17 +660,11 @@ export default function AdminRequestsPage() {
     });
   };
 
-  // ── DEBOUNCE FIX (final) ──
-  // localIsTyping (useState) gates the "started typing" broadcast so it fires ONCE
-  // per typing burst — not on every keystroke.
-  // The inactivity timeout resets on every key and fires "stopped typing" after 2 s.
   const handleTyping = () => {
     if (!localIsTyping) {
-      // First keystroke of this burst → announce typing once
       setLocalIsTyping(true);
       sendTypingStatus(true);
     }
-    // Restart the inactivity timer on every key
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
       setLocalIsTyping(false);
@@ -657,7 +680,6 @@ export default function AdminRequestsPage() {
       return;
     }
 
-    // Stop typing indicator
     sendTypingStatus(false);
     setLocalIsTyping(false);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -673,8 +695,6 @@ export default function AdminRequestsPage() {
       if (response.ok) {
         setNewMessage("");
 
-        // Admin sending a reply always sets status to "answered"
-        // This status update comes from the API, but we update local state immediately
         setRequests(prev =>
           prev.map(r =>
             r.id === selectedRequest.id
@@ -685,9 +705,6 @@ export default function AdminRequestsPage() {
         setSelectedRequest(prev =>
           prev ? { ...prev, status: "answered" as Request["status"], last_message: newMessage.trim() } : null
         );
-
-        // Scroll is handled by the unified useEffect on [messages, userIsTyping]
-        // which fires when setMessages above updates state.
       }
     } catch (error) {
       console.error("Error sending message:", error);
@@ -697,24 +714,20 @@ export default function AdminRequestsPage() {
   };
 
   const handleSelectRequest = async (request: Request) => {
-    // Mark as "received" when admin opens/view the conversation
-    // Only update if status is currently "pending" to avoid overwriting "answered"
     if (request.status === "pending") {
       try {
         await supabase
           .from("requests")
           .update({ status: "received" })
           .eq("id", request.id)
-          .eq("status", "pending"); // Prevent overwrite
+          .eq("status", "pending");
         
-        // Update local state immediately
         setRequests(prev =>
           prev.map(r =>
             r.id === request.id ? { ...r, status: "received" as Request["status"] } : r
           )
         );
         
-        // Update the request object with new status
         request = { ...request, status: "received" as Request["status"] };
       } catch (error) {
         console.error("Error updating request status:", error);
@@ -793,9 +806,6 @@ export default function AdminRequestsPage() {
     return new Date(lastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // ── PRESENCE FIX ──
-  // getUserStatus now ONLY returns online / last-seen text.
-  // The typing indicator is rendered as a chat bubble in the message area.
   const getUserStatus = () => {
     if (!selectedRequest?.user_id) return null;
 
@@ -844,7 +854,6 @@ export default function AdminRequestsPage() {
                 <h2 className="font-semibold text-base truncate text-slate-900">
                   {getRequestDisplayName(selectedRequest)}
                 </h2>
-                {/* Header shows ONLY online/offline — typing bubble is in the chat area */}
                 <p className="text-xs text-slate-500">
                   {isAdmin && selectedRequest.user_id ? getUserStatus() : formatDate(selectedRequest.created_at)}
                 </p>
@@ -855,7 +864,7 @@ export default function AdminRequestsPage() {
             {/* Mobile Chat Messages */}
             <div 
               ref={chatContainerRef}
-              className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 p-3 sm:p-4  bg-white"
+              className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 p-3 sm:p-4 bg-white"
             >
               {/* Subject */}
               {selectedRequest.title && (
@@ -925,11 +934,22 @@ export default function AdminRequestsPage() {
                 </div>
               )}
 
-              {/* ── TYPING INDICATOR BUBBLE (mobile) ── */}
+              {/* Typing indicator bubble */}
               {userIsTyping && <TypingBubble mobile />}
-              {/* ── SCROLL ANCHOR: always the last DOM node in this container ── */}
-              <div ref={messagesEndRef} />
+              {/* Scroll anchor — must be the absolute last node in the container */}
+              <div ref={messagesEndRef} style={{ height: 0, flexShrink: 0 }} />
             </div>
+
+            {/* Scroll to Bottom Button - Mobile/Tablet Only */}
+            {showScrollButton && (
+              <button
+                onClick={handleScrollToBottom}
+                className="lg:hidden absolute bottom-20 right-6 z-10 bg-gradient-to-r from-[#249fd3] to-cyan-400 text-white p-3 rounded-full shadow-lg shadow-cyan-500/30 hover:scale-110 transition-transform"
+                aria-label="Scroll to bottom"
+              >
+                <ChevronDown className="w-5 h-5" />
+              </button>
+            )}
 
             {/* Mobile Message Input */}
             <div className="shrink-0 p-3 sm:p-4 bg-white border-t border-cyan-100 shadow-lg shadow-slate-100">
@@ -972,7 +992,6 @@ export default function AdminRequestsPage() {
               <h2 className="font-semibold text-slate-900">
                 {getRequestDisplayName(selectedRequest)}
               </h2>
-              {/* Header shows ONLY online/offline — typing bubble is in the chat area */}
               <p className="text-sm text-slate-500">
                 {isAdmin && selectedRequest.user_id ? getUserStatus() : formatDate(selectedRequest.created_at)}
               </p>
@@ -1053,10 +1072,10 @@ export default function AdminRequestsPage() {
               </>
             )}
 
-            {/* ── TYPING INDICATOR BUBBLE (desktop) ── */}
+            {/* Typing indicator bubble */}
             {userIsTyping && <TypingBubble />}
-            {/* ── SCROLL ANCHOR: always the last DOM node in this container ── */}
-            <div ref={messagesEndRef} />
+            {/* Scroll anchor — must be the absolute last node in the container */}
+            <div ref={messagesEndRef} style={{ height: 0, flexShrink: 0 }} />
           </div>
 
           {/* Message Input */}

@@ -178,7 +178,20 @@ export async function PUT(request: NextRequest) {
     if (display_name) updateData.display_name = display_name;
     if (role_label) updateData.role_label = role_label;
     if (permissions) updateData.permissions = permissions;
-    if (is_active !== undefined) updateData.is_active = is_active;
+    if (is_active !== undefined) {
+      updateData.is_active = is_active;
+      // When reactivating (is_active = true), set needs_access_restored = true
+      // This triggers the /access-restored flow for the reactivated team member
+      // The middleware will redirect them to /access-restored, which will clear the flag
+      if (is_active === true) {
+        updateData.needs_access_restored = true;
+      }
+    }
+
+    // IMPORTANT: Do NOT change the user's role when suspending/reactivating
+    // Only update the status (is_active) in team_members
+    // The role should always persist to allow proper restoration
+    // Access is blocked based on status, not role
 
     const { data, error } = await supabase
       .from('team_members')
@@ -245,10 +258,11 @@ export async function DELETE(request: NextRequest) {
       .single();
 
     if (member) {
-      // Revert user's role back to user
+      // Set role to null to indicate removed - will redirect to /access-removed
+      // This allows re-adding with a new role later
       await supabase
         .from('users')
-        .update({ role: 'user' })
+        .update({ role: null })
         .eq('id', member.user_id);
     }
 
@@ -266,3 +280,4 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
+
