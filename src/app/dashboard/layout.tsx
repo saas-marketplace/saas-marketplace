@@ -26,21 +26,49 @@ async function getUserStatus() {
 
   if (!user) return { status: 'unauthenticated' as const, role: null };
 
+  // Get role from users table
   const { data: userData } = await supabase
     .from('users')
     .select('role')
     .eq('id', user.id)
     .maybeSingle();
 
-  const userRole = userData?.role ?? null;
+  let userRole = userData?.role ?? null;
 
-  if (!userRole) return { status: 'removed' as const, role: null };
-
+  // Get team_member data for role and status fallback
   const { data: teamMember } = await supabase
     .from('team_members')
-    .select('is_active, needs_access_restored')
+    .select('role_label, is_active, needs_access_restored')
     .eq('user_id', user.id)
     .maybeSingle();
+
+  // If role is not set in users table, use team_members role_label
+  if (!userRole && teamMember?.role_label) {
+    if (teamMember.role_label === 'Super Admin') {
+      userRole = 'super_admin';
+    } else if (teamMember.role_label === 'Admin') {
+      userRole = 'admin';
+    } else {
+      userRole = 'user';
+    }
+  }
+
+  // If still no role, default to user
+  userRole = userRole || 'user';
+
+  // Check team_members.is_active for suspended status (fallback)
+  if (teamMember && teamMember.is_active === false) {
+    return { status: 'suspended' as const, role: userRole };
+  }
+
+  if (teamMember && teamMember.needs_access_restored) {
+    return { status: 'needs_restore' as const, role: userRole };
+  }
+
+  // If no team_member row, user is removed
+  if (!teamMember && userRole === 'user') {
+    return { status: 'removed' as const, role: userRole };
+  }
 
   // If no team_member row, user is removed
   if (!teamMember) {

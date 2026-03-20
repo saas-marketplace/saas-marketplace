@@ -23,12 +23,29 @@ export default function SignupPage() {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signUp({ email, password });
+    
+    const { data, error } = await supabase.auth.signUp({ 
+      email, 
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+        }
+      }
+    });
+    
     if (error) {
       toast({ title: "Signup failed", description: error.message });
-    } else {
+    } else if (data?.user) {
+      // Set role = "user" and status = "active" for new users
+      await supabase
+        .from("users")
+        .update({ role: "user", status: "active" })
+        .eq("id", data.user.id);
+      
       toast({ title: "Signup successful", description: "Welcome!" });
-      router.push("/dashboard");
+      // New users go to homepage, not dashboard
+      router.push("/");
     }
     setLoading(false);
   }

@@ -10,89 +10,92 @@ import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 
-// Role type matching database schema - roles stored in users table
-type UserRole = "super_admin" | "admin" | "user" | null;
+// Types
+type UserRole = "super_admin" | "admin" | "user";
+type UserStatus = "active" | "suspended" | "removed" | "restored";
 
-// Function to fetch user role and access status from database
-// Fetches from users table for role and team_members for team member status
+// Function to fetch user role and status from database
 // Uses fresh data from DB to avoid caching issues
-async function getUserStatus(supabase: ReturnType<typeof createClient>, userId: string): Promise<{ role: UserRole; isTeamMember: boolean; needsAccessRestored: boolean }> {
-  // Fetch role from users table - always get fresh data from DB
-  const { data: userData, error: userError } = await supabase
+// Checks both users table AND team_members table to get the correct role
+async function getUserStatus(supabase: ReturnType<typeof createClient>, userId: string): Promise<{ role: UserRole; status: UserStatus }> {
+  // Fetch role from users table (status might not exist yet)
+  const { data: userData, error } = await supabase
     .from("users")
     .select("role")
     .eq("id", userId)
     .maybeSingle();
 
-  if (userError) {
-    console.error("Error fetching user role:", userError);
-    return { role: null, isTeamMember: false, needsAccessRestored: false };
+  if (error) {
+    console.error("Error fetching user:", error);
+    return { role: "user", status: "active" };
   }
 
-  const userRole = userData?.role as UserRole;
+  let role = userData?.role as UserRole | undefined;
+  let status: UserStatus = "active";
 
-  // If role is null, user was explicitly removed - show access removed screen
-  if (userRole === null || userRole === undefined) {
-    return { role: null, isTeamMember: false, needsAccessRestored: false };
+  // If role is not set in users table, check team_members table
+  if (!role) {
+    const { data: memberData } = await supabase
+      .from("team_members")
+      .select("role_label, is_active")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (memberData?.role_label) {
+      // Map role_label to role
+      if (memberData.role_label === "Super Admin") {
+        role = "super_admin";
+      } else if (memberData.role_label === "Admin") {
+        role = "admin";
+      } else {
+        role = "user";
+      }
+    }
+
+    // Check if team member is active (fallback for status check)
+    if (memberData && !memberData.is_active) {
+      status = "suspended";
+    }
   }
 
-  // If role is "user" (normal user), redirect to homepage
-  if (userRole === "user") {
-    return { role: "user", isTeamMember: false, needsAccessRestored: false };
-  }
+  // Final fallback to user if still undefined
+  role = role || "user";
 
-  // If role is admin or super_admin, go to dashboard
-  if (userRole === "super_admin" || userRole === "admin") {
-    return { role: userRole, isTeamMember: false, needsAccessRestored: false };
-  }
-
-  // For any other cases, check team_members table
-  const { data: teamMember, error: tmError } = await supabase
-    .from("team_members")
-    .select("needs_access_restored, is_active")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (tmError) {
-    console.error("Error fetching team member:", tmError);
-  }
-
-  // If team member exists and is active, check if they need access restored
-  const isTeamMember = teamMember?.is_active === true;
-  const needsAccessRestored = teamMember?.needs_access_restored === true && teamMember?.is_active === true;
-
-  return { role: userRole, isTeamMember, needsAccessRestored };
+  return { role, status };
 }
 
-// Function to determine redirect path based on role
-// Also checks if user needs to verify access
-function getRedirectPath(role: UserRole, isTeamMember: boolean, needsAccessRestored: boolean, returnUrl?: string | null): string {
-  // If user needs to verify access (reactivated team member), redirect there first
-  if (needsAccessRestored) {
+// Function to determine redirect path based on status and role
+function getRedirectPath(status: UserStatus, role: UserRole, returnUrl?: string | null): string {
+  // Priority 1: Check status FIRST - redirect to /verify-access for all status issues
+  if (status === "removed") {
     return "/verify-access";
   }
 
-  // If role is null, user was explicitly removed - show access removed screen
-  if (role === null) {
+  if (status === "suspended") {
     return "/verify-access";
   }
 
-  // If there's a return URL, respect it for all users
-  if (returnUrl && returnUrl !== "/auth/login" && returnUrl !== "/auth/signup") {
-    return returnUrl;
+  if (status === "restored") {
+    return "/verify-access";
   }
 
-  // Admin or super_admin goes to dashboard
-  if (role === "super_admin" || role === "admin") {
-    return "/dashboard";
+  // Priority 2: If status is "active", check role
+  if (status === "active" || status === undefined) {
+    // If there's a return URL, respect it
+    if (returnUrl && returnUrl !== "/auth/login" && returnUrl !== "/auth/signup") {
+      return returnUrl;
+    }
+
+    // Check role
+    if (role === "admin" || role === "super_admin") {
+      return "/dashboard";
+    }
+
+    // Regular users go to home
+    return "/";
   }
 
-  // Team member goes to dashboard
-  if (isTeamMember) {
-    return "/dashboard";
-  }
-
-  // Role "user" (normal user) goes to home page
+  // Default fallback
   return "/";
 }
 
@@ -120,26 +123,21 @@ export default function LoginPage() {
       return;
     }
 
-    // Login successful - fetch user role and access status from DB (no caching)
+    // Login successful - fetch user role and status from DB (no caching)
     if (data?.user) {
-      const { role, isTeamMember, needsAccessRestored } = await getUserStatus(supabase, data.user.id);
+      const { role, status } = await getUserStatus(supabase, data.user.id);
       
-      // Get returnUrl from URL search params (set by middleware when redirecting to login)
+      // Get returnUrl from URL search params
       const returnUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("returnUrl") : null;
       
-      const redirectPath = getRedirectPath(role, isTeamMember, needsAccessRestored, returnUrl);
-      if (redirectPath !== "/dashboard") {
-          router.push(redirectPath);
-          router.refresh();
-        } 
-        else if (redirectPath === "/") {
-          router.push("/");
-          router.refresh();
-        }
-        else {
-          toast({ title: "Login successful", description: "Welcome back!" });
-          router.push("/dashboard");
-        }
+      const redirectPath = getRedirectPath(status, role, returnUrl);
+      
+      toast({ title: "Login successful", description: `Welcome back! Redirecting...` });
+      router.push(redirectPath);
+      router.refresh();
+    } else {
+      toast({ title: "Login successful", description: "Welcome back!" });
+      router.push("/dashboard");
     }
 
     setLoading(false);
@@ -227,4 +225,3 @@ export default function LoginPage() {
     </div>
   );
 }
-

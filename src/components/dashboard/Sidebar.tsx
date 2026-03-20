@@ -49,7 +49,24 @@ export default function Sidebar() {
           .eq('id', authUser.id)
           .single();
 
-        const userRole = userData?.role || 'user';
+        let userRole = userData?.role || 'user';
+
+        // If role is not set in users table, check team_members table
+        if (!userData?.role) {
+          const { data: memberData } = await supabase
+            .from('team_members')
+            .select('role_label')
+            .eq('user_id', authUser.id)
+            .maybeSingle();
+
+          if (memberData?.role_label) {
+            if (memberData.role_label === 'Super Admin') {
+              userRole = 'super_admin';
+            } else if (memberData.role_label === 'Admin') {
+              userRole = 'admin';
+            }
+          }
+        }
         
         // Super admin has access to all sections
         if (userRole === 'super_admin') {

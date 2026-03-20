@@ -60,80 +60,76 @@ export async function middleware(request: NextRequest) {
 
   // ── Authenticated users ─────────────────────────────────────────────────
   
-  // If already on /verify-access, let them through (page handles logic)
-  if (pathname === "/verify-access") {
+  // If already on verify/access pages, let them through
+  if (pathname === "/verify-access" || pathname === "/access-removed" || pathname === "/access-restored") {
     return response;
   }
 
-  // Fetch user's role from database (not cached)
+  // Fetch user's role from users table
+  // Also check team_members table as fallback for role and status
   const { data: userData } = await supabase
     .from("users")
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
 
-  const userRole = userData?.role ?? null;
-  const isAdmin = userRole === "super_admin" || userRole === "admin";
+  let userRole = userData?.role || "user";
+  let userStatus = "active";
 
-  // Admins and super admins always go to dashboard
-  if (isAdmin) {
-    // If trying to access root, redirect to dashboard
-    if (pathname === "/") {
-      return redirectTo("/dashboard");
-    }
-    return response;
-  }
-
-  // Check team_members table for team member status
-  const { data: teamMember } = await supabase
+  // Check team_members for role and status fallback
+  const { data: memberData } = await supabase
     .from("team_members")
-    .select("needs_access_restored, is_active")
+    .select("role_label, is_active")
     .eq("user_id", user.id)
     .maybeSingle();
 
-  // Check user's role in users table
-  // null = explicitly removed, "user" = normal user, "admin"/"super_admin" = admin
-  if (userRole === null || userRole === undefined) {
-    // User was explicitly removed - show access removed screen
-    if (!pathname.startsWith("/verify-access")) {
-      return redirectTo("/verify-access");
+  // If role is not set in users table, use team_members role_label
+  if (!userData?.role && memberData?.role_label) {
+    if (memberData.role_label === "Super Admin") {
+      userRole = "super_admin";
+    } else if (memberData.role_label === "Admin") {
+      userRole = "admin";
     }
-    return response;
   }
 
-  // If role is "user" (normal user), they can only access public pages
-  if (userRole === "user") {
-    // Redirect to home if trying to access protected routes
-    if (pathname.startsWith("/dashboard") || pathname.startsWith("/requests")) {
-      return redirectTo("/");
-    }
-    return response;
+  // Fallback: check team_members.is_active for suspended status
+  if (memberData && memberData.is_active === false) {
+    userStatus = "suspended";
   }
 
-  // If no team member record and not admin, treat as regular user
-  if (!teamMember) {
-    if (pathname.startsWith("/dashboard") || pathname.startsWith("/requests")) {
-      return redirectTo("/");
-    }
-    return response;
-  }
-
-  // If needs_access_restored is true and user is active, redirect to /verify-access
-  if (teamMember.needs_access_restored === true && teamMember.is_active === true) {
+  // Priority 1: Check status FIRST - redirect to /verify-access for all status issues
+  if (userStatus === "removed") {
     return redirectTo("/verify-access");
   }
 
-  // If team member is suspended, redirect to /verify-access (which will show suspended screen)
-  if (teamMember.is_active === false) {
+  if (userStatus === "suspended") {
     return redirectTo("/verify-access");
   }
 
-  // If user is on root, redirect team members to dashboard
-  if (pathname === "/") {
-    return redirectTo("/dashboard");
+  if (userStatus === "restored") {
+    return redirectTo("/verify-access");
   }
 
-  // Otherwise, allow normal navigation
+  // Priority 2: If status is "active", check role
+  if (userStatus === "active") {
+    // Admin or super_admin goes to dashboard
+    if (userRole === "admin" || userRole === "super_admin") {
+      if (pathname === "/") {
+        return redirectTo("/dashboard");
+      }
+      return response;
+    }
+
+    // Regular users (role = "user") stay on home
+    if (userRole === "user") {
+      if (pathname.startsWith("/dashboard") || pathname.startsWith("/requests")) {
+        return redirectTo("/");
+      }
+      return response;
+    }
+  }
+
+  // Default: allow navigation
   return response;
 }
 
@@ -145,7 +141,6 @@ export const config = {
     "/requests/:path*",
     "/verify-access",
     "/access-restored",
-    "/suspended-access",
     "/access-removed",
   ],
 };

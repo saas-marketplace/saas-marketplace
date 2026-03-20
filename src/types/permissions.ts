@@ -135,8 +135,10 @@ export function getAccessibleSections(permissions: Permissions): PermissionSecti
     .map(section => section.key);
 }
 
-// Common role labels
+// Common role labels - maps to system roles
 export const ROLE_LABELS = [
+  'Super Admin',
+  'Admin',
   'Manager',
   'Editor',
   'Support Agent',

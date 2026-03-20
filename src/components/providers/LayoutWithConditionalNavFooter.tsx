@@ -12,7 +12,6 @@ export default function LayoutWithConditionalNavFooter({ children }: { children:
   const hideLayoutRoutes = [
     "/verify-access",
     "/access-restored",
-    "/suspended-access",
     "/access-removed",
     "/dashboard"
   ];

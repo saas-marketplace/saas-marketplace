@@ -100,10 +100,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Update user's role to admin
+    // Map role_label to system role
+    let systemRole = 'user';
+    if (role_label === 'Super Admin') {
+      systemRole = 'super_admin';
+    } else if (role_label === 'Admin') {
+      systemRole = 'admin';
+    }
+
+    // Update user's role in users table
     const { error: userError } = await supabase
       .from('users')
-      .update({ role: 'admin' })
+      .update({ role: systemRole })
       .eq('id', user_id);
 
     if (userError) throw userError;
@@ -180,11 +188,31 @@ export async function PUT(request: NextRequest) {
     if (permissions) updateData.permissions = permissions;
     if (is_active !== undefined) {
       updateData.is_active = is_active;
-      // When reactivating (is_active = true), set needs_access_restored = true
-      // This triggers the /access-restored flow for the reactivated team member
-      // The middleware will redirect them to /access-restored, which will clear the flag
-      if (is_active === true) {
-        updateData.needs_access_restored = true;
+      
+      // Get user_id for this team member
+      const { data: member } = await supabase
+        .from('team_members')
+        .select('user_id')
+        .eq('id', id)
+        .single();
+      
+      // Update status in users table
+      if (member) {
+        if (is_active === true) {
+          // When reactivating, set status to "restored" to show restored screen
+          await supabase
+            .from('users')
+            .update({ status: 'restored' })
+            .eq('id', member.user_id);
+          // Also set needs_access_restored = true in team_members
+          updateData.needs_access_restored = true;
+        } else {
+          // When suspending, set status to "suspended"
+          await supabase
+            .from('users')
+            .update({ status: 'suspended' })
+            .eq('id', member.user_id);
+        }
       }
     }
 
@@ -257,12 +285,12 @@ export async function DELETE(request: NextRequest) {
       .eq('id', id)
       .single();
 
+    // Set status to "removed" in users table
+    // This will redirect user to /access-removed on next login
     if (member) {
-      // Set role to null to indicate removed - will redirect to /access-removed
-      // This allows re-adding with a new role later
       await supabase
         .from('users')
-        .update({ role: null })
+        .update({ status: 'removed' })
         .eq('id', member.user_id);
     }
 
