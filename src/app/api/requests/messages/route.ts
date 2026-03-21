@@ -1,14 +1,104 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+
+function createSupabaseServerClient() {
+  const cookieStore = cookies();
+  
+  const response = NextResponse.next();
+  
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set({ name, value, ...options });
+          });
+        },
+      },
+    }
+  );
+}
+
+// Helper function to get user from request (cookie or header)
+async function getUserFromRequest(request: NextRequest) {
+  const cookieStore = cookies();
+  const authHeader = request.headers.get("authorization");
+  
+  // First try cookie-based auth
+  const response = NextResponse.next();
+  const supabaseFromCookies = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set({ name, value, ...options });
+          });
+        },
+      },
+    }
+  );
+  
+  const { data: { user }, error } = await supabaseFromCookies.auth.getUser();
+  
+  if (user && !error) {
+    return user;
+  }
+  
+  // Fallback to Authorization header
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.substring(7);
+    try {
+      // Verify and decode the token to get user info
+      const supabaseWithToken = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            getAll() { return []; },
+            setAll() {}
+          },
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false
+          }
+        }
+      );
+      
+      // Set the token manually
+      supabaseWithToken.auth.setSession({
+        access_token: token,
+        refresh_token: ''
+      });
+      
+      const { data: { user: headerUser } } = await supabaseWithToken.auth.getUser();
+      return headerUser || null;
+    } catch (e) {
+      console.error("Error parsing auth token:", e);
+    }
+  }
+  
+  return null;
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient();
+    const supabase = createSupabaseServerClient();
     
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Check authentication (supports both cookie and Authorization header)
+    const user = await getUserFromRequest(request);
     
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
@@ -49,12 +139,37 @@ export async function POST(request: NextRequest) {
     
     // Check for both admin and super_admin
     const isAdmin = userData?.role === "admin" || userData?.role === "super_admin";
+    const isSuperAdmin = userData?.role === "super_admin";
 
     if (!isOwner && !isAdmin) {
       return NextResponse.json(
         { error: "Access denied" },
         { status: 403 }
       );
+    }
+
+    // For admin users (non-super_admin), check create permission on requests
+    if (isAdmin && !isSuperAdmin) {
+      const { data: teamMember } = await supabase
+        .from('team_members')
+        .select('permissions, is_active')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (teamMember && teamMember.is_active !== false) {
+        const permissions = teamMember.permissions ? 
+          (typeof teamMember.permissions === 'string' ? JSON.parse(teamMember.permissions) : teamMember.permissions) : 
+          {};
+        const requestPermissions = permissions.requests || [];
+        const hasCreatePermission = requestPermissions.includes('create');
+
+        if (!hasCreatePermission) {
+          return NextResponse.json(
+            { error: "Permission denied - you don't have permission to send messages in this chat" },
+            { status: 403 }
+          );
+        }
+      }
     }
 
     // Determine sender type based on role
@@ -100,14 +215,14 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient();
+    const supabase = createSupabaseServerClient();
     const { searchParams } = new URL(request.url);
     const request_id = searchParams.get("request_id");
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Check authentication (supports both cookie and Authorization header)
+    const user = await getUserFromRequest(request);
     
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
@@ -180,14 +295,14 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient();
+    const supabase = createSupabaseServerClient();
     const { searchParams } = new URL(request.url);
     const message_id = searchParams.get("message_id");
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Check authentication (supports both cookie and Authorization header)
+    const user = await getUserFromRequest(request);
     
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }

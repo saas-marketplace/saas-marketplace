@@ -8,6 +8,8 @@ export function createClient() {
     return client;
   }
 
+  // Create browser client with default cookie handling
+  // This ensures cookies are properly handled by the browser
   client = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!

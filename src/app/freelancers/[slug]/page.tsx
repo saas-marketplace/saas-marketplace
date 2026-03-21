@@ -52,17 +52,17 @@ export default function DomainFreelancersPage() {
 
         if (reviewData && reviewData.length > 0) {
           // Calculate ratings for each freelancer
-          const freelancerIds = freelancerData.map(f => f.id);
-          const reviewsByFreelancer = reviewData.filter(r => 
+          const freelancerIds = (freelancerData as any[]).map(f => f.id);
+          const reviewsByFreelancer = (reviewData as any[]).filter(r => 
             freelancerIds.includes(r.freelancer_id)
           );
           
-          freelancerData.forEach(freelancer => {
+          (freelancerData as any[]).forEach(freelancer => {
             const freelancerReviews = reviewsByFreelancer.filter(
               r => r.freelancer_id === freelancer.id
             );
             if (freelancerReviews.length > 0) {
-              const totalRating = freelancerReviews.reduce((sum, r) => sum + r.rating, 0);
+              const totalRating = freelancerReviews.reduce((sum, r) => sum + (r.rating || 0), 0);
               freelancer.rating = totalRating / freelancerReviews.length;
               freelancer.review_count = freelancerReviews.length;
             } else {

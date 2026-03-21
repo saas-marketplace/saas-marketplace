@@ -1,17 +1,14 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import type { Session } from "@supabase/supabase-js";
 
 type SupabaseClient = ReturnType<typeof createBrowserClient>;
 
-// User role type matching database schema
-export type UserRole = "user" | "admin" | "freelancer";
+export type UserRole = "user" | "admin" | "super_admin";
 
-interface User {
-  id: string;
-  email: string;
-}
+interface User { id: string; email: string }
 
 interface AuthContextType {
   user: User | null;
@@ -19,11 +16,11 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   supabase: SupabaseClient;
+  refreshSession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Singleton client instance - prevents multiple instances causing lock issues
 let supabaseClient: SupabaseClient | undefined;
 
 function getSupabaseClient(): SupabaseClient {
@@ -36,19 +33,9 @@ function getSupabaseClient(): SupabaseClient {
   return supabaseClient;
 }
 
-// Fetch user role from database
 async function fetchUserRole(supabase: SupabaseClient, userId: string): Promise<UserRole | null> {
-  const { data, error } = await supabase
-    .from("users")
-    .select("role")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (error) {
-    console.error("Error fetching user role:", error);
-    return null;
-  }
-
+  const { data, error } = await supabase.from("users").select("role").eq("id", userId).maybeSingle();
+  if (error) console.error("Error fetching user role:", error);
   return data?.role as UserRole | null;
 }
 
@@ -58,60 +45,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const supabase = getSupabaseClient();
 
-  // Fetch role when user changes
-  useEffect(() => {
-    if (user) {
-      fetchUserRole(supabase, user.id).then((userRole) => {
-        setRole(userRole);
-      });
-    } else {
-      setRole(null);
-    }
-  }, [user, supabase]);
-
-  useEffect(() => {
-    // Prevent double initialization in React Strict Mode
-    let mounted = true;
-
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event: string, session) => {
-        if (!mounted) return;
-        
-        if (session?.user) {
-          setUser({
-            id: session.user.id,
-            email: session.user.email || "",
-          });
-        } else {
-          setUser(null);
-          setRole(null);
-        }
-        setLoading(false);
-      }
-    );
-
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!mounted) return;
-      
+  const refreshSession = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email || "",
-        });
+        setUser({ id: session.user.id, email: session.user.email || "" });
       } else {
         setUser(null);
         setRole(null);
       }
+    } catch (error) {
+      console.error("Error refreshing session:", error);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    let canceled = false;
+    if (user) {
+      fetchUserRole(supabase, user.id).then((r) => { if (!canceled) setRole(r); });
+    } else setRole(null);
+    return () => { canceled = true };
+  }, [user, supabase]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event: string, session: Session | null) => {
+        if (!mounted) return;
+        if (session?.user) setUser({ id: session.user.id, email: session.user.email || "" });
+        else { setUser(null); setRole(null); }
+        setLoading(false);
+      }
+    );
+
+    supabase.auth.getSession().then(({ data: { session } }: { data: { session: Session | null } }) => {
+      if (!mounted) return;
+      if (session?.user) setUser({ id: session.user.id, email: session.user.email || "" });
+      else { setUser(null); setRole(null); }
       setLoading(false);
     });
 
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
+    return () => { mounted = false; subscription.unsubscribe(); };
   }, [supabase]);
+
+  // Tab focus / visibility refresh
+  useEffect(() => {
+    let refreshing = false;
+
+    const handleRefresh = async () => {
+      if (!refreshing) {
+        refreshing = true;
+        setTimeout(async () => { await refreshSession(); refreshing = false; }, 100);
+      }
+    };
+
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') handleRefresh(); });
+    window.addEventListener('focus', handleRefresh);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleRefresh);
+      window.removeEventListener('focus', handleRefresh);
+    };
+  }, [refreshSession]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -120,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, signOut, supabase }}>
+    <AuthContext.Provider value={{ user, role, loading, signOut, supabase, refreshSession }}>
       {children}
     </AuthContext.Provider>
   );
@@ -128,19 +124,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
+  if (!context) throw new Error("useAuth must be used within AuthProvider");
   return context;
 }
 
-// Helper hook to check if user has required role
 export function useHasRole(requiredRoles: UserRole[]) {
   const { role, loading } = useAuth();
-  
-  return {
-    isAuthorized: role ? requiredRoles.includes(role) : false,
-    isLoading: loading,
-    role,
-  };
+  return { isAuthorized: role ? requiredRoles.includes(role) : false, isLoading: loading, role };
 }

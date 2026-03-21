@@ -23,7 +23,8 @@ import {
   Plus,
   Pencil,
   Trash2,
-  Shield
+  Shield,
+  LayoutDashboard
 } from 'lucide-react';
 
 const SECTION_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -33,6 +34,7 @@ const SECTION_ICONS: Record<string, React.ComponentType<{ className?: string }>>
   FileText,
   MessageSquare,
   UsersRound,
+  LayoutDashboard,
 };
 
 const ACTION_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -153,39 +155,64 @@ export default function PermissionsSelector({
                     </div>
                   </div>
                   <Badge variant="secondary" className="text-xs">
-                    {checkedCount}/4 permissions
+                    {section.key === 'dashboard' 
+                      ? `${checkedCount}/1` 
+                      : `${checkedCount}/4`} permissions
                   </Badge>
                 </div>
                 
                 <div className="flex flex-wrap gap-4 pt-2 border-t border-slate-100">
-                  {(['view', 'create', 'update', 'delete'] as PermissionAction[]).map((action) => {
-                    const ActionIcon = ACTION_ICONS[action];
-                    const isChecked = isSectionChecked(section.key, action);
-                    
-                    return (
-                      <label
-                        key={action}
-                        className={`
-                          flex items-center gap-2 cursor-pointer select-none
-                          ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
-                        `}
-                      >
-                        <Checkbox
-                          id={`${section.key}-${action}`}
-                          checked={isChecked}
-                          disabled={disabled}
-                          onCheckedChange={(checked: boolean) => 
-                            handleSectionPermissionChange(section.key, action, checked)
-                          }
-                          className="data-[state=checked]:bg-cyan-500 data-[state=checked]:border-cyan-500"
-                        />
-                        <span className="text-sm text-slate-700 capitalize flex items-center gap-1.5">
-                          <ActionIcon className="w-3.5 h-3.5" />
-                          {action}
-                        </span>
-                      </label>
-                    );
-                  })}
+                  {section.key === 'dashboard' ? (
+                    // Dashboard section - view only
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <Checkbox
+                        id={`${section.key}-view`}
+                        checked={isSectionChecked(section.key, 'view')}
+                        disabled={disabled}
+                        onCheckedChange={(checked: boolean) => 
+                          handleSectionPermissionChange(section.key, 'view', checked)
+                        }
+                        className="data-[state=checked]:bg-cyan-500 data-[state=checked]:border-cyan-500"
+                      />
+                      <span className="text-sm text-slate-700 capitalize flex items-center gap-1.5">
+                        <Eye className="w-3.5 h-3.5" />
+                        view
+                      </span>
+                    </label>
+                  ) : (
+                    // Other sections - all permissions except update for requests
+                    (section.key === 'requests' 
+                      ? (['view', 'create', 'delete'] as PermissionAction[])
+                      : (['view', 'create', 'update', 'delete'] as PermissionAction[])
+                    ).map((action) => {
+                      const ActionIcon = ACTION_ICONS[action];
+                      const isChecked = isSectionChecked(section.key, action);
+                      
+                      return (
+                        <label
+                          key={action}
+                          className={`
+                            flex items-center gap-2 cursor-pointer select-none
+                            ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
+                          `}
+                        >
+                          <Checkbox
+                            id={`${section.key}-${action}`}
+                            checked={isChecked}
+                            disabled={disabled}
+                            onCheckedChange={(checked: boolean) => 
+                              handleSectionPermissionChange(section.key, action, checked)
+                            }
+                            className="data-[state=checked]:bg-cyan-500 data-[state=checked]:border-cyan-500"
+                          />
+                          <span className="text-sm text-slate-700 capitalize flex items-center gap-1.5">
+                            <ActionIcon className="w-3.5 h-3.5" />
+                            {action}
+                          </span>
+                        </label>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             );

@@ -48,7 +48,8 @@ interface Freelancer {
 }
 
 export default function FreelancersPage() {
-  const { isLoading, canAccessSection, canCreate, canUpdate, canDelete } = useAccessControl();
+  // Get all access control state FIRST
+  const { isLoading, isRemoved, isSuspended, canAccessSection, canCreate, canUpdate, canDelete } = useAccessControl();
   const [freelancers, setFreelancers] = useState<Freelancer[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,21 +57,6 @@ export default function FreelancersPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingFreelancer, setEditingFreelancer] = useState<Freelancer | null>(null);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null); // For filtering
-
-  // Access control check
-  if (!isLoading && !canAccessSection('freelancers')) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">
-          Access Restricted
-        </h2>
-        <p className="text-slate-500 text-center max-w-md">
-          You don't have permission to view this section. Contact your administrator for access.
-        </p>
-      </div>
-    );
-  }
 
   const [formData, setFormData] = useState({
     display_name: "",
@@ -109,9 +95,9 @@ export default function FreelancersPage() {
         .select("freelancer_id, rating");
 
       const parsedData = data.map((f: any) => {
-        const freelancerReviews = reviewData?.filter(r => r.freelancer_id === f.id) || [];
+        const freelancerReviews = (reviewData || []).filter((r: any) => r.freelancer_id === f.id);
         if (freelancerReviews.length > 0) {
-          const totalRating = freelancerReviews.reduce((sum, r) => sum + r.rating, 0);
+          const totalRating = freelancerReviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0);
           f.rating = totalRating / freelancerReviews.length;
           f.review_count = freelancerReviews.length;
         }
@@ -125,10 +111,62 @@ export default function FreelancersPage() {
     setLoading(false);
   }, []);
 
+  // ALL hooks must be called before any early returns - useEffect FIRST
   useEffect(() => {
     fetchDomains();
     fetchFreelancers();
   }, [fetchDomains, fetchFreelancers]);
+
+  // Now safe to do early returns - all hooks have been called
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
+      </div>
+    );
+  }
+
+  if (isRemoved) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh]">
+        <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
+        <h2 className="text-xl font-semibold text-slate-900 mb-2">
+          Access Removed
+        </h2>
+        <p className="text-slate-500 text-center max-w-md">
+          Your access to this application has been removed. Please contact the administrator.
+        </p>
+      </div>
+    );
+  }
+
+  if (isSuspended) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh]">
+        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
+        <h2 className="text-xl font-semibold text-slate-900 mb-2">
+          Account Suspended
+        </h2>
+        <p className="text-slate-500 text-center max-w-md">
+          Your account is currently suspended. Please contact the administrator.
+        </p>
+      </div>
+    );
+  }
+
+  if (!canAccessSection('freelancers')) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh]">
+        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
+        <h2 className="text-xl font-semibold text-slate-900 mb-2">
+          Access Restricted
+        </h2>
+        <p className="text-slate-500 text-center max-w-md">
+          You don't have permission to view this section. Contact your administrator for access.
+        </p>
+      </div>
+    );
+  }
 
   function resetForm() {
     setFormData({

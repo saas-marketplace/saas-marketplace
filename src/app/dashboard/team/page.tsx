@@ -6,10 +6,11 @@ import { useAccessControl } from '@/hooks/useAccessControl';
 import { TeamMember } from '@/types/index';
 import { Permissions, SECTIONS } from '@/types/permissions';
 import TeamMemberDialog from '@/components/dashboard/team/TeamMemberDialog';
+import TeamMemberDetails from '@/components/dashboard/team/TeamMemberDetails';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage, LetterAvatar } from '@/components/ui/avatar';
 import {
   Table,
   TableBody,
@@ -39,7 +40,8 @@ import {
 } from 'lucide-react';
 
 export default function TeamPage() {
-  const { isLoading, canAccessSection, canCreate, canUpdate, canDelete } = useAccessControl();
+  // Get all access control state FIRST
+  const { isLoading, isRemoved, isSuspended, canAccessSection, canCreate, canUpdate, canDelete } = useAccessControl();
   const { toast } = useToast();
   const supabase = createClient();
 
@@ -48,33 +50,19 @@ export default function TeamPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  
+  // Details popup state
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
+
+  // Handle row click - open details popup
+  const handleRowClick = (member: TeamMember) => {
+    setSelectedMember(member);
+    setDetailsOpen(true);
+  };
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
-  // Access control check
-  if (!isLoading && !canAccessSection('team')) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">
-          Access Restricted
-        </h2>
-        <p className="text-slate-500 text-center max-w-md">
-          You don't have permission to view this section. Contact your administrator for access.
-        </p>
-      </div>
-    );
-  }
-
-  useEffect(() => {
-    fetchCurrentUserRole();
-  }, []);
-
-  useEffect(() => {
-    if (currentUserRole) {
-      fetchTeamMembers();
-    }
-  }, [currentUserRole]);
-
+  // ── DATA FETCHING FUNCTIONS (defined before useEffect for correct hook order) ──
   const fetchCurrentUserRole = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -107,7 +95,7 @@ export default function TeamPage() {
     try {
       const { data: membersData, error: membersError } = await supabase
         .from('team_members')
-        .select('*')
+        .select('*, avatar_url')
         .order('created_at', { ascending: false });
 
       console.log('Team members query result:', { membersData, membersError });
@@ -115,7 +103,7 @@ export default function TeamPage() {
       if (membersError) throw membersError;
 
       if (membersData && membersData.length > 0) {
-        const userIds = membersData.map(m => m.user_id);
+        const userIds = membersData.map((m: { user_id: string }) => m.user_id);
 
         const { data: usersData, error: usersError } = await supabase
           .from('users')
@@ -124,9 +112,9 @@ export default function TeamPage() {
 
         if (usersError) throw usersError;
 
-        const mergedData = membersData.map(member => ({
+        const mergedData = membersData.map((member: TeamMember & { user_id: string }) => ({
           ...member,
-          user: usersData?.find(u => u.id === member.user_id) || null
+          user: (usersData as any[])?.find((u: any) => u.id === member.user_id) || null,
         }));
 
         setTeamMembers(mergedData);
@@ -137,13 +125,78 @@ export default function TeamPage() {
       console.error('Error fetching team members:', error);
       toast({
         title: 'Error',
-        description: 'Failed to load team members',
+        description: 'Failed to load team members. Please try again.',
         variant: 'destructive',
       });
     } finally {
       setLoading(false);
     }
   };
+
+  // ── EFFECTS (must be called before early returns for consistent hook count) ──
+  useEffect(() => {
+    fetchCurrentUserRole();
+  }, []);
+
+  useEffect(() => {
+    if (currentUserRole) {
+      fetchTeamMembers();
+    }
+  }, [currentUserRole]);
+
+  // ALL hooks must be called before any early returns
+  // Handle loading state FIRST - always let hooks run
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
+      </div>
+    );
+  }
+
+  // Handle removed/suspended states
+  if (isRemoved) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh]">
+        <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
+        <h2 className="text-xl font-semibold text-slate-900 mb-2">
+          Access Removed
+        </h2>
+        <p className="text-slate-500 text-center max-w-md">
+          Your access to this application has been removed. Please contact the administrator.
+        </p>
+      </div>
+    );
+  }
+
+  if (isSuspended) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh]">
+        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
+        <h2 className="text-xl font-semibold text-slate-900 mb-2">
+          Account Suspended
+        </h2>
+        <p className="text-slate-500 text-center max-w-md">
+          Your account is currently suspended. Please contact the administrator.
+        </p>
+      </div>
+    );
+  }
+
+  // Access control check - after loading states are handled
+  if (!canAccessSection('team')) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh]">
+        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
+        <h2 className="text-xl font-semibold text-slate-900 mb-2">
+          Access Restricted
+        </h2>
+        <p className="text-slate-500 text-center max-w-md">
+          You don't have permission to view this section. Contact your administrator for access.
+        </p>
+      </div>
+    );
+  }
 
   const handleEdit = (member: TeamMember) => {
     setEditingMember(member);
@@ -245,20 +298,9 @@ export default function TeamPage() {
     return summary.slice(0, 2).join(' | ') + (summary.length > 2 ? ' ...' : '');
   };
 
-  // Only super admin can access this page
-  if (currentUserRole && currentUserRole !== 'super_admin') {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">
-          Access Restricted
-        </h2>
-        <p className="text-slate-500 text-center max-w-md">
-          Only Super Admins can manage team members. Contact your administrator for access.
-        </p>
-      </div>
-    );
-  }
+  // Only super admin can access this page - use isSuperAdmin from hook (set after loading)
+  // This check is redundant with canAccessSection but kept for explicit super_admin requirement
+  // Note: We use isSuperAdmin state from useAccessControl which is more reliable than currentUserRole
 
   return (
     <div className="space-y-6">
@@ -368,15 +410,27 @@ export default function TeamPage() {
               </TableHeader>
               <TableBody>
                 {teamMembers.map((member) => (
-                  <TableRow key={member.id}>
+                  <TableRow 
+                    key={member.id}
+                    className="cursor-pointer hover:bg-cyan-50/50 transition-colors"
+                    onClick={() => handleRowClick(member)}
+                  >
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarImage src={member.user?.avatar_url || undefined} />
-                          <AvatarFallback>
-                            {getInitials(member.user?.full_name || null, member.user?.email || '')}
-                          </AvatarFallback>
-                        </Avatar>
+                        {member.avatar_url ? (
+                          <Avatar>
+                            <AvatarImage src={member.avatar_url} />
+                            <AvatarFallback>
+                              {getInitials(member.user?.full_name || null, member.user?.email || '')}
+                            </AvatarFallback>
+                          </Avatar>
+                        ) : (
+                          <LetterAvatar
+                            name={member.user?.full_name || member.display_name || undefined}
+                            email={member.user?.email || ''}
+                            size="default"
+                          />
+                        )}
                         <div>
                           <div className="font-medium">{member.display_name}</div>
                           <div className="text-sm text-slate-500">
@@ -405,25 +459,42 @@ export default function TeamPage() {
                       {new Date(member.created_at).toLocaleDateString()}
                     </TableCell>
                     {isSuperAdmin && (
-                      <TableCell className="text-right">
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={(e) => e.stopPropagation()}
+                            >
                               <MoreHorizontal className="w-4 h-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleEdit(member)}>
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEdit(member);
+                              }}
+                            >
                               <Pencil className="w-4 h-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleToggleActive(member)}>
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleActive(member);
+                              }}
+                            >
                               <Eye className="w-4 h-4 mr-2" />
                               {member.is_active ? 'Deactivate' : 'Activate'}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onClick={() => handleDelete(member)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(member);
+                              }}
                               className="text-red-600"
                             >
                               <Trash2 className="w-4 h-4 mr-2" />
@@ -447,6 +518,13 @@ export default function TeamPage() {
         onOpenChange={setDialogOpen}
         editingMember={editingMember}
         onSuccess={fetchTeamMembers}
+      />
+
+      {/* Team Member Details Popup */}
+      <TeamMemberDetails
+        member={selectedMember}
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
       />
     </div>
   );

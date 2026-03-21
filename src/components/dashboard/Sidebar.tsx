@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Folder, Users, Package, MessageSquare, UsersRound, FileText, Loader2 } from 'lucide-react';
+import { LayoutDashboard, Folder, Users, Package, MessageSquare, UsersRound, FileText, Loader2, Settings } from 'lucide-react';
 
 interface SidebarLink {
   href: string;
@@ -21,9 +21,10 @@ const allLinks: SidebarLink[] = [
   { href: '/dashboard/blog', label: 'Blog', icon: FileText, section: 'blogs' },
   { href: '/dashboard/requests', label: 'Client Requests', icon: MessageSquare, section: 'requests' },
   { href: '/dashboard/team', label: 'Team Members', icon: UsersRound, section: 'team' },
+  { href: '/dashboard/settings', label: 'Settings', icon: Settings, section: 'settings' },
 ];
 
-export default function Sidebar() {
+export default function Sidebar(): React.ReactElement {
   const pathname = usePathname();
   const [accessibleSections, setAccessibleSections] = useState<string[]>([]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
@@ -32,7 +33,6 @@ export default function Sidebar() {
   useEffect(() => {
     const fetchPermissions = async () => {
       try {
-        // Using Supabase client directly to get user role
         const { createClient } = await import('@/lib/supabase/client');
         const supabase = createClient();
         
@@ -43,43 +43,43 @@ export default function Sidebar() {
           return;
         }
 
+        // Get role from users table - role is guaranteed to be valid
         const { data: userData } = await supabase
           .from('users')
           .select('role')
           .eq('id', authUser.id)
-          .single();
+          .maybeSingle();
 
-        let userRole = userData?.role || 'user';
+        // Default to 'user' if somehow missing, but role should always exist
+        let role = userData?.role || 'user';
 
-        // If role is not set in users table, check team_members table
-        if (!userData?.role) {
-          const { data: memberData } = await supabase
-            .from('team_members')
-            .select('role_label')
-            .eq('user_id', authUser.id)
-            .maybeSingle();
+        // Check team_members for role_label override
+        const { data: memberData } = await supabase
+          .from('team_members')
+          .select('role_label')
+          .eq('user_id', authUser.id)
+          .maybeSingle();
 
-          if (memberData?.role_label) {
-            if (memberData.role_label === 'Super Admin') {
-              userRole = 'super_admin';
-            } else if (memberData.role_label === 'Admin') {
-              userRole = 'admin';
-            }
+        // Use team_members role_label if available
+        if (memberData?.role_label) {
+          if (memberData.role_label === 'Super Admin') {
+            role = 'super_admin';
+          } else{
+            role = 'admin';
           }
         }
         
         // Super admin has access to all sections
-        if (userRole === 'super_admin') {
+        if (role === 'super_admin') {
           setIsSuperAdmin(true);
-          setAccessibleSections(['dashboard', 'domains', 'freelancers', 'products', 'blogs', 'requests', 'team']);
-        } else if (userRole === 'admin') {
+          setAccessibleSections(['dashboard', 'domains', 'freelancers', 'products', 'blogs', 'requests', 'team', 'settings']);
+        } else if (role === 'admin') {
           // Check team_members for permissions
           const { data: teamMember } = await supabase
             .from('team_members')
-            .select('permissions, is_active')
+            .select('permissions')
             .eq('user_id', authUser.id)
-            .eq('is_active', true)
-            .single();
+            .maybeSingle();
 
           if (teamMember?.permissions) {
             const sections = Object.keys(teamMember.permissions).filter(
@@ -87,13 +87,17 @@ export default function Sidebar() {
             );
             setAccessibleSections(['dashboard', ...sections]);
           } else {
+            // Admin with no specific permissions gets dashboard only
             setAccessibleSections(['dashboard']);
           }
         } else {
+          // Regular user gets dashboard only
           setAccessibleSections(['dashboard']);
         }
       } catch (error) {
         console.error('Error fetching permissions:', error);
+        // Default to showing dashboard on error
+        setAccessibleSections(['dashboard']);
       } finally {
         setLoading(false);
       }

@@ -163,7 +163,7 @@ export default function UserRequestsPage() {
         if (data) {
           const { data: allDomains } = await supabase.from('domains').select('id, name');
           const domainNameMap = new Map<string, string>();
-          allDomains?.forEach(d => domainNameMap.set(d.id, d.name));
+          (allDomains || []).forEach((d: any) => domainNameMap.set(d.id, d.name));
 
           const isUUID = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
           const injectDomain = (r: any) => {
@@ -184,13 +184,13 @@ export default function UserRequestsPage() {
             .order('created_at', { ascending: true });
           
           const lastMsgMap = new Map<string, string>();
-          lastMessages?.forEach(m => {
+          (lastMessages || []).forEach((m: any) => {
             lastMsgMap.set(m.request_id, m.message);
           });
           
-          const requestsWithLastMsg = data
-            .map(r => injectDomain(r))
-            .map(r => ({
+          const requestsWithLastMsg = (data as any[])
+            .map((r: any) => injectDomain(r))
+            .map((r: any) => ({
               ...r,
               last_message: lastMsgMap.get(r.id) || ''
             }));
@@ -368,7 +368,7 @@ export default function UserRequestsPage() {
           table: 'request_messages',
           filter: `request_id=eq.${selectedRequest.id}`
         },
-        (payload) => {
+        (payload: any) => {
           // Handle INSERT - new message
           if (payload.eventType === 'INSERT') {
             const newMessage = payload.new as RequestMessage;
@@ -408,7 +408,7 @@ export default function UserRequestsPage() {
           table: 'requests',
           filter: `id=eq.${selectedRequest.id}`
         },
-        (payload) => {
+        (payload: any) => {
           const newStatus = payload.new.status as Request['status'];
           setSelectedRequest(prev => prev ? { ...prev, status: newStatus } : null);
           setRequests(prev =>
@@ -433,7 +433,7 @@ export default function UserRequestsPage() {
 
     const ch = supabase
       .channel(channelName, { config: { broadcast: { self: false } } })
-      .on('broadcast', { event: 'typing' }, (payload) => {
+      .on('broadcast', { event: 'typing' }, (payload: any) => {
         const { requestId, userId, isTyping } = payload.payload ?? {};
         if (requestId !== selectedRequest.id || userId === currentUserId) return;
         setAdminIsTyping(prev => {
@@ -482,9 +482,22 @@ export default function UserRequestsPage() {
   useEffect(() => {
     const fetchMessages = async () => {
       if (!selectedRequest) return;
+      // Verify user is authenticated before fetching
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn("No active session, cannot fetch messages");
+        setMessagesLoading(false);
+        return;
+      }
+      
       setMessagesLoading(true);
       try {
-        const response = await fetch(`/api/requests/messages?request_id=${selectedRequest.id}`);
+        const response = await fetch(`/api/requests/messages?request_id=${selectedRequest.id}`, {
+          credentials: 'include',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
         const data = await response.json();
         if (data.messages) {
           const sortedMessages = [...data.messages].sort(
@@ -576,14 +589,27 @@ export default function UserRequestsPage() {
     sendTypingStatus(false);
     setLocalIsTyping(false);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    
+    // Get session for authorization header
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.warn("No active session, cannot send message");
+      setSendingMessage(false);
+      return;
+    }
+    
     try {
       const response = await fetch("/api/requests/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          'Authorization': `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({
           request_id: selectedRequest.id,
           message: newMessage.trim(),
         }),
+        credentials: 'include',
       });
 
       if (response.ok) {

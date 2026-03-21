@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAccessControl } from '@/hooks/useAccessControl';
+import { useSuspended } from '@/components/ui/suspended-context';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,6 +57,7 @@ interface Product {
 
 export default function ProductsPage() {
   const { canCreate, canUpdate, canDelete } = useAccessControl();
+  const { isSuspended } = useSuspended();
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   
@@ -133,9 +135,14 @@ export default function ProductsPage() {
   }, [supabase]);
 
   useEffect(() => {
+    // Don't fetch data if suspended - the SuspendedContent component will show the message
+    if (isSuspended) {
+      setLoading(false);
+      return;
+    }
     checkUser();
     fetchProducts();
-  }, [checkUser, fetchProducts]);
+  }, [checkUser, fetchProducts, isSuspended]);
 
   function generateSlug(title: string) {
     return title

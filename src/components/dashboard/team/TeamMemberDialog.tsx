@@ -23,8 +23,8 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Loader2, Plus, User } from 'lucide-react';
+import { Avatar, AvatarFallback, LetterAvatar } from '@/components/ui/avatar';
+import { Loader2, Plus, User, Upload, X } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
 interface UserOption {
@@ -40,6 +40,10 @@ interface TeamMemberDialogProps {
   editingMember?: TeamMember | null;
   onSuccess: () => void;
 }
+
+// Allowed image types
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 
 export default function TeamMemberDialog({ 
   open, 
@@ -60,6 +64,12 @@ export default function TeamMemberDialog({
   const [roleLabel, setRoleLabel] = useState('');
   // Default to read_only permissions for new team members
   const [permissions, setPermissions] = useState<Permissions>(PERMISSION_PRESETS.read_only);
+  
+  // Avatar upload state
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | null>(null);
 
   // Reset form when dialog opens/closes or editing member changes
   useEffect(() => {
@@ -69,14 +79,105 @@ export default function TeamMemberDialog({
         setDisplayName(editingMember.display_name);
         setRoleLabel(editingMember.role_label);
         setPermissions(editingMember.permissions);
+        setCurrentAvatarUrl(editingMember.avatar_url || null);
+        setAvatarPreview(editingMember.avatar_url || null);
       } else {
         setSelectedUserId('');
         setDisplayName('');
         setRoleLabel('');
         setPermissions({});
+        setCurrentAvatarUrl(null);
+        setAvatarPreview(null);
       }
+      // Reset avatar state
+      setAvatarFile(null);
     }
   }, [open, editingMember]);
+
+  // Handle avatar file selection
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      toast({
+        title: 'Invalid File Type',
+        description: 'Please upload a JPG, PNG, or WebP image.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      toast({
+        title: 'File Too Large',
+        description: 'Please upload an image smaller than 2MB.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setAvatarFile(file);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setAvatarPreview(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Remove avatar
+  const handleRemoveAvatar = () => {
+    setAvatarFile(null);
+    setAvatarPreview(null);
+    if (!editingMember) {
+      setCurrentAvatarUrl(null);
+    }
+  };
+
+  // Upload avatar to Supabase storage
+  const uploadAvatar = async (userId: string): Promise<string | null> => {
+    if (!avatarFile) return null;
+
+    setAvatarUploading(true);
+    try {
+      const fileExt = avatarFile.name.split('.').pop();
+      const fileName = `${userId}-${Date.now()}.${fileExt}`;
+      const filePath = `team-members/${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from('team-avatars')
+        .upload(filePath, avatarFile, {
+          cacheControl: '3600',
+          upsert: true,
+        });
+
+      if (error) {
+        console.error('Error uploading avatar:', error);
+        throw error;
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('team-avatars')
+        .getPublicUrl(filePath);
+
+      return urlData.publicUrl;
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      toast({
+        title: 'Upload Failed',
+        description: 'Failed to upload avatar. Please try again.',
+        variant: 'destructive',
+      });
+      return null;
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   // Fetch available users (not already team members)
   useEffect(() => {
@@ -93,7 +194,7 @@ export default function TeamMemberDialog({
         .from('team_members')
         .select('user_id');
       
-      const excludedUserIds = teamMembers?.map(tm => tm.user_id) || [];
+      const excludedUserIds = (teamMembers as any[] || []).map(tm => tm.user_id);
       
       // If editing, don't exclude the current member's user_id
       if (editingMember) {
@@ -147,18 +248,40 @@ export default function TeamMemberDialog({
       // Get current user (the super admin adding this member)
       const { data: { user: currentUser } } = await supabase.auth.getUser();
 
+      // Handle avatar upload first if there's a new file
+      let avatarUrl = currentAvatarUrl;
+      
+      if (avatarFile) {
+        // For new members, we need the user_id; for editing, use editingMember.user_id
+        const targetUserId = editingMember?.user_id || selectedUserId;
+        const uploadedUrl = await uploadAvatar(targetUserId);
+        if (uploadedUrl) {
+          avatarUrl = uploadedUrl;
+        }
+      } else if (!editingMember && !avatarFile) {
+        // New member with no avatar - will use default letter avatar
+        avatarUrl = null;
+      }
+
       if (editingMember) {
         // Update existing team member
         console.log('[TeamMemberDialog] Updating member with permissions:', permissions);
         
+        const updateData: Record<string, unknown> = {
+          display_name: displayName,
+          role_label: roleLabel,
+          permissions: permissions,
+          updated_at: new Date().toISOString(),
+        };
+
+        // Include avatar_url if it changed
+        if (avatarFile || avatarUrl === null) {
+          updateData.avatar_url = avatarUrl;
+        }
+
         const { error } = await supabase
           .from('team_members')
-          .update({
-            display_name: displayName,
-            role_label: roleLabel,
-            permissions: permissions,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq('id', editingMember.id);
 
         if (error) throw error;
@@ -187,6 +310,7 @@ export default function TeamMemberDialog({
             display_name: displayName,
             role_label: roleLabel,
             permissions: permissions,
+            avatar_url: avatarUrl,
             created_by: currentUser?.id,
           });
 
@@ -277,6 +401,62 @@ export default function TeamMemberDialog({
             </div>
           )}
 
+          {/* Avatar Upload */}
+          <div className="space-y-2">
+            <Label>Avatar (Optional)</Label>
+            <div className="flex items-center gap-4">
+              {/* Avatar Preview */}
+              <div className="relative">
+                {avatarPreview ? (
+                  <div className="relative">
+                    <img
+                      src={avatarPreview}
+                      alt="Avatar preview"
+                      className="w-16 h-16 rounded-full object-cover border-2 border-slate-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRemoveAvatar}
+                      className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                      disabled={loading}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <LetterAvatar
+                    name={displayName}
+                    email={editingMember?.user?.email || ''}
+                    size="lg"
+                    className="w-16 h-16"
+                  />
+                )}
+              </div>
+              
+              {/* Upload Button */}
+              <div>
+                <label
+                  htmlFor="avatar-upload"
+                  className="flex items-center gap-2 px-4 py-2 border border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-slate-400 hover:bg-slate-50 transition-colors"
+                >
+                  <Upload className="w-4 h-4 text-slate-500" />
+                  <span className="text-sm text-slate-600">
+                    {avatarUploading ? 'Uploading...' : 'Upload Image'}
+                  </span>
+                </label>
+                <input
+                  id="avatar-upload"
+                  type="file"
+                  accept={ALLOWED_TYPES.join(',')}
+                  onChange={handleAvatarChange}
+                  className="hidden"
+                  disabled={loading || avatarUploading}
+                />
+                <p className="text-xs text-slate-400 mt-1">JPG, PNG, WebP (max 2MB)</p>
+              </div>
+            </div>
+          </div>
+
           {/* Display Name */}
           <div className="space-y-2">
             <Label htmlFor="display-name">Display Name *</Label>
@@ -346,9 +526,9 @@ export default function TeamMemberDialog({
           </Button>
           <Button 
             onClick={handleSubmit}
-            disabled={loading || !selectedUserId || !displayName || !roleLabel}
+            disabled={loading || !selectedUserId || !displayName || !roleLabel || avatarUploading}
           >
-            {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            {(loading || avatarUploading) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             {editingMember ? 'Update' : 'Add Member'}
           </Button>
         </DialogFooter>

@@ -222,6 +222,8 @@ export interface TeamMember {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Custom avatar URL for team member
+  avatar_url?: string | null;
   // Joined user data
   user?: {
     id: string;

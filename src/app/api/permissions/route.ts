@@ -4,29 +4,38 @@ import { cookies } from 'next/headers';
 
 // GET - Check current user's permissions
 export async function GET() {
-  try {
-    const cookieStore = cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
+  // Create response first to capture cookies
+  const response = NextResponse.json({ 
+    isSuperAdmin: false, 
+    isAdmin: false, 
+    permissions: {},
+    accessibleSections: [] 
+  });
+  
+  const cookieStore = cookies();
+  
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
         },
-      }
-    );
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set({ name, value, ...options });
+          });
+        },
+      },
+    }
+  );
 
+  try {
     // Get current user
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      return NextResponse.json({ 
-        isSuperAdmin: false, 
-        isAdmin: false, 
-        permissions: {},
-        accessibleSections: [] 
-      });
+      return response;
     }
 
     // Get user role
@@ -95,42 +104,46 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Error checking permissions:', error);
-    return NextResponse.json({ 
-      isSuperAdmin: false, 
-      isAdmin: false, 
-      permissions: {},
-      accessibleSections: [] 
-    });
+    return response;
   }
 }
 
 // POST - Check specific permission
 export async function POST(request: NextRequest) {
-  try {
-    const cookieStore = cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
+  // Create response first to capture cookies
+  const response = NextResponse.json({ hasPermission: false });
+  
+  const cookieStore = cookies();
+  
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
         },
-      }
-    );
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set({ name, value, ...options });
+          });
+        },
+      },
+    }
+  );
 
+  try {
     // Get current user
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      return NextResponse.json({ hasPermission: false });
+      return response;
     }
 
     const body = await request.json();
     const { section, action } = body;
 
     if (!section || !action) {
-      return NextResponse.json({ hasPermission: false });
+      return response;
     }
 
     // Get user role
@@ -156,7 +169,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (!teamMember?.permissions) {
-      return NextResponse.json({ hasPermission: false });
+      return response;
     }
 
     const sectionPermissions = teamMember.permissions[section];
@@ -165,6 +178,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ hasPermission });
   } catch (error) {
     console.error('Error checking permission:', error);
-    return NextResponse.json({ hasPermission: false });
+    return response;
   }
 }

@@ -37,7 +37,8 @@ interface Domain {
 }
 
 export default function DomainsPage() {
-  const { isLoading, canAccessSection, canCreate, canUpdate, canDelete } = useAccessControl();
+  // Get all access control state FIRST
+  const { isLoading, isRemoved, isSuspended, canAccessSection, canCreate, canUpdate, canDelete } = useAccessControl();
   const [domains, setDomains] = useState<Domain[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -52,8 +53,61 @@ export default function DomainsPage() {
 
   const supabase = createClient();
 
-  // Access control check
-  if (!isLoading && !canAccessSection('domains')) {
+  // Define fetch function first
+  async function fetchDomains() {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("domains")
+      .select("*")
+      .order("name", { ascending: true });
+
+    if (!error && data) setDomains(data);
+    setLoading(false);
+  }
+
+  // ALL hooks must be called before any early returns - put useEffect FIRST
+  useEffect(() => {
+    fetchDomains();
+  }, []);
+
+  // Now safe to do early returns - all hooks have been called
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
+      </div>
+    );
+  }
+
+  if (isRemoved) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh]">
+        <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
+        <h2 className="text-xl font-semibold text-slate-900 mb-2">
+          Access Removed
+        </h2>
+        <p className="text-slate-500 text-center max-w-md">
+          Your access to this application has been removed. Please contact the administrator.
+        </p>
+      </div>
+    );
+  }
+
+  if (isSuspended) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh]">
+        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
+        <h2 className="text-xl font-semibold text-slate-900 mb-2">
+          Account Suspended
+        </h2>
+        <p className="text-slate-500 text-center max-w-md">
+          Your account is currently suspended. Please contact the administrator.
+        </p>
+      </div>
+    );
+  }
+
+  if (!canAccessSection('domains')) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh]">
         <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
@@ -65,21 +119,6 @@ export default function DomainsPage() {
         </p>
       </div>
     );
-  }
-
-  useEffect(() => {
-    fetchDomains();
-  }, []);
-
-  async function fetchDomains() {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("domains")
-      .select("*")
-      .order("name", { ascending: true });
-
-    if (!error && data) setDomains(data);
-    setLoading(false);
   }
 
   function generateSlug(name: string) {

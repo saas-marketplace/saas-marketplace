@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createServerClient } from "@supabase/ssr";
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
@@ -12,18 +12,13 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value;
+        getAll() {
+          return request.cookies.getAll();
         },
-        set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({ name, value, ...options });
-          response = NextResponse.next({ request: { headers: request.headers } });
-          response.cookies.set({ name, value, ...options });
-        },
-        remove(name: string, options: CookieOptions) {
-          request.cookies.set({ name, value: "", ...options });
-          response = NextResponse.next({ request: { headers: request.headers } });
-          response.cookies.set({ name, value: "", ...options });
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set({ name, value, ...options });
+          });
         },
       },
     }
@@ -38,13 +33,28 @@ export async function middleware(request: NextRequest) {
     return res;
   };
 
-  // Check authentication
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-  const publicRoutes = ["/", "/auth/login", "/auth/signup", "/about", "/pricing", "/contact", "/cookies", "/docs", "/enterprise", "/gdpr", "/help", "/privacy", "/terms", "/blog", "/careers", "/community", "/testimonials", "/freelancers", "/marketplace"];
+  // Public routes that don't require authentication
+  const publicRoutes = [
+    "/", 
+    "/auth/login", 
+    "/auth/signup", 
+    "/about", 
+    "/pricing", 
+    "/contact", 
+    "/cookies", 
+    "/docs", 
+    "/enterprise", 
+    "/gdpr", 
+    "/help", 
+    "/privacy", 
+    "/terms", 
+    "/blog", 
+    "/careers", 
+    "/community", 
+    "/testimonials", 
+    "/freelancers", 
+    "/marketplace"
+  ];
 
   const isPublicRoute = publicRoutes.some(
     route =>
@@ -54,81 +64,81 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith("/marketplace/")
   );
 
+  // Public routes - allow without auth check
   if (isPublicRoute || pathname.startsWith("/api/")) {
     return response;
   }
 
-  return response;
-}
-  // ── Authenticated users ─────────────────────────────────────────────────
-  
-  // If already on verify/access pages, let them through
-  if (pathname === "/verify-access" || pathname === "/access-removed" || pathname === "/access-restored") {
+  // Try to get user - don't redirect if it fails
+  let user = null;
+
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data?.user;
+  } catch (error) {
+    // Allow request to continue on error
     return response;
   }
 
-  // Fetch user's role from users table
-  // Also check team_members table as fallback for role and status
-  const { data: userData } = await supabase
-    .from("users")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
+  // No user - let frontend handle
+  if (!user) {
+    return response;
+  }
 
-  let userRole = userData?.role || "user";
-  let userStatus = "active";
+  // ── Authenticated users ─────────────────────────────────────────────────
+  // NEVER redirect suspended users - let them access dashboard and show UI message
+  
+  // Get user's role from users table
+  let userRole = "user";
 
-  // Check team_members for role and status fallback
-  const { data: memberData } = await supabase
-    .from("team_members")
-    .select("role_label, is_active")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  // If role is not set in users table, use team_members role_label
-  if (!userData?.role && memberData?.role_label) {
-    if (memberData.role_label === "Super Admin") {
-      userRole = "super_admin";
-    } else if (memberData.role_label === "Admin") {
-      userRole = "admin";
+  try {
+    const { data } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    
+    if (data?.role) {
+      userRole = data.role;
     }
+  } catch (error) {
+    // Continue with default role
   }
 
-  // Fallback: check team_members.is_active for suspended status
-  if (memberData && memberData.is_active === false) {
-    userStatus = "suspended";
-  }
-
-  // Priority 1: Check status FIRST - redirect to /verify-access for all status issues
-  if (userStatus === "removed") {
-    return redirectTo("/verify-access");
-  }
-
-  if (userStatus === "suspended") {
-    return redirectTo("/verify-access");
-  }
-
-  if (userStatus === "restored") {
-    return redirectTo("/verify-access");
-  }
-
-  // Priority 2: If status is "active", check role
-  if (userStatus === "active") {
-    // Admin or super_admin goes to dashboard
-    if (userRole === "admin" || userRole === "super_admin") {
-      if (pathname === "/") {
-        return redirectTo("/dashboard");
+  // Check team_members for role_label override
+  try {
+    const { data: memberData } = await supabase
+      .from("team_members")
+      .select("role_label")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    
+    if (memberData?.role_label) {
+      if (memberData.role_label === "Super Admin") {
+        userRole = "super_admin";
+      } else if (memberData.role_label === "Admin") {
+        userRole = "admin";
       }
-      return response;
     }
+  } catch (error) {
+    // Continue with users table role
+  }
 
-    // Regular users (role = "user") stay on home
-    if (userRole === "user") {
-      if (pathname.startsWith("/dashboard") || pathname.startsWith("/requests")) {
-        return redirectTo("/");
-      }
-      return response;
+  // Role-based routing
+  // super_admin and admin go to dashboard
+  if (userRole === "super_admin" || userRole === "admin") {
+    if (pathname === "/") {
+      return redirectTo("/dashboard");
     }
+    return response;
+  }
+
+  // Regular users stay on home page
+  if (userRole === "user") {
+    if (pathname.startsWith("/dashboard") || pathname.startsWith("/requests")) {
+      return redirectTo("/");
+    }
+    return response;
   }
 
   // Default: allow navigation

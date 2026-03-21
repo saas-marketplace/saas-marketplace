@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { LetterAvatar } from '@/components/ui/avatar';
 import { MoreHorizontal } from 'lucide-react';
 
 const supabase = createClient();
@@ -14,6 +15,7 @@ type TeamMember = {
   role_label: string;
   is_active: boolean;
   permissions: Record<string, string[]>;
+  avatar_url?: string | null;
   user?: {
     id: string;
     email: string;
@@ -47,9 +49,20 @@ export default function TeamTable({ members, onEdit, onDelete, onToggleActive }:
             <tr key={member.id} className="hover:bg-slate-50">
               <td className="px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-cyan-400 to-purple-500 flex items-center justify-center text-white font-medium">
-                    {member.display_name?.charAt(0).toUpperCase() || member.user?.email?.charAt(0).toUpperCase() || '?'}
-                  </div>
+                  {member.avatar_url ? (
+                    <img
+                      src={member.avatar_url}
+                      alt={member.display_name || 'Team member'}
+                      className="h-10 w-10 rounded-full object-cover"
+                    />
+                  ) : (
+                    <LetterAvatar
+                      name={member.display_name || member.user?.full_name || undefined}
+                      email={member.user?.email || ''}
+                      size="default"
+                      className="h-10 w-10"
+                    />
+                  )}
                   <div>
                     <p className="font-medium text-slate-900">{member.display_name || member.user?.full_name || 'Unknown'}</p>
                     <p className="text-sm text-slate-500">{member.user?.email || 'No email'}</p>

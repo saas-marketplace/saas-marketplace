@@ -210,3 +210,105 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = createServerSupabaseClient();
+    const { searchParams } = new URL(request.url);
+    const request_id = searchParams.get("request_id");
+
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    if (!request_id) {
+      return NextResponse.json(
+        { error: "Missing request_id" },
+        { status: 400 }
+      );
+    }
+
+    // Get user role and permissions
+    const { data: userData } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    
+    const userRole = userData?.role;
+    const isSuperAdmin = userRole === 'super_admin';
+    const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+
+    // Get the request to verify ownership
+    const { data: existingRequest, error: requestError } = await supabase
+      .from("requests")
+      .select("id, user_id")
+      .eq("id", request_id)
+      .single();
+
+    if (requestError || !existingRequest) {
+      return NextResponse.json(
+        { error: "Request not found" },
+        { status: 404 }
+      );
+    }
+
+    // Check permissions - only admin/super_admin can delete (with delete permission for team members)
+    let hasDeletePermission = isSuperAdmin;
+    
+    if (isAdmin && !isSuperAdmin) {
+      // Check team_members for delete permission on requests
+      const { data: teamMember } = await supabase
+        .from('team_members')
+        .select('permissions, is_active')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (teamMember && teamMember.is_active !== false) {
+        const permissions = teamMember.permissions ? 
+          (typeof teamMember.permissions === 'string' ? JSON.parse(teamMember.permissions) : teamMember.permissions) : 
+          {};
+        const requestPermissions = permissions.requests || [];
+        hasDeletePermission = requestPermissions.includes('delete');
+      } else {
+        // Default admin has all permissions
+        hasDeletePermission = true;
+      }
+    }
+
+    if (!hasDeletePermission) {
+      return NextResponse.json(
+        { error: "Permission denied - you don't have delete permission for requests" },
+        { status: 403 }
+      );
+    }
+
+    // Delete the request (cascade will handle related messages)
+    const { error: deleteError } = await supabase
+      .from("requests")
+      .delete()
+      .eq("id", request_id);
+
+    if (deleteError) {
+      console.error("Error deleting request:", deleteError);
+      return NextResponse.json(
+        { error: "Failed to delete request" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error in DELETE /api/requests:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}

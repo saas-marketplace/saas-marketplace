@@ -5,6 +5,7 @@ export type PermissionAction = 'view' | 'create' | 'update' | 'delete';
 
 // Available sections/domains in the system
 export type PermissionSection = 
+  | 'dashboard'
   | 'domains' 
   | 'freelancers' 
   | 'products' 
@@ -31,6 +32,12 @@ export interface SectionMeta {
 
 // Available sections in the system with metadata
 export const SECTIONS: SectionMeta[] = [
+  { 
+    key: 'dashboard', 
+    label: 'Dashboard', 
+    icon: 'LayoutDashboard', 
+    description: 'View dashboard statistics and overview' 
+  },
   { 
     key: 'domains', 
     label: 'Domains', 
@@ -67,11 +74,13 @@ export const SECTIONS: SectionMeta[] = [
     icon: 'UsersRound', 
     description: 'Manage team members and permissions' 
   },
+  
 ];
 
 // Permission presets for quick assignment
 export const PERMISSION_PRESETS: Record<Exclude<PermissionPreset, 'custom'>, Permissions> = {
   read_only: {
+    dashboard: ['view'],
     domains: ['view'],
     freelancers: ['view'],
     products: ['view'],
@@ -80,20 +89,24 @@ export const PERMISSION_PRESETS: Record<Exclude<PermissionPreset, 'custom'>, Per
     team: ['view'],
   },
   write: {
+    dashboard: ['view'],
     domains: ['view', 'create', 'update'],
     freelancers: ['view', 'create', 'update'],
     products: ['view', 'create', 'update'],
     blogs: ['view', 'create', 'update'],
-    requests: ['view', 'create', 'update'],
+    requests: ['view', 'create'],
     team: ['view'],
+    
   },
   full_access: {
+    dashboard: ['view'],
     domains: ['view', 'create', 'update', 'delete'],
     freelancers: ['view', 'create', 'update', 'delete'],
     products: ['view', 'create', 'update', 'delete'],
     blogs: ['view', 'create', 'update', 'delete'],
-    requests: ['view', 'create', 'update', 'delete'],
+    requests: ['view', 'create', 'delete'],
     team: ['view', 'create', 'update', 'delete'],
+   
   },
 };
 

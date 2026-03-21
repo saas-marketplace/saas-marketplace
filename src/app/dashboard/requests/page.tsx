@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
+import { useSuspended } from "@/components/ui/suspended-context";
 import { useAccessControl } from "@/hooks/useAccessControl";
 import { 
   MessageSquare, 
@@ -19,7 +20,9 @@ import {
   Eye,
   Star,
   Folder,
-  ChevronDown
+  ChevronDown,
+  Trash2,
+  X
 } from "lucide-react";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { Badge } from "@/components/ui/badge";
@@ -139,7 +142,8 @@ function TypingBubble({ mobile = false }: { mobile?: boolean }) {
 }
 
 export default function AdminRequestsPage() {
-  const { isLoading, canAccessSection, canCreate, permissions } = useAccessControl();
+  const { isLoading, canAccessSection, canCreate, canDelete, permissions } = useAccessControl();
+  const { isSuspended } = useSuspended();
 
   console.log('[Requests] Permissions:', permissions);
   console.log('[Requests] canCreate(requests):', canCreate('requests'));
@@ -160,6 +164,11 @@ export default function AdminRequestsPage() {
   const [typingStatus, setTypingStatus] = useState<TypingStatus>({});
   const [onlineStatus, setOnlineStatus] = useState<OnlineStatus>({});
   const [userIsTyping, setUserIsTyping] = useState(false);
+
+  // Delete confirmation state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [requestToDelete, setRequestToDelete] = useState<Request | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // ── SCROLL TO BOTTOM BUTTON STATE ──
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -230,6 +239,11 @@ export default function AdminRequestsPage() {
 
   // Fetch current user and requests
   useEffect(() => {
+    // Don't fetch data if suspended - the SuspendedContent component will show the message
+    if (isSuspended) {
+      return;
+    }
+
     const fetchRequests = async () => {
       const { data: { user } } = await supabase.auth.getUser();
 
@@ -256,7 +270,7 @@ export default function AdminRequestsPage() {
         if (data) {
           const { data: allDomains } = await supabase.from('domains').select('id, name');
           const domainNameMap = new Map<string, string>();
-          allDomains?.forEach(d => domainNameMap.set(d.id, d.name));
+          (allDomains as any[])?.forEach(d => domainNameMap.set(d.id, d.name));
 
           const isUUID = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
           const injectDomain = (r: any) => {
@@ -271,30 +285,30 @@ export default function AdminRequestsPage() {
           };
 
           if (isAdminUser && data.length > 0) {
-            const userIds = Array.from(new Set(data.map(r => r.user_id)));
+            const userIds = Array.from(new Set((data as any[]).map(r => r.user_id)));
             const { data: usersData } = await supabase
               .from('users').select('id, email, full_name').in('id', userIds);
             const map = new Map<string, UserInfo>();
-            usersData?.forEach(u => map.set(u.id, u));
+            (usersData as any[])?.forEach(u => map.set(u.id, u));
             setUserInfoMap(map);
 
-            const freelancerIds = Array.from(new Set(data.filter(r => r.freelancer_id).map(r => r.freelancer_id)));
+            const freelancerIds = Array.from(new Set((data as any[]).filter(r => r.freelancer_id).map(r => r.freelancer_id)));
             if (freelancerIds.length > 0) {
               const { data: freelancersData } = await supabase
                 .from('freelancers')
                 .select('id, display_name, title, domain_id, skills, experience_level, description, domains(name)')
                 .in('id', freelancerIds as string[]);
               const freelancerMap = new Map<string, FreelancerInfo>();
-              freelancersData?.forEach(f => freelancerMap.set(f.id, f));
+              (freelancersData as any[])?.forEach(f => freelancerMap.set(f.id, f));
               setFreelancerInfoMap(freelancerMap);
             }
 
             const { data: lastMessages } = await supabase
               .from('request_messages').select('request_id, message, created_at').order('created_at', { ascending: true });
             const lastMsgMap = new Map<string, string>();
-            lastMessages?.forEach(m => lastMsgMap.set(m.request_id, m.message));
+            (lastMessages as any[])?.forEach(m => lastMsgMap.set(m.request_id, m.message));
 
-            const requestsWithUsers = data
+            const requestsWithUsers = (data as any[])
               .map(r => injectDomain(r))
               .map(r => ({ ...r, users: map.get(r.user_id) || null, last_message: lastMsgMap.get(r.id) || '' }));
             setRequests(requestsWithUsers);
@@ -302,8 +316,8 @@ export default function AdminRequestsPage() {
             const { data: lastMessages } = await supabase
               .from('request_messages').select('request_id, message, created_at').order('created_at', { ascending: true });
             const lastMsgMap = new Map<string, string>();
-            lastMessages?.forEach(m => lastMsgMap.set(m.request_id, m.message));
-            const requestsWithLastMsg = data
+            (lastMessages as any[])?.forEach(m => lastMsgMap.set(m.request_id, m.message));
+            const requestsWithLastMsg = (data as any[])
               .map(r => injectDomain(r))
               .map(r => ({ ...r, last_message: lastMsgMap.get(r.id) || '' }));
             setRequests(requestsWithLastMsg);
@@ -313,7 +327,7 @@ export default function AdminRequestsPage() {
       setLoading(false);
     };
     fetchRequests();
-  }, [supabase]);
+  }, [supabase, isSuspended]);
 
   // ── PRESENCE: admin tracks their own presence ──
   useEffect(() => {
@@ -426,7 +440,7 @@ export default function AdminRequestsPage() {
         schema: 'public',
         table: 'user_status',
         filter: `user_id=eq.${userId}`,
-      }, (payload) => {
+      }, (payload: any) => {
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
           const s = payload.new as { user_id: string; is_online: boolean; last_seen: string };
           setOnlineStatus(prev => ({
@@ -486,7 +500,7 @@ export default function AdminRequestsPage() {
 
     const ch = supabase
       .channel(channelName, { config: { broadcast: { self: false } } })
-      .on('broadcast', { event: 'typing' }, (payload) => {
+      .on('broadcast', { event: 'typing' }, (payload: any) => {
         const { requestId, userId: senderId, isTyping } = payload.payload ?? {};
         if (requestId !== selectedRequest.id || senderId === currentUserId) return;
         setUserIsTyping(prev => {
@@ -513,9 +527,31 @@ export default function AdminRequestsPage() {
   useEffect(() => {
     const fetchMessages = async () => {
       if (!selectedRequest) return;
+      
+      // Verify user is authenticated before fetching
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn("No active session, cannot fetch messages");
+        setMessagesLoading(false);
+        return;
+      }
+      
       setMessagesLoading(true);
       try {
-        const response = await fetch(`/api/requests/messages?request_id=${selectedRequest.id}`);
+        const response = await fetch(`/api/requests/messages?request_id=${selectedRequest.id}`, {
+          credentials: 'include',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+        
+        if (response.status === 401) {
+          console.warn("User not authenticated, messages cannot be loaded");
+          setMessages([]);
+          setMessagesLoading(false);
+          return;
+        }
+        
         const data = await response.json();
         if (data.messages) {
           const sortedMessages = [...data.messages].sort(
@@ -543,7 +579,7 @@ export default function AdminRequestsPage() {
         schema: 'public',
         table: 'request_messages',
         filter: `request_id=eq.${selectedRequest.id}`,
-      }, (payload) => {
+      }, (payload: any) => {
         // Handle INSERT - new message
         if (payload.eventType === 'INSERT') {
           const newMessage = payload.new as RequestMessage;
@@ -580,7 +616,7 @@ export default function AdminRequestsPage() {
           table: 'requests',
           filter: `id=eq.${selectedRequest.id}`
         },
-        (payload) => {
+        (payload: any) => {
           const newStatus = payload.new.status as Request['status'];
           setSelectedRequest(prev => prev ? { ...prev, status: newStatus } : null);
           setRequests(prev =>
@@ -694,11 +730,24 @@ export default function AdminRequestsPage() {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
     setSendingMessage(true);
+    
+    // Get session for authorization header
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.warn("No active session, cannot send message");
+      setSendingMessage(false);
+      return;
+    }
+    
     try {
       const response = await fetch("/api/requests/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          'Authorization': `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({ request_id: selectedRequest.id, message: newMessage.trim() }),
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -720,6 +769,54 @@ export default function AdminRequestsPage() {
     } finally {
       setSendingMessage(false);
     }
+  };
+
+  // Handle delete request
+  const handleDeleteRequest = async () => {
+    if (!requestToDelete || deleting) return;
+
+    // Check permission
+    if (!canDelete('requests')) {
+      alert('You do not have permission to delete this request');
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('requests')
+        .delete()
+        .eq('id', requestToDelete.id);
+
+      if (error) {
+        console.error('Error deleting request:', error);
+        alert('Failed to delete request');
+        return;
+      }
+
+      // Remove from state immediately (no reload)
+      setRequests(prev => prev.filter(r => r.id !== requestToDelete.id));
+      
+      // If inside chat, go back to list
+      if (selectedRequest?.id === requestToDelete.id) {
+        setSelectedRequest(null);
+      }
+      
+      setDeleteConfirmOpen(false);
+      setRequestToDelete(null);
+    } catch (error) {
+      console.error('Error deleting request:', error);
+      alert('Failed to delete request');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Open delete confirmation
+  const openDeleteConfirm = (request: Request, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRequestToDelete(request);
+    setDeleteConfirmOpen(true);
   };
 
   const handleSelectRequest = async (request: Request) => {
@@ -867,7 +964,21 @@ export default function AdminRequestsPage() {
                   {isAdmin && selectedRequest.user_id ? getUserStatus() : formatDate(selectedRequest.created_at)}
                 </p>
               </div>
-              {getStatusBadge(selectedRequest.status)}
+              <div className="flex items-center gap-2">
+                {canDelete('requests') && (
+                  <button
+                    onClick={() => {
+                      setRequestToDelete(selectedRequest);
+                      setDeleteConfirmOpen(true);
+                    }}
+                    className="p-2 rounded-full bg-gradient-to-r from-white to-cyan-50 border border-cyan-200 text-slate-500 hover:text-red-500 hover:border-red-300 hover:from-red-50 hover:to-red-50/50 transition-all duration-200"
+                    title="Delete Request"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+                {getStatusBadge(selectedRequest.status)}
+              </div>
             </div>
 
             {/* Mobile Chat Messages */}
@@ -990,7 +1101,21 @@ export default function AdminRequestsPage() {
                 {isAdmin && selectedRequest.user_id ? getUserStatus() : formatDate(selectedRequest.created_at)}
               </p>
             </div>
-            {getStatusBadge(selectedRequest.status)}
+            <div className="flex items-center gap-2">
+              {canDelete('requests') && (
+                <button
+                  onClick={() => {
+                    setRequestToDelete(selectedRequest);
+                    setDeleteConfirmOpen(true);
+                  }}
+                  className="p-2 rounded-full bg-gradient-to-r from-white to-cyan-50 border border-cyan-200 text-slate-500 hover:text-red-500 hover:border-red-300 hover:from-red-50 hover:to-red-50/50 transition-all duration-200"
+                  title="Delete Request"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+              {getStatusBadge(selectedRequest.status)}
+            </div>
           </div>
 
           {/* Messages Container */}
@@ -1076,6 +1201,47 @@ export default function AdminRequestsPage() {
             </Button>
           </div>
         </div>
+
+        {/* Delete Confirmation Dialog */}
+        {deleteConfirmOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl p-6 max-w-sm mx-4 shadow-2xl border border-gray-100">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-5 h-5 text-red-500" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">Delete Request</h3>
+              </div>
+              <p className="text-gray-600 mb-6">
+                Are you sure you want to delete this request? This action cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDeleteConfirmOpen(false);
+                    setRequestToDelete(null);
+                  }}
+                  className="flex-1"
+                  disabled={deleting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleDeleteRequest}
+                  className="flex-1 bg-red-500 hover:bg-red-600 text-white"
+                  disabled={deleting}
+                >
+                  {deleting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    'Delete'
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </>
     );
   }
@@ -1140,7 +1306,18 @@ export default function AdminRequestsPage() {
                         <p className="text-xs sm:text-sm text-gray-500">{formatDate(request.created_at)}</p>
                       </div>
                     </div>
-                    <div className="shrink-0">{getStatusBadge(request.status)}</div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {canDelete('requests') && (
+                        <button
+                          onClick={(e) => openDeleteConfirm(request, e)}
+                          className="p-2 rounded-full bg-gradient-to-r from-white to-cyan-50 border border-cyan-200 text-slate-500 hover:text-red-500 hover:border-red-300 hover:from-red-50 hover:to-red-50/50 transition-all duration-200"
+                          title="Delete Request"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                      {getStatusBadge(request.status)}
+                    </div>
                   </div>
                   
                   {/* Subject */}
@@ -1194,6 +1371,47 @@ export default function AdminRequestsPage() {
               </ScrollReveal>
             );
           })}
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {deleteConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-6 max-w-sm mx-4 shadow-2xl border border-gray-100">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-red-500" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Delete Request</h3>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete this request? This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setRequestToDelete(null);
+                }}
+                className="flex-1"
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDeleteRequest}
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white"
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  'Delete'
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

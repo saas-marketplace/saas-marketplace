@@ -79,7 +79,7 @@ export default function FreelancerProfilePage() {
 
       if (!newReviewsError && newReviews && newReviews.length > 0) {
         // Fetch user data for each review from public.users table
-        const userIds = [...new Set(newReviews.map(r => r.user_id).filter(Boolean))];
+        const userIds = [...new Set((newReviews as any[]).map((r: any) => r.user_id).filter(Boolean))];
         if (userIds.length > 0) {
           const { data: usersData } = await supabase
             .from("users")
@@ -87,8 +87,8 @@ export default function FreelancerProfilePage() {
             .in("id", userIds);
           
           // Merge user data into reviews - use email prefix as fallback for full_name
-          newReviews = newReviews.map(review => {
-            const user = usersData?.find(u => u.id === review.user_id);
+          newReviews = (newReviews as any[]).map((review: any) => {
+            const user = usersData?.find((u: any) => u.id === review.user_id);
             return {
               ...review,
               user: user ? { 
@@ -102,7 +102,7 @@ export default function FreelancerProfilePage() {
         // Use new reviews table
         reviewData = newReviews;
         reviewCount = newReviews.length;
-        const totalRating = newReviews.reduce((sum, r) => sum + r.rating, 0);
+        const totalRating = (newReviews as any[]).reduce((sum, r) => sum + (r.rating || 0), 0);
         avgRating = totalRating / reviewCount;
         console.log("Using reviews table:", reviewCount, "reviews");
       }

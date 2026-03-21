@@ -5,6 +5,26 @@ import * as AvatarPrimitive from "@radix-ui/react-avatar"
 
 import { cn } from "@/lib/utils"
 
+// Predefined gradient backgrounds for letter avatars (light theme - white/cyan)
+const GRADIENTS = [
+  "from-white to-cyan-100",
+  "from-cyan-50 to-white",
+  "from-white via-cyan-50 to-cyan-100",
+  "from-cyan-100 via-white to-cyan-50",
+  "from-white to-cyan-200",
+  "from-cyan-50 via-white to-cyan-100",
+]
+
+// Generate consistent gradient based on email/name
+function getGradientForString(str: string): string {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const index = Math.abs(hash) % GRADIENTS.length
+  return GRADIENTS[index]
+}
+
 function Avatar({
   className,
   size = "default",
@@ -54,6 +74,44 @@ function AvatarFallback({
       )}
       {...props}
     />
+  )
+}
+
+// Letter Avatar component - displays initials with gradient background
+interface LetterAvatarProps {
+  name?: string | null
+  email?: string
+  size?: "default" | "sm" | "lg"
+  className?: string
+}
+
+function LetterAvatar({ name, email, size = "default", className }: LetterAvatarProps) {
+  const content = name || email || "?"
+  const initials = name
+    ? name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)
+    : email
+      ? email.slice(0, 2).toUpperCase()
+      : "?"
+  
+  const gradient = getGradientForString(content)
+  
+  const sizeClasses = {
+    sm: "size-6 text-xs",
+    default: "size-8 text-sm",
+    lg: "size-10 text-base",
+  }
+  
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-slate-700 font-medium",
+        gradient,
+        sizeClasses[size],
+        className
+      )}
+    >
+      {initials}
+    </div>
   )
 }
 
@@ -109,4 +167,5 @@ export {
   AvatarGroup,
   AvatarGroupCount,
   AvatarBadge,
+  LetterAvatar,
 }

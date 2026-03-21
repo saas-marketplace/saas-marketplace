@@ -47,30 +47,16 @@ export function useAccessControl() {
         return;
       }
 
+      // Get role from users table - role is guaranteed to be valid now
       const { data: userData } = await supabase
         .from('users')
         .select('role')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
-      const userRole = userData?.role || null;
+      // Default to 'user' if somehow missing - but role should always exist now
+      const userRole = userData?.role || 'user';
       console.log('[AccessControl] User role:', userRole, 'User ID:', user.id);
-
-      // 🚨 REMOVED (role = null) - highest priority check
-      if (!userRole) {
-        console.log('[AccessControl] User has no role - access removed');
-        if (isMounted.current) {
-          setState({
-            isLoading: false,
-            isSuperAdmin: false,
-            isAdmin: false,
-            isRemoved: true,
-            isSuspended: false,
-            permissions: {},
-          });
-        }
-        return;
-      }
 
       // Super admin has ALL permissions
       if (userRole === 'super_admin') {
@@ -87,41 +73,26 @@ export function useAccessControl() {
               freelancers: ['view', 'create', 'update', 'delete'],
               products: ['view', 'create', 'update', 'delete'],
               blogs: ['view', 'create', 'update', 'delete'],
-              requests: ['view', 'create', 'update', 'delete'],
+              requests: ['view', 'create', 'delete'],
               team: ['view', 'create', 'update', 'delete'],
+              dashboard: ['view'],
             },
           });
         }
-      } else if (userRole === 'admin' || userRole === 'team_member') {
+      } else if (userRole === 'admin') {
         console.log('[AccessControl] User is admin - checking team_members for custom permissions');
 
-        // Use maybeSingle to avoid errors if no record
+        // Check team_members for additional permissions
         const { data: teamMember } = await supabase
           .from('team_members')
           .select('permissions, is_active')
           .eq('user_id', user.id)
           .maybeSingle();
 
-        console.log('[AccessControl] Team member query result:', { teamMember });
-
-        if (!teamMember) {
-          // User was removed from team
-          console.log('[AccessControl] Admin removed from team');
-          if (isMounted.current) {
-            setState({
-              isLoading: false,
-              isSuperAdmin: false,
-              isAdmin: false,
-              isRemoved: true,
-              isSuspended: false,
-              permissions: {},
-            });
-          }
-          return;
-        }
-        
-        if (!teamMember.is_active) {
-          console.log('[AccessControl] Admin is suspended - treating as regular user');
+        // If no team_member record, admin still has access (with default permissions)
+        // If team_member exists but is_active is false, treat as suspended
+        if (teamMember && teamMember.is_active === false) {
+          console.log('[AccessControl] Admin is suspended');
           if (isMounted.current) {
             setState({
               isLoading: false,
@@ -135,11 +106,24 @@ export function useAccessControl() {
           return;
         }
 
+        // Load permissions from team_members or use default admin permissions
         let permissionsData: Record<string, string[]> = {};
-        if (teamMember.permissions) {
+        
+        if (teamMember?.permissions) {
           permissionsData = typeof teamMember.permissions === 'string'
             ? JSON.parse(teamMember.permissions)
             : teamMember.permissions;
+        } else {
+          // Default admin permissions if no team_member record
+          permissionsData = {
+            domains: ['view', 'create', 'update', 'delete'],
+            freelancers: ['view', 'create', 'update', 'delete'],
+            products: ['view', 'create', 'update', 'delete'],
+            blogs: ['view', 'create', 'update', 'delete'],
+            requests: ['view', 'create', 'delete'],
+            team: ['view', 'create', 'update', 'delete'],
+            dashboard: ['view'],
+          };
         }
 
         console.log('[AccessControl] Loaded permissions:', permissionsData);
@@ -155,6 +139,7 @@ export function useAccessControl() {
           });
         }
       } else {
+        // Regular user - no admin permissions
         console.log('[AccessControl] User is regular user - no admin permissions');
         if (isMounted.current) {
           setState({
