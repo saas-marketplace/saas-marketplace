@@ -43,21 +43,23 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // ── Unauthenticated users ─────────────────────────────────────────────────
   if (!user) {
-    // Allow access to public routes
-    const publicRoutes = ["/", "/auth/login", "/auth/signup", "/about", "/pricing", "/contact", "/cookies", "/docs", "/enterprise", "/gdpr", "/help", "/privacy", "/terms", "/blog", "/careers", "/community", "/testimonials", "/freelancers", "/marketplace"];
-    const isPublicRoute = publicRoutes.some(route => pathname === route || pathname.startsWith("/blog/") || pathname.startsWith("/freelancers/") || pathname.startsWith("/marketplace/"));
-    
-    if (isPublicRoute || pathname.startsWith("/api/")) {
-      return response;
-    }
-    
-    // Redirect to login for protected routes, preserving the intended destination
-    const returnUrl = pathname;
-    return redirectTo(`/auth/login?returnUrl=${encodeURIComponent(returnUrl)}`);
+  const publicRoutes = ["/", "/auth/login", "/auth/signup", "/about", "/pricing", "/contact", "/cookies", "/docs", "/enterprise", "/gdpr", "/help", "/privacy", "/terms", "/blog", "/careers", "/community", "/testimonials", "/freelancers", "/marketplace"];
+
+  const isPublicRoute = publicRoutes.some(
+    route =>
+      pathname === route ||
+      pathname.startsWith("/blog/") ||
+      pathname.startsWith("/freelancers/") ||
+      pathname.startsWith("/marketplace/")
+  );
+
+  if (isPublicRoute || pathname.startsWith("/api/")) {
+    return response;
   }
 
+  return response;
+}
   // ── Authenticated users ─────────────────────────────────────────────────
   
   // If already on verify/access pages, let them through

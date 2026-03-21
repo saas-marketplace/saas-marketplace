@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { FreelancerMiniCard } from "@/components/ui/freelancer-mini-card";
+import { MessageBubble } from "@/components/requests/MessageBubble";
 
 interface Request {
   id: string;
@@ -538,19 +539,27 @@ export default function AdminRequestsPage() {
     const messageChannel = supabase
       .channel('admin_messages')
       .on('postgres_changes', {
-        event: 'INSERT',
+        event: '*',
         schema: 'public',
         table: 'request_messages',
         filter: `request_id=eq.${selectedRequest.id}`,
       }, (payload) => {
-        const newMessage = payload.new as RequestMessage;
-        setMessages(prev => {
-          if (prev.some(m => m.id === newMessage.id)) return prev;
-          const newMessages = [...prev, newMessage];
-          return newMessages.sort(
-            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-          );
-        });
+        // Handle INSERT - new message
+        if (payload.eventType === 'INSERT') {
+          const newMessage = payload.new as RequestMessage;
+          setMessages(prev => {
+            if (prev.some(m => m.id === newMessage.id)) return prev;
+            const newMessages = [...prev, newMessage];
+            return newMessages.sort(
+              (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+          });
+        }
+        // Handle DELETE - message removed
+        if (payload.eventType === 'DELETE') {
+          const deletedMessage = payload.old as RequestMessage;
+          setMessages(prev => prev.filter(m => m.id !== deletedMessage.id));
+        }
       })
       .subscribe();
 
@@ -864,7 +873,7 @@ export default function AdminRequestsPage() {
             {/* Mobile Chat Messages */}
             <div 
               ref={chatContainerRef}
-              className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 p-3 sm:p-4 bg-white"
+              className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 p-3 sm:p-4 pb-2 sm:pb-4 bg-white"
             >
               {/* Subject */}
               {selectedRequest.title && (
@@ -903,32 +912,17 @@ export default function AdminRequestsPage() {
                   {messages.map((msg) => {
                     const isUserMsg = isCurrentUserMessage(msg.sender_id);
                     return (
-                      <motion.div
+                      <MessageBubble
                         key={msg.id}
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        transition={{ duration: 0.2, ease: 'easeOut' }}
-                        className={`flex ${isUserMsg ? "justify-end" : "justify-start"} items-end`}
-                      >
-                        {!isUserMsg && (
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center mr-2 shrink-0">
-                            <User className="w-4 h-4 text-white" />
-                          </div>
-                        )}
-                        <div 
-                          className={`max-w-[70%] sm:max-w-[70%] rounded-2xl px-3 py-2 sm:px-4 sm:py-3 transition-all duration-200 ${
-                            isUserMsg
-                              ? "bg-gradient-to-br from-[#249fd3] to-cyan-500 text-white rounded-br-sm shadow-md shadow-cyan-500/20"
-                              : "bg-cyan-50 text-slate-800 rounded-bl-sm border border-cyan-100"
-                          }`}
-                        >
-                          <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{msg.message}</p>
-                          <div className={`text-right mt-1 ${isUserMsg ? 'text-white/70' : 'text-slate-400'}`}>
-                            <span className="text-xs">{formatMessageTime(msg.created_at)}</span>
-                          </div>
-                        </div>
-                        {isUserMsg && <div className="w-10 shrink-0" />}
-                      </motion.div>
+                        message={msg}
+                        isUserMsg={isUserMsg}
+                        currentUserId={currentUserId || ''}
+                        onDelete={(messageId) => {
+                          // Optimistic update: immediately remove message from UI
+                          setMessages(prev => prev.filter(m => m.id !== messageId));
+                        }}
+                        mobile
+                      />
                     );
                   })}
                 </div>
@@ -1041,32 +1035,16 @@ export default function AdminRequestsPage() {
                 {messages.map((msg) => {
                   const isUserMsg = isCurrentUserMessage(msg.sender_id);
                   return (
-                    <motion.div
+                    <MessageBubble
                       key={msg.id}
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      transition={{ duration: 0.2, ease: 'easeOut' }}
-                      className={`flex ${isUserMsg ? "justify-end" : "justify-start"} items-end`}
-                    >
-                      {!isUserMsg && (
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center mr-2 shrink-0 shadow-md">
-                          <User className="w-4 h-4 text-white" />
-                        </div>
-                      )}
-                      <div 
-                        className={`max-w-[70%] rounded-2xl px-4 py-3 transition-all duration-200 ${
-                          isUserMsg
-                            ? "bg-gradient-to-br from-[#249fd3] to-cyan-500 text-white rounded-br-sm shadow-lg shadow-cyan-500/20"
-                            : "bg-cyan-50 text-slate-800 rounded-bl-sm border border-cyan-100"
-                        }`}
-                      >
-                        <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{msg.message}</p>
-                        <div className={`text-right mt-1 ${isUserMsg ? 'text-white/70' : 'text-slate-400'}`}>
-                          <span className="text-xs">{formatMessageTime(msg.created_at)}</span>
-                        </div>
-                      </div>
-                      {isUserMsg && <div className="w-11 shrink-0" />}
-                    </motion.div>
+                      message={msg}
+                      isUserMsg={isUserMsg}
+                      currentUserId={currentUserId || ''}
+                      onDelete={(messageId) => {
+                        // Optimistic update: immediately remove message from UI
+                        setMessages(prev => prev.filter(m => m.id !== messageId));
+                      }}
+                    />
                   );
                 })}
               </>
