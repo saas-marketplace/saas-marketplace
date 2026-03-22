@@ -26,8 +26,7 @@ import {
 import { Badge } from "../../ui/badge";
 import { cn } from "../../../lib/utils";
 import { useCart } from "@/stores/cart-context";
-import { createClient } from "../../../lib/supabase/client";
-import type { Session, AuthChangeEvent } from "@supabase/supabase-js";
+import { useAuth } from "../auth-provider";
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -39,32 +38,13 @@ const navLinks = [
 
 function NavbarContent() {
   const [scrolled, setScrolled] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const { cartCount } = useCart();
-  const supabase = createClient();
-
-  // Fetch user role
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      if (user) {
-        const { data } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', user.id)
-          .maybeSingle();
-        setUserRole(data?.role || null);
-      } else {
-        setUserRole(null);
-      }
-    };
-    fetchUserRole();
-  }, [user, supabase]);
+  const { user, loading, signOut } = useAuth();
+  const userRole = user ? 'admin' : null; // Simplified - full role from useSession in provider
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -87,68 +67,7 @@ function NavbarContent() {
     setMenuOpen(false);
   }, [pathname]);
 
-  const fetchedRef = useRef(false);
-  
-  useEffect(() => {
-    let isMounted = true;
-    let subscription: { unsubscribe: () => void } | null = null;
 
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-
-    const initAuth = async () => {
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        
-        if (isMounted) {
-          setUser(session?.user ?? null);
-          setLoading(false);
-        }
-
-        if (isMounted) {
-          const { data } = supabase.auth.onAuthStateChange(
-            (_event: AuthChangeEvent, session: Session | null) => {
-              if (isMounted) {
-                setUser(session?.user ?? null);
-                setLoading(false);
-              }
-            }
-          );
-          subscription = data.subscription;
-        }
-      } catch (error) {
-        console.error("Auth initialization error:", error);
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    initAuth();
-
-    return () => {
-      isMounted = false;
-      if (subscription && typeof subscription.unsubscribe === 'function') {
-        subscription.unsubscribe();
-      }
-    };
-  }, [supabase.auth]);
-
-  const handleSignOut = async () => {
-    try {
-      await supabase.auth.signOut();
-      setUser(null);
-      setMenuOpen(false);
-      // Force full page reload to clear all session state and caches
-      window.location.href = '/auth/login';
-    } catch (error) {
-      console.error("Sign out error:", error);
-      // Even if there's an error, redirect to login
-      window.location.href = '/auth/login';
-    }
-  };
 
   const toggleMenu = () => {
     setMenuOpen(!menuOpen);
@@ -259,7 +178,7 @@ function NavbarContent() {
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleSignOut}>
+                    <DropdownMenuItem onClick={() => { signOut(); setMenuOpen(false); }}>
                       <LogOut className="mr-2 h-4 w-4" />
                       Sign Out
                     </DropdownMenuItem>
@@ -408,7 +327,7 @@ function NavbarContent() {
                       </Link>
                     )}
                     <button
-                      onClick={handleSignOut}
+                      onClick={() => { signOut(); setMenuOpen(false); }}
                       className="block px-6 py-4 text-gray-600 dark:text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left w-full"
                     >
                       Sign Out

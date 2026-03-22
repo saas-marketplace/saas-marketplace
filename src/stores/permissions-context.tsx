@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Permissions, PermissionSection, PermissionAction } from '@/types/permissions';
+import type { AuthChangeEvent } from '@supabase/supabase-js';
 
 interface PermissionsContextType {
   isSuperAdmin: boolean;
@@ -115,7 +116,7 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
     }
 
     // Listen for auth state changes to refresh permissions
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent) => {
       console.log('[PermissionsContext] Auth state changed:', event);
       if (event === 'SIGNED_OUT') {
         // Clear all state on logout
@@ -166,6 +167,7 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
     canUpdate,
     canDelete,
     isLoading,
+    refreshPermissions: fetchPermissions,
   };
 
   return (

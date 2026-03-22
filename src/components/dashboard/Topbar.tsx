@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { useSession } from '@/hooks/useSession';
+import { useAuth } from '@/components/providers/auth-provider';
 import {
   Search,
   Bell,
@@ -466,21 +467,20 @@ export default function Topbar() {
     };
   }, [supabase]);
 
+  const { signOut } = useAuth();
+
   const handleLogout = async () => {
     try {
-      // Clear all local state before signing out
+      // Clear local UI state
       setProfile(null);
       setNotifications([]);
       setNotificationCount(0);
       
-      // Sign out from Supabase
-      await supabase.auth.signOut();
-      
-      // Force full page reload to clear all session state and caches
-      window.location.href = '/auth/login';
+      // Centralized logout with timeout for Supabase sync
+      await signOut();
     } catch (error) {
       console.error('Error during logout:', error);
-      // Even if there's an error, redirect to login
+      // Fallback redirect
       window.location.href = '/auth/login';
     }
   };

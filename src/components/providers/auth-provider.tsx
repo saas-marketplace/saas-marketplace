@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import type { Session } from "@supabase/supabase-js";
 
@@ -38,15 +39,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     try {
-      // Sign out from Supabase
+      // Sign out from Supabase - await completion
       await supabase.auth.signOut();
-      // The auth state change listener in useSession will handle clearing state
-      // Force full page reload to clear all session state and caches
-      window.location.href = '/auth/login';
+      
+      // Give Supabase time to sync session state server-side (fixes race condition)
+      setTimeout(() => {
+        // Force full page reload to clear all client state, caches, and localStorage
+        window.location.href = '/auth/login';
+      }, 500);
+      
+      // Auth listeners in useSession/providers will handle state clearing
     } catch (error) {
       console.error('Error during logout:', error);
-      // Even if there's an error, redirect to login
-      window.location.href = '/auth/login';
+      // Even on error, force redirect after delay
+      setTimeout(() => {
+        window.location.href = '/auth/login';
+      }, 500);
     }
   }, [supabase]);
 
@@ -85,6 +93,11 @@ export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) throw new Error("useAuth must be used within AuthProvider");
   return context;
+}
+
+// Centralized logout hook - use this everywhere
+export function useLogout() {
+  return useAuth().signOut;
 }
 
 export function useHasRole(requiredRoles: UserRole[]) {

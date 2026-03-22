@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/components/providers/auth-provider';
 import { 
   User, 
   Mail, 
@@ -28,6 +29,7 @@ interface UserProfile {
 export default function ProfileSettingsPage() {
   const router = useRouter();
   const supabase = createClient();
+  const { signOut } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [loading, setLoading] = useState(true);
@@ -311,11 +313,8 @@ export default function ProfileSettingsPage() {
       await supabase.from('users').delete().eq('id', profile?.id);
       await supabase.from('team_members').delete().eq('user_id', profile?.id);
       
-      // Sign out and delete auth
-      await supabase.auth.signOut();
-      
-      // Force full page reload to clear all session state and caches
-      window.location.href = '/auth/login';
+      // Centralized logout
+      await signOut();
     } catch (error) {
       console.error('Error deleting account:', error);
       setMessage({ type: 'error', text: 'Failed to delete account' });
@@ -333,11 +332,8 @@ export default function ProfileSettingsPage() {
         .delete()
         .eq('user_id', profile?.id);
 
-      // Sign out
-      await supabase.auth.signOut();
-      
-      // Force full page reload to clear all session state and caches
-      window.location.href = '/auth/login';
+      // Centralized logout
+      await signOut();
     } catch (error) {
       console.error('Error leaving team:', error);
       setMessage({ type: 'error', text: 'Failed to leave team' });

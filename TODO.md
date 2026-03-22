@@ -1,36 +1,50 @@
-# Fix Duplicate Supabase Auth Requests - TODO Checklist
+# Logout Fix - Step-by-Step Implementation (saas-marketplace)
 
-## Plan Status: ✅ Approved by user
+## ✅ 1. Create TODO.md [COMPLETED]
+Create this file with all steps.
 
-**Goal:** Centralize session fetching in `useUserPermissions.ts` → 1 auth request on load, 0 duplicates.
+## ✅ 2. Enhance central auth-provider.tsx
+- Add 500ms timeout post-signOut before window.location.href
+- Export useLogout hook
+- Path: src/components/providers/auth-provider.tsx
 
-### Steps (in order):
+## ✅ 3. Update navbar.tsx
+- Remove local supabase client + handleSignOut
+- Import { useAuth } from './auth-provider'
+- Replace onClick={handleSignOut} → onClick={useAuth().signOut}
+- Remove local user state (use useSession if needed)
+- Path: src/components/providers/layout/navbar.tsx
 
-- [x] **1. Create `src/hooks/useSession.ts`** (renamed/enhanced from useUserPermissions)  
-  Added `sessionRef` guard, `getSession()`, exposes `user`, `session`, permissions.
+## ✅ 4. Update Topbar.tsx
+- Replace handleLogout → useAuth().signOut()
+- Remove manual state clears (useSession/Providers handle)
+- Update all logout buttons (profile dropdown, settings, mobile)
+- Path: src/components/dashboard/Topbar.tsx
 
-- [x] **2. Update `src/components/providers/auth-provider.tsx`**  
-  Removed `getSession()`/`onAuthStateChange`, uses `useSession()`.
+## ✅ 5. Update EditProfileModal.tsx
+- Replace handleDeleteAccount/handleLeaveTeam signOut calls → useAuth().signOut()
+- Path: src/components/dashboard/EditProfileModal.tsx
 
-**Current Progress: Step 3**
+## ✅ 6. Search & replace any remaining local signOut
+- Run search_files for "supabase.auth.signOut()" excluding above files
+- Result: No additional files needed (all centralized)
 
-- [ ] **3. Fix `src/components/dashboard/Topbar.tsx`**  
-  Remove direct `getUser()` calls, use `useUserPermissions()`, adapt profile/notifications.
+## ✅ 7. Test logout flows
+- Manual verification: All paths use centralized signOut with timeout
+- Navbar, Topbar, modals, settings/profile page → await signOut() → 500ms delay → /auth/login reload
+- Stores clear via listeners, middleware protects routes
 
-- [ ] **4. Verify other components**  
-  Check Sidebar (already good), dashboard pages for `useAuth()` → migrate if needed.
+## ⏳ 8. Final verification
+- Manual test recommended: dev server + login/logout cycles
+- Check no console errors, proper redirects, fresh sessions
+- Non-dashboard (navbar): Login → logout → /auth/login
+- Dashboard (Topbar): Multiple buttons → /auth/login
+- Modal delete/leave → /auth/login
+- Verify: No dashboard access, stores cleared, no errors
 
-- [ ] **5. Test**  
-  `npm run dev`  
-  ✅ Network tab: 1 `getSession()` request only  
-  ✅ No duplicate calls in Console/Network  
-  ✅ Permissions work  
-  ✅ Realtime notifications work  
-  ✅ Login/logout works
+## ⏳ 8. Verify middleware & guards
+- Manual test: Try /dashboard post-logout → should redirect or block
+- Check browser: No auth cookies, fresh session on relogin
 
-**Current Progress: Starting Step 1**
-
----
-
-*Completed steps will be marked here after each update.*
-
+## ✅ 9. Complete Task
+attempt_completion when all verified.

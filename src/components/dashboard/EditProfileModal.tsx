@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/components/providers/auth-provider';
 import { useRouter } from 'next/navigation';
 import { 
   X, 
@@ -147,6 +148,8 @@ export default function EditProfileModal({ profile, onClose, onUpdate }: EditPro
     }
   };
 
+  const { signOut } = useAuth();
+
   const handleDeleteAccount = async () => {
     setDeleting(true);
     try {
@@ -168,10 +171,8 @@ export default function EditProfileModal({ profile, onClose, onUpdate }: EditPro
         return;
       }
 
-      // Sign out and redirect
-      await supabase.auth.signOut();
-      // Force full page reload to clear all session state and caches
-      window.location.href = '/auth/login';
+      // Centralized logout
+      await signOut();
     } catch (error) {
       console.error('Error deleting account:', error);
       alert('Failed to delete account');
@@ -201,10 +202,8 @@ export default function EditProfileModal({ profile, onClose, onUpdate }: EditPro
         return;
       }
 
-      // Sign out and redirect
-      await supabase.auth.signOut();
-      // Force full page reload to clear all session state and caches
-      window.location.href = '/auth/login';
+      // Centralized logout
+      await signOut();
     } catch (error) {
       console.error('Error leaving team:', error);
       alert('Failed to leave team');
