@@ -1,8 +1,8 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
-import { useSuspended } from "@/components/ui/suspended-context";
-import { useAccessControl } from "@/hooks/useAccessControl";
+// useSuspended + useAccessControl merged into useUserPermissions
+import { useUserPermissions } from "@/hooks/useUserPermissions";
 import { 
   MessageSquare, 
   Clock, 
@@ -142,8 +142,7 @@ function TypingBubble({ mobile = false }: { mobile?: boolean }) {
 }
 
 export default function AdminRequestsPage() {
-  const { isLoading, canAccessSection, canCreate, canDelete, permissions } = useAccessControl();
-  const { isSuspended } = useSuspended();
+  const { isLoading, canAccessSection, canCreate, canDelete, permissions, isSuspended, user } = useUserPermissions();
 
   console.log('[Requests] Permissions:', permissions);
   console.log('[Requests] canCreate(requests):', canCreate('requests'));
@@ -239,24 +238,17 @@ export default function AdminRequestsPage() {
 
   // Fetch current user and requests
   useEffect(() => {
-    // Don't fetch data if suspended - the SuspendedContent component will show the message
+    // Don't fetch data if suspended - handled by useUserPermissions
     if (isSuspended) {
       return;
     }
 
     const fetchRequests = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-
       if (user) {
         setCurrentUserId(user.id);
 
-        const { data: userData } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', user.id)
-          .maybeSingle();
-
-        const isAdminUser = userData?.role === 'admin' || userData?.role === 'super_admin';
+        // Admin check from useUserPermissions state
+        const isAdminUser = permissions.dashboard?.includes('view') || permissions.team?.includes('view') || false;
         setIsAdmin(isAdminUser);
 
         let query = supabase
@@ -327,7 +319,7 @@ export default function AdminRequestsPage() {
       setLoading(false);
     };
     fetchRequests();
-  }, [supabase, isSuspended]);
+  }, [supabase, isSuspended, user]);
 
   // ── PRESENCE: admin tracks their own presence ──
   useEffect(() => {
@@ -405,8 +397,12 @@ export default function AdminRequestsPage() {
       window.removeEventListener('click', handleActivity);
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      presenceChannel.untrack();
-      supabase.removeChannel(presenceChannel);
+      if (presenceChannel && typeof presenceChannel.untrack === 'function') {
+        presenceChannel.untrack();
+      }
+      if (presenceChannel && typeof presenceChannel.unsubscribe === 'function') {
+        supabase.removeChannel(presenceChannel);
+      }
       updateAdminStatus(false);
     };
   }, [supabase, currentUserId, isAdmin]);
@@ -487,8 +483,12 @@ export default function AdminRequestsPage() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(statusChannel);
-      supabase.removeChannel(presenceWatcher);
+      if (statusChannel && typeof statusChannel.unsubscribe === 'function') {
+        supabase.removeChannel(statusChannel);
+      }
+      if (presenceWatcher && typeof presenceWatcher.unsubscribe === 'function') {
+        supabase.removeChannel(presenceWatcher);
+      }
     };
   }, [supabase, selectedRequest?.id, selectedRequest?.user_id, currentUserId]);
 
@@ -518,7 +518,9 @@ export default function AdminRequestsPage() {
     return () => {
       typingChannelRef.current = null;
       setLocalIsTyping(false);
-      supabase.removeChannel(ch);
+      if (ch && typeof ch.unsubscribe === 'function') {
+        supabase.removeChannel(ch);
+      }
       setUserIsTyping(false);
     };
   }, [selectedRequest?.id, currentUserId, supabase]);
@@ -599,7 +601,11 @@ export default function AdminRequestsPage() {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(messageChannel); };
+    return () => {
+      if (messageChannel && typeof messageChannel.unsubscribe === 'function') {
+        supabase.removeChannel(messageChannel);
+      }
+    };
   }, [selectedRequest?.id, supabase]);
 
   // ── REAL-TIME STATUS SUBSCRIPTION ──
@@ -629,7 +635,9 @@ export default function AdminRequestsPage() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(statusChannel);
+      if (statusChannel && typeof statusChannel.unsubscribe === 'function') {
+        supabase.removeChannel(statusChannel);
+      }
     };
   }, [selectedRequest?.id, supabase]);
 

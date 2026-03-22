@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -87,9 +87,14 @@ function NavbarContent() {
     setMenuOpen(false);
   }, [pathname]);
 
+  const fetchedRef = useRef(false);
+  
   useEffect(() => {
     let isMounted = true;
     let subscription: { unsubscribe: () => void } | null = null;
+
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
 
     const initAuth = async () => {
       try {

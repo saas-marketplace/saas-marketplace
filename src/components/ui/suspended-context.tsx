@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { AlertTriangle, RefreshCw, CheckCircle } from 'lucide-react';
 
 interface SuspendedContextType {
   isSuspended: boolean;
@@ -26,8 +27,13 @@ export function SuspendedProvider({ children }: { children: React.ReactNode }) {
   const [isRestored, setIsRestored] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createClient();
+  const isCheckingRef = useRef(false);
+  const fetchedRef = useRef(false);
 
   const checkStatus = useCallback(async () => {
+    if (isCheckingRef.current) return;
+    isCheckingRef.current = true;
+    
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -44,22 +50,16 @@ export function SuspendedProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle();
 
       if (teamMember) {
-        if (teamMember.is_active === false) {
-          setIsSuspended(true);
-        } else {
-          setIsSuspended(false);
-        }
+        setIsSuspended(teamMember.is_active === false);
         
         if (teamMember.needs_access_restored) {
-          // Show restored message
           setIsRestored(true);
-          // Clear the restored flag in DB
+          // Clear the restored flag (one-time)
           await supabase
             .from('team_members')
             .update({ needs_access_restored: false })
             .eq('user_id', user.id);
-          
-          // Hide restored message after 5 seconds
+          // Hide after 5s
           setTimeout(() => setIsRestored(false), 5000);
         }
       } else {
@@ -68,17 +68,40 @@ export function SuspendedProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Error checking suspension status:', error);
     } finally {
+      isCheckingRef.current = false;
       setIsLoading(false);
     }
   }, [supabase]);
 
   useEffect(() => {
-    checkStatus();
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      checkStatus(); // Initial check
+    }
 
-    // Poll every 5 seconds to check for status changes
-    const interval = setInterval(checkStatus, 5000);
-    return () => clearInterval(interval);
-  }, [checkStatus]);
+    // Event-driven: auth changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(async () => {
+      await checkStatus();
+    });
+
+    // Realtime subscription on team_members for this user
+    const realtimeSub = supabase
+      .channel('team_member_status')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'team_members', filter: `user_id=eq.${supabase.auth.getUser().data?.user?.id}` },
+        () => checkStatus()
+      )
+      .subscribe();
+
+    return () => {
+      if (authListener?.subscription && typeof authListener.subscription.unsubscribe === 'function') {
+        authListener.subscription.unsubscribe();
+      }
+      if (realtimeSub && typeof realtimeSub.unsubscribe === 'function') {
+        supabase.removeChannel(realtimeSub);
+      }
+    };
+  }, [checkStatus, supabase]);
 
   return (
     <SuspendedContext.Provider value={{ isSuspended, isRestored, isLoading, checkStatus }}>
@@ -86,9 +109,6 @@ export function SuspendedProvider({ children }: { children: React.ReactNode }) {
     </SuspendedContext.Provider>
   );
 }
-
-// Export the suspended content wrapper component
-import { AlertTriangle, RefreshCw, CheckCircle } from 'lucide-react';
 
 export function SuspendedContent({ children }: { children?: React.ReactNode }) {
   const { isSuspended, isRestored, isLoading } = useSuspended();
@@ -101,7 +121,6 @@ export function SuspendedContent({ children }: { children?: React.ReactNode }) {
     );
   }
 
-  // Show restored message if access was just restored
   if (isRestored) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] p-8">
@@ -114,26 +133,20 @@ export function SuspendedContent({ children }: { children?: React.ReactNode }) {
     );
   }
 
-  // If suspended, show message but still render children (for layout)
   if (isSuspended) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] p-8">
-        <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-full p-4 mb-4">
-          <AlertTriangle className="w-12 h-12 text-white" />
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Your account is suspended</h2>
-        <p className="text-gray-600 text-center max-w-md">
-          You cannot access or interact with data at this time. 
-          Please contact your administrator to restore access.
+      <div className='flex flex-col items-center justify-center h-[400px] bg-white p-8 mx-auto max-w-2xl'>
+        <AlertTriangle className='w-16 h-16 text-red-400 mb-4 drop-shadow-lg' />
+        <h2 className='text-2xl font-bold text-slate-900 mb-2 text-center'>
+          Access Denied
+        </h2>
+        <p className='text-lg text-slate-600 mb-6 text-center max-w-md leading-relaxed'>
+          your account is suspended you cant access any section
         </p>
-        <div className="mt-6 flex items-center gap-2 text-sm text-gray-500">
-          <RefreshCw className="w-4 h-4" />
-          <span>Checking status automatically...</span>
-        </div>
       </div>
     );
   }
 
-  // Not suspended - render children normally
   return <>{children}</>;
 }
+

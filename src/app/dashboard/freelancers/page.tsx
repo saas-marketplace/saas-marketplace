@@ -2,7 +2,7 @@
 
 import { supabase } from "@/lib/supabase/client";
 import { useEffect, useState, useCallback } from "react";
-import { useAccessControl } from "@/hooks/useAccessControl";
+import { useUserPermissions } from "@/hooks/useUserPermissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -48,8 +48,8 @@ interface Freelancer {
 }
 
 export default function FreelancersPage() {
-  // Get all access control state FIRST
-  const { isLoading, isRemoved, isSuspended, canAccessSection, canCreate, canUpdate, canDelete } = useAccessControl();
+  // Unified permissions - replaces useAccessControl + permissions-context + suspended
+  const { isLoading, isRemoved, isSuspended, canAccessSection, canCreate, canUpdate, canDelete } = useUserPermissions();
   const [freelancers, setFreelancers] = useState<Freelancer[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,50 +72,43 @@ export default function FreelancersPage() {
     experience_level: "",
   });
 
-  const fetchDomains = useCallback(async () => {
-    const { data } = await supabase
-      .from("domains")
-      .select("*")
-      .order("name", { ascending: true });
-
-    if (data) setDomains(data);
-  }, []);
-
-  const fetchFreelancers = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("freelancers")
-      .select("*, domain:domains(id, name)")
-      .order("created_at", { ascending: false });
+    try {
+      const [domainsResult, freelancersResult, reviewsResult] = await Promise.all([
+        supabase.from("domains").select("*").order("name", { ascending: true }),
+        supabase.from("freelancers").select("*, domain:domains(id, name)").order("created_at", { ascending: false }),
+        supabase.from("reviews").select("freelancer_id, rating")
+      ]);
 
-    if (!error && data) {
-      // Try to fetch reviews to calculate ratings
-      const { data: reviewData } = await supabase
-        .from("reviews")
-        .select("freelancer_id, rating");
+      setDomains(domainsResult.data || []);
 
-      const parsedData = data.map((f: any) => {
-        const freelancerReviews = (reviewData || []).filter((r: any) => r.freelancer_id === f.id);
-        if (freelancerReviews.length > 0) {
-          const totalRating = freelancerReviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0);
-          f.rating = totalRating / freelancerReviews.length;
-          f.review_count = freelancerReviews.length;
-        }
-        return {
-          ...f,
-          skills: Array.isArray(f.skills) ? f.skills : [],
-        };
-      });
-      setFreelancers(parsedData);
+      if (freelancersResult.data && !freelancersResult.error) {
+        const parsedData = freelancersResult.data.map((f: any) => {
+          const freelancerReviews = (reviewsResult.data || []).filter((r: any) => r.freelancer_id === f.id);
+          if (freelancerReviews.length > 0) {
+            const totalRating = freelancerReviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0);
+            f.rating = totalRating / freelancerReviews.length;
+            f.review_count = freelancerReviews.length;
+          }
+          return {
+            ...f,
+            skills: Array.isArray(f.skills) ? f.skills : [],
+          };
+        });
+        setFreelancers(parsedData);
+      }
+    } catch (error) {
+      console.error("Error fetching freelancers data:", error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, []);
+  }, [supabase]);
 
-  // ALL hooks must be called before any early returns - useEffect FIRST
+  // Parallel data fetching - no more sequential loads
   useEffect(() => {
-    fetchDomains();
-    fetchFreelancers();
-  }, [fetchDomains, fetchFreelancers]);
+    fetchData();
+  }, [fetchData]);
 
   // Now safe to do early returns - all hooks have been called
   if (isLoading) {
@@ -126,47 +119,7 @@ export default function FreelancersPage() {
     );
   }
 
-  if (isRemoved) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">
-          Access Removed
-        </h2>
-        <p className="text-slate-500 text-center max-w-md">
-          Your access to this application has been removed. Please contact the administrator.
-        </p>
-      </div>
-    );
-  }
-
-  if (isSuspended) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">
-          Account Suspended
-        </h2>
-        <p className="text-slate-500 text-center max-w-md">
-          Your account is currently suspended. Please contact the administrator.
-        </p>
-      </div>
-    );
-  }
-
-  if (!canAccessSection('freelancers')) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">
-          Access Restricted
-        </h2>
-        <p className="text-slate-500 text-center max-w-md">
-          You don't have permission to view this section. Contact your administrator for access.
-        </p>
-      </div>
-    );
-  }
+  // Early returns removed - SuspendedContent overlay handles isSuspended/isRemoved/permissions
 
   function resetForm() {
     setFormData({
@@ -249,7 +202,7 @@ export default function FreelancersPage() {
         await supabase.from("freelancers").insert([freelancerData]);
       }
 
-      await fetchFreelancers();
+      await fetchData();
       resetForm();
       setIsDialogOpen(false);
     } catch (error) {
@@ -269,7 +222,7 @@ export default function FreelancersPage() {
     }
     
     await supabase.from("freelancers").delete().eq("id", id);
-    fetchFreelancers();
+    fetchData();
   }
 
   // Get initials for avatar

@@ -79,47 +79,7 @@ export default function DomainsPage() {
     );
   }
 
-  if (isRemoved) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">
-          Access Removed
-        </h2>
-        <p className="text-slate-500 text-center max-w-md">
-          Your access to this application has been removed. Please contact the administrator.
-        </p>
-      </div>
-    );
-  }
-
-  if (isSuspended) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">
-          Account Suspended
-        </h2>
-        <p className="text-slate-500 text-center max-w-md">
-          Your account is currently suspended. Please contact the administrator.
-        </p>
-      </div>
-    );
-  }
-
-  if (!canAccessSection('domains')) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">
-          Access Restricted
-        </h2>
-        <p className="text-slate-500 text-center max-w-md">
-          You don't have permission to view this section. Contact your administrator for access.
-        </p>
-      </div>
-    );
-  }
+  // Early returns removed - SuspendedContent overlay handles all blocks
 
   function generateSlug(name: string) {
     return name

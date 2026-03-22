@@ -1,16 +1,18 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Folder, Users, Package, MessageSquare, UsersRound, FileText, Loader2, Settings } from 'lucide-react';
+import { useUserPermissions } from '@/hooks/useUserPermissions';
+import { PermissionSection } from '@/types/permissions';
 
 interface SidebarLink {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  section: string;
+  section: PermissionSection;
 }
 
 const allLinks: SidebarLink[] = [
@@ -21,80 +23,20 @@ const allLinks: SidebarLink[] = [
   { href: '/dashboard/blog', label: 'Blog', icon: FileText, section: 'blogs' },
   { href: '/dashboard/requests', label: 'Client Requests', icon: MessageSquare, section: 'requests' },
   { href: '/dashboard/team', label: 'Team Members', icon: UsersRound, section: 'team' },
-  { href: '/dashboard/settings', label: 'Settings', icon: Settings, section: 'settings' },
+  { href: '/dashboard/settings', label: 'Settings', icon: Settings, section: 'dashboard' },
 ];
 
 export default function Sidebar(): React.ReactElement {
   const pathname = usePathname();
-  const [accessibleSections, setAccessibleSections] = useState<string[]>([]);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const { accessibleSections, isSuperAdmin, isLoading: permsLoading } = useUserPermissions();
 
-  useEffect(() => {
-    const fetchPermissions = async () => {
-      try {
-        const { createClient } = await import('@/lib/supabase/client');
-        const supabase = createClient();
-        
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        
-        if (!authUser) {
-          setLoading(false);
-          return;
-        }
+  const filteredLinks = allLinks.filter(link => {
+    // Always show dashboard link, permission checked in page
+    if (link.section === 'dashboard') return true;
+    return accessibleSections.includes(link.section);
+  });
 
-        // Get role from users table
-        const { data: userData } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', authUser.id)
-          .maybeSingle();
-
-        const role = userData?.role || 'user';
-
-        
-        // Super admin has access to all sections
-        if (role === 'super_admin') {
-          setIsSuperAdmin(true);
-          setAccessibleSections(['dashboard', 'domains', 'freelancers', 'products', 'blogs', 'requests', 'team', 'settings']);
-        } else if (role === 'admin') {
-          // Check team_members for permissions
-          const { data: teamMember } = await supabase
-            .from('team_members')
-            .select('permissions')
-            .eq('user_id', authUser.id)
-            .maybeSingle();
-
-          if (teamMember?.permissions) {
-            const sections = Object.keys(teamMember.permissions).filter(
-              section => teamMember.permissions[section]?.includes('view')
-            );
-            setAccessibleSections(['dashboard', ...sections]);
-          } else {
-            // Admin with no specific permissions gets dashboard only
-            setAccessibleSections(['dashboard']);
-          }
-        } else {
-          // Regular user gets dashboard only
-          setAccessibleSections(['dashboard']);
-        }
-      } catch (error) {
-        console.error('Error fetching permissions:', error);
-        // Default to showing dashboard on error
-        setAccessibleSections(['dashboard']);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchPermissions();
-  }, []);
-
-  const filteredLinks = allLinks.filter(link => 
-    link.section === 'dashboard' || accessibleSections.includes(link.section)
-  );
-
-  if (loading) {
+  if (permsLoading) {
     return (
       <div className="w-64 bg-[rgb(15,23,42)] text-slate-100 h-full flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />

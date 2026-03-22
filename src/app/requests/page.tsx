@@ -285,7 +285,9 @@ export default function UserRequestsPage() {
       });
 
     return () => {
-      supabase.removeChannel(presenceChannel);
+      if (presenceChannel && typeof presenceChannel.unsubscribe === 'function') {
+        supabase.removeChannel(presenceChannel);
+      }
     };
   }, [supabase, currentUserId, adminUserId]);
 
@@ -390,7 +392,9 @@ export default function UserRequestsPage() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel && typeof channel.unsubscribe === 'function') {
+        supabase.removeChannel(channel);
+      }
     };
   }, [selectedRequest?.id, supabase]);
 
@@ -421,7 +425,9 @@ export default function UserRequestsPage() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(statusChannel);
+      if (statusChannel && typeof statusChannel.unsubscribe === 'function') {
+        supabase.removeChannel(statusChannel);
+      }
     };
   }, [selectedRequest?.id, supabase]);
 
@@ -451,7 +457,9 @@ export default function UserRequestsPage() {
     return () => {
       typingChannelRef.current = null;
       setLocalIsTyping(false);
-      supabase.removeChannel(ch);
+      if (ch && typeof ch.unsubscribe === 'function') {
+        supabase.removeChannel(ch);
+      }
       setAdminIsTyping(false);
     };
   }, [selectedRequest?.id, currentUserId, supabase]);

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { PermissionSection, PermissionAction } from '@/types/permissions';
+import { PermissionSection, PermissionAction, SectionPermissions } from '@/types/permissions';
 
 interface AccessControlState {
   isLoading: boolean;
@@ -10,10 +10,9 @@ interface AccessControlState {
   isAdmin: boolean;
   isRemoved: boolean;
   isSuspended: boolean;
-  permissions: Record<string, string[]>;
+  permissions: Record<PermissionSection, SectionPermissions>;
 }
 
-// Track previous state to detect changes
 let previousStateRef: Partial<AccessControlState> = {};
 
 export function useAccessControl() {
@@ -23,12 +22,16 @@ export function useAccessControl() {
     isAdmin: false,
     isRemoved: false,
     isSuspended: false,
-    permissions: {},
+    permissions: {} as Record<PermissionSection, SectionPermissions>,
   });
   const isMounted = useRef(true);
+  const isFetchingRef = useRef(false);
+  const fetchedRef = useRef(false);
+  const supabase = createClient();
 
   const fetchPermissions = useCallback(async () => {
-    const supabase = createClient();
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -41,57 +44,71 @@ export function useAccessControl() {
             isAdmin: false,
             isRemoved: false,
             isSuspended: false,
-            permissions: {},
+            permissions: {} as Record<PermissionSection, SectionPermissions>,
           });
         }
         return;
       }
 
-      // Get role from users table - role is guaranteed to be valid now
       const { data: userData } = await supabase
         .from('users')
         .select('role')
         .eq('id', user.id)
         .maybeSingle();
 
-      // Default to 'user' if somehow missing - but role should always exist now
       const userRole = userData?.role || 'user';
       console.log('[AccessControl] User role:', userRole, 'User ID:', user.id);
 
-      // Super admin has ALL permissions
       if (userRole === 'super_admin') {
         console.log('[AccessControl] User is super_admin - granting full permissions');
         if (isMounted.current) {
+          const fullPerms: Record<PermissionSection, SectionPermissions> = {
+            dashboard: ['view'],
+            domains: ['view', 'create', 'update', 'delete'],
+            freelancers: ['view', 'create', 'update', 'delete'],
+            products: ['view', 'create', 'update', 'delete'],
+            blogs: ['view', 'create', 'update', 'delete'],
+            requests: ['view', 'create', 'delete'],
+            team: ['view', 'create', 'update', 'delete'],
+          };
           setState({
             isLoading: false,
             isSuperAdmin: true,
             isAdmin: true,
             isRemoved: false,
             isSuspended: false,
-            permissions: {
-              domains: ['view', 'create', 'update', 'delete'],
-              freelancers: ['view', 'create', 'update', 'delete'],
-              products: ['view', 'create', 'update', 'delete'],
-              blogs: ['view', 'create', 'update', 'delete'],
-              requests: ['view', 'create', 'delete'],
-              team: ['view', 'create', 'update', 'delete'],
-              dashboard: ['view'],
-            },
+            permissions: fullPerms,
           });
         }
       } else if (userRole === 'admin') {
-        console.log('[AccessControl] User is admin - checking team_members for custom permissions');
-
-        // Check team_members for additional permissions
+        console.log('[AccessControl] User is admin - checking team_members');
         const { data: teamMember } = await supabase
           .from('team_members')
           .select('permissions, is_active')
           .eq('user_id', user.id)
           .maybeSingle();
 
-        // If no team_member record, admin still has access (with default permissions)
-        // If team_member exists but is_active is false, treat as suspended
-        if (teamMember && teamMember.is_active === false) {
+        const isRemoved = !teamMember;
+        const isSuspended = teamMember && teamMember.is_active === false;
+
+        console.log('[AccessControl] Team member:', teamMember, 'isRemoved:', isRemoved, 'isSuspended:', isSuspended);
+
+        if (isRemoved) {
+          console.log('[AccessControl] Admin has no team_member record - access removed');
+          if (isMounted.current) {
+            setState({
+              isLoading: false,
+              isSuperAdmin: false,
+              isAdmin: false,
+              isRemoved: true,
+              isSuspended: false,
+              permissions: {} as Record<PermissionSection, SectionPermissions>,
+            });
+          }
+          return;
+        }
+
+        if (isSuspended) {
           console.log('[AccessControl] Admin is suspended');
           if (isMounted.current) {
             setState({
@@ -100,33 +117,30 @@ export function useAccessControl() {
               isAdmin: false,
               isRemoved: false,
               isSuspended: true,
-              permissions: {},
+              permissions: {} as Record<PermissionSection, SectionPermissions>,
             });
           }
           return;
         }
 
-        // Load permissions from team_members or use default admin permissions
-        let permissionsData: Record<string, string[]> = {};
+        let permissionsData: Record<PermissionSection, SectionPermissions> = {
+          dashboard: ['view'],
+          domains: ['view', 'create', 'update', 'delete'],
+          freelancers: ['view', 'create', 'update', 'delete'],
+          products: ['view', 'create', 'update', 'delete'],
+          blogs: ['view', 'create', 'update', 'delete'],
+          requests: ['view', 'create', 'delete'],
+          team: ['view', 'create', 'update', 'delete'],
+        };
         
         if (teamMember?.permissions) {
-          permissionsData = typeof teamMember.permissions === 'string'
-            ? JSON.parse(teamMember.permissions)
+          const parsed = typeof teamMember.permissions === 'string' 
+            ? JSON.parse(teamMember.permissions) 
             : teamMember.permissions;
-        } else {
-          // Default admin permissions if no team_member record
-          permissionsData = {
-            domains: ['view', 'create', 'update', 'delete'],
-            freelancers: ['view', 'create', 'update', 'delete'],
-            products: ['view', 'create', 'update', 'delete'],
-            blogs: ['view', 'create', 'update', 'delete'],
-            requests: ['view', 'create', 'delete'],
-            team: ['view', 'create', 'update', 'delete'],
-            dashboard: ['view'],
-          };
+          permissionsData = { ...permissionsData, ...parsed as Record<PermissionSection, SectionPermissions> };
         }
 
-        console.log('[AccessControl] Loaded permissions:', permissionsData);
+        console.log('[AccessControl] Final permissions:', permissionsData);
 
         if (isMounted.current) {
           setState({
@@ -139,8 +153,7 @@ export function useAccessControl() {
           });
         }
       } else {
-        // Regular user - no admin permissions
-        console.log('[AccessControl] User is regular user - no admin permissions');
+        console.log('[AccessControl] Regular user - no admin access');
         if (isMounted.current) {
           setState({
             isLoading: false,
@@ -148,12 +161,12 @@ export function useAccessControl() {
             isAdmin: false,
             isRemoved: false,
             isSuspended: false,
-            permissions: {},
+            permissions: {} as Record<PermissionSection, SectionPermissions>,
           });
         }
       }
     } catch (error) {
-      console.error('Error fetching permissions:', error);
+      console.error('[AccessControl] Error:', error);
       if (isMounted.current) {
         setState({
           isLoading: false,
@@ -161,39 +174,64 @@ export function useAccessControl() {
           isAdmin: false,
           isRemoved: false,
           isSuspended: false,
-          permissions: {},
+          permissions: {} as Record<PermissionSection, SectionPermissions>,
         });
       }
+    } finally {
+      isFetchingRef.current = false;
     }
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
     isMounted.current = true;
-    
-    // Initial fetch
-    fetchPermissions();
-
-    // Poll every 5 seconds for real-time updates (especially important for reactivation)
-    const pollInterval = setInterval(() => {
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
       fetchPermissions();
-    }, 5000);
+    }
+
+    // Event-driven updates
+    const { data: authListener } = supabase.auth.onAuthStateChange(async () => {
+      await fetchPermissions();
+    });
+
+    // Realtime subscription for team_members changes
+    const realtimeSub = supabase
+      .channel('access_control')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'team_members', filter: `user_id=eq.${supabase.auth.getUser().data?.user?.id || ''}` },
+        () => fetchPermissions()
+      )
+      .subscribe();
 
     return () => {
       isMounted.current = false;
-      clearInterval(pollInterval);
+      if (authListener?.subscription && typeof authListener.subscription.unsubscribe === 'function') {
+        authListener.subscription.unsubscribe();
+      }
+      if (realtimeSub && typeof realtimeSub.unsubscribe === 'function') {
+        supabase.removeChannel(realtimeSub);
+      }
     };
-  }, [fetchPermissions]);
+  }, [fetchPermissions, supabase]);
 
   const hasPermission = useCallback((section: PermissionSection, action: PermissionAction): boolean => {
     if (state.isSuperAdmin) return true;
-    if (!state.isAdmin) return false; // enforce inactive or non-admin
+    if (!state.isAdmin) return false;
     const sectionPermissions = state.permissions[section];
-    return Array.isArray(sectionPermissions) && sectionPermissions.includes(action);
+    const result = Array.isArray(sectionPermissions) && sectionPermissions.includes(action);
+    console.log(`[AccessControl] hasPermission(${section}, ${action}):`, result);
+    return result;
   }, [state.isSuperAdmin, state.isAdmin, state.permissions]);
 
   const canAccessSection = useCallback((section: PermissionSection): boolean => {
     return hasPermission(section, 'view');
   }, [hasPermission]);
+
+  const canAccessDashboard = useCallback((): boolean => {
+    const result = !state.isRemoved && !state.isSuspended && hasPermission('dashboard', 'view');
+    console.log('[AccessControl] canAccessDashboard:', result);
+    return result;
+  }, [state.isRemoved, state.isSuspended, hasPermission]);
 
   const canCreate = useCallback((section: PermissionSection): boolean => {
     return hasPermission(section, 'create');
@@ -216,8 +254,10 @@ export function useAccessControl() {
     permissions: state.permissions,
     hasPermission,
     canAccessSection,
+    canAccessDashboard,
     canCreate,
     canUpdate,
     canDelete,
   };
 }
+

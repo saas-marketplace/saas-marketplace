@@ -43,6 +43,7 @@ CREATE TABLE public.blogs (
 );
 CREATE TABLE public.cart (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  -- Optional FK to public.users(id): links freelancer to platform user account if registered, NULL for external/standalone freelancers (supports independent existence)
   user_id uuid,
   product_id uuid,
   quantity integer DEFAULT 1,

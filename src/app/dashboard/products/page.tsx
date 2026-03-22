@@ -2,8 +2,7 @@
 
 import { createClient } from '@/lib/supabase/client';
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useAccessControl } from '@/hooks/useAccessControl';
-import { useSuspended } from '@/components/ui/suspended-context';
+import { useUserPermissions } from '@/hooks/useUserPermissions';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,8 +55,7 @@ interface Product {
 }
 
 export default function ProductsPage() {
-  const { canCreate, canUpdate, canDelete } = useAccessControl();
-  const { isSuspended } = useSuspended();
+  const { canCreate, canUpdate, canDelete, isSuspended } = useUserPermissions();
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   
@@ -98,23 +96,7 @@ export default function ProductsPage() {
 
   const supabase = createClient();
 
-  const checkUser = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    setUser(user);
-    
-    // Fetch user role from database
-    if (user) {
-      const { data: userData } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-      
-      if (userData) {
-        setUserRole(userData.role);
-      }
-    }
-  }, [supabase]);
+  // Removed duplicate checkUser/role fetch - handled by useUserPermissions
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -140,9 +122,8 @@ export default function ProductsPage() {
       setLoading(false);
       return;
     }
-    checkUser();
     fetchProducts();
-  }, [checkUser, fetchProducts, isSuspended]);
+  }, [fetchProducts, isSuspended]);
 
   function generateSlug(title: string) {
     return title

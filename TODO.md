@@ -1,24 +1,36 @@
-# Permissions & Notifications Fix - TODO
+# Fix Duplicate Supabase Auth Requests - TODO Checklist
 
-## Progress Tracker
-✅ Step 1: Update permissions types + helpers  
-✅ Step 2: Fix ProductTable permissions
-✅ Step 3: Fix FreelancerTable permissions  
-✅ Step 4: Fix Team/Settings permissions
-- [ ] Step 5: Fix role_label → role standardization
-- [ ] Step 6: Add new user signup notification
-- [ ] Step 7: Add product notifications (find API)
-- [ ] Step 8: Add review notifications (find reviews)
-- [ ] Step 9: Test all permissions
-- [ ] Step 10: Complete!
+## Plan Status: ✅ Approved by user
 
-**Current Step: 9/10**
-✅ Step 7: Add product notifications (no API found - skip)
-✅ Step 8: Add review notifications (already implemented + fixed message)
+**Goal:** Centralize session fetching in `useUserPermissions.ts` → 1 auth request on load, 0 duplicates.
 
+### Steps (in order):
 
+- [x] **1. Create `src/hooks/useSession.ts`** (renamed/enhanced from useUserPermissions)  
+  Added `sessionRef` guard, `getSession()`, exposes `user`, `session`, permissions.
 
+- [x] **2. Update `src/components/providers/auth-provider.tsx`**  
+  Removed `getSession()`/`onAuthStateChange`, uses `useSession()`.
 
-## Details
-Follow the approved plan. Update this file after each step completion.
+**Current Progress: Step 3**
+
+- [ ] **3. Fix `src/components/dashboard/Topbar.tsx`**  
+  Remove direct `getUser()` calls, use `useUserPermissions()`, adapt profile/notifications.
+
+- [ ] **4. Verify other components**  
+  Check Sidebar (already good), dashboard pages for `useAuth()` → migrate if needed.
+
+- [ ] **5. Test**  
+  `npm run dev`  
+  ✅ Network tab: 1 `getSession()` request only  
+  ✅ No duplicate calls in Console/Network  
+  ✅ Permissions work  
+  ✅ Realtime notifications work  
+  ✅ Login/logout works
+
+**Current Progress: Starting Step 1**
+
+---
+
+*Completed steps will be marked here after each update.*
 

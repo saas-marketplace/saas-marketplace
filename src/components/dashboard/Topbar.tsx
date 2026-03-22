@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import { useSession } from '@/hooks/useSession';
 import {
   Search,
   Bell,
@@ -71,13 +72,12 @@ const playNotificationSound = () => {
 
 export default function Topbar() {
   const router = useRouter();
-  const supabase = createClient();
+  const { user, session, isLoading: profileLoading } = useSession();
   
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [notificationCount, setNotificationCount] = useState(0);
@@ -91,16 +91,16 @@ export default function Topbar() {
   const searchRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
 
-  // Fetch user profile data - role is now guaranteed to be valid
-  const fetchProfile = useCallback(async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        setIsLoading(false);
-        return;
-      }
+  const supabase = createClient();
 
+  // Fetch user profile data using user from session
+  const fetchProfile = useCallback(async () => {
+    if (!user) {
+      setProfile(null);
+      return;
+    }
+
+    try {
       // Get user data from users table
       const { data: userData } = await supabase
         .from('users')
@@ -139,22 +139,19 @@ export default function Topbar() {
       console.error('Error fetching profile:', error);
       // Set fallback profile
       setProfile({
-        id: '',
-        email: 'Admin',
+        id: user.id,
+        email: user.email || 'Admin',
         full_name: 'Admin',
         avatar_url: null,
         role: 'user',
         role_label: 'User'
       });
-    } finally {
-      setIsLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, user]);
 
   // Fetch notification count
   const fetchNotificationCount = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { count } = await supabase
@@ -172,7 +169,6 @@ export default function Topbar() {
   const fetchNotifications = useCallback(async () => {
     try {
       setLoadingNotifications(true);
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       // Get user's notification settings
@@ -231,7 +227,6 @@ export default function Topbar() {
   // Mark all notifications as read
   const markAllAsRead = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { error } = await supabase
@@ -252,7 +247,6 @@ export default function Topbar() {
   // Clear all notifications
   const clearAllNotifications = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { error } = await supabase
@@ -383,11 +377,11 @@ export default function Topbar() {
   // ✅ Real-time notifications subscription
   useEffect(() => {
     let channel: any = null;
+    let isMounted = true;
 
     const setupRealtimeSubscription = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!user || !isMounted) return;
 
         // Subscribe to notifications for this user
         channel = supabase
@@ -460,9 +454,14 @@ export default function Topbar() {
 
     // Cleanup subscription on unmount
     return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
-        console.log('Real-time notifications subscription cleaned up');
+      isMounted = false;
+      if (channel && typeof channel.unsubscribe === 'function') {
+        try {
+          supabase.removeChannel(channel);
+          console.log('Real-time notifications subscription cleaned up');
+        } catch (error) {
+          console.error('Error cleaning up subscription:', error);
+        }
       }
     };
   }, [supabase]);
@@ -496,7 +495,7 @@ export default function Topbar() {
       .slice(0, 2) || 'U';  // Fallback to 'U' if result is empty
   };
 
-  if (isLoading) {
+  if (profileLoading) {
     return (
       <div className="bg-white border-b border-gray-200 px-6 py-3 flex justify-between items-center shadow-sm">
         <div className="flex items-center gap-4">

@@ -154,49 +154,7 @@ export default function TeamPage() {
     );
   }
 
-  // Handle removed/suspended states
-  if (isRemoved) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">
-          Access Removed
-        </h2>
-        <p className="text-slate-500 text-center max-w-md">
-          Your access to this application has been removed. Please contact the administrator.
-        </p>
-      </div>
-    );
-  }
-
-  if (isSuspended) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">
-          Account Suspended
-        </h2>
-        <p className="text-slate-500 text-center max-w-md">
-          Your account is currently suspended. Please contact the administrator.
-        </p>
-      </div>
-    );
-  }
-
-  // Access control check - after loading states are handled
-  if (!canAccessSection('team')) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">
-          Access Restricted
-        </h2>
-        <p className="text-slate-500 text-center max-w-md">
-          You don't have permission to view this section. Contact your administrator for access.
-        </p>
-      </div>
-    );
-  }
+  // Early returns removed - overlay handles suspended/permissions
 
   const handleEdit = (member: TeamMember) => {
     setEditingMember(member);
@@ -312,7 +270,7 @@ export default function TeamPage() {
             Manage team members and their permissions
           </p>
         </div>
-        {isSuperAdmin && (
+        {canCreate('team') && (
           <Button
             onClick={() => {
               setEditingMember(null);
@@ -386,7 +344,7 @@ export default function TeamPage() {
               <p className="text-slate-500 mb-4">
                 Add team members to give them admin access with custom permissions
               </p>
-              {isSuperAdmin && (
+              {canCreate('team') && (
                 <Button
                   onClick={() => setDialogOpen(true)}
                   variant="outline"
@@ -405,7 +363,7 @@ export default function TeamPage() {
                   <TableHead>Permissions</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Added</TableHead>
-                  {isSuperAdmin && <TableHead className="text-right">Actions</TableHead>}
+                  {(canUpdate('team') || canDelete('team')) && <TableHead className="text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -458,12 +416,12 @@ export default function TeamPage() {
                     <TableCell className="text-slate-500">
                       {new Date(member.created_at).toLocaleDateString()}
                     </TableCell>
-                    {isSuperAdmin && (
+                    {(canUpdate('team') || canDelete('team')) && (
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button 
-                              variant="ghost" 
+                            <Button
+                              variant="ghost"
                               size="sm"
                               onClick={(e) => e.stopPropagation()}
                             >
@@ -471,35 +429,43 @@ export default function TeamPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEdit(member);
-                              }}
-                            >
-                              <Pencil className="w-4 h-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleToggleActive(member);
-                              }}
-                            >
-                              <Eye className="w-4 h-4 mr-2" />
-                              {member.is_active ? 'Deactivate' : 'Activate'}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDelete(member);
-                              }}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Remove
-                            </DropdownMenuItem>
+                            {canUpdate('team') && (
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEdit(member);
+                                }}
+                              >
+                                <Pencil className="w-4 h-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                            )}
+                            {canUpdate('team') && (
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleActive(member);
+                                }}
+                              >
+                                <Eye className="w-4 h-4 mr-2" />
+                                {member.is_active ? 'Deactivate' : 'Activate'}
+                              </DropdownMenuItem>
+                            )}
+                            {canDelete('team') && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDelete(member);
+                                  }}
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>

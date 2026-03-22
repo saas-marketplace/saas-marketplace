@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Product } from "@/types";
 
@@ -146,8 +146,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Initial load and auth listener
+  const fetchedRef = useRef(false);
+  
   useEffect(() => {
-    fetchCart();
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      fetchCart();
+    }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event: any, session: any) => {
@@ -161,7 +166,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      if (subscription && typeof subscription.unsubscribe === 'function') {
+        subscription.unsubscribe();
+      }
+    };
   }, [fetchCart, supabase]);
 
   return (

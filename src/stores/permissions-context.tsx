@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Permissions, PermissionSection, PermissionAction } from '@/types/permissions';
 
@@ -25,12 +25,14 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
   const [permissions, setPermissions] = useState<Permissions>({});
   const [accessibleSections, setAccessibleSections] = useState<PermissionSection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    
     const fetchPermissions = async () => {
       const supabase = createClient();
-      
-      // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
@@ -38,7 +40,6 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Get user role from users table
       const { data: userData } = await supabase
         .from('users')
         .select('role')
@@ -46,42 +47,60 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
         .single();
 
       const userRole = userData?.role || 'user';
+      console.log('[PermissionsContext] User role:', userRole, 'User ID:', user.id);
 
       if (userRole === 'super_admin') {
         setIsSuperAdmin(true);
         setIsAdmin(true);
-        // Super admin has access to all sections
-        setAccessibleSections(['domains', 'freelancers', 'products', 'blogs', 'requests', 'team']);
-        setPermissions({
-          domains: ['view', 'create', 'update', 'delete'],
-          freelancers: ['view', 'create', 'update', 'delete'],
-          products: ['view', 'create', 'update', 'delete'],
-          blogs: ['view', 'create', 'update', 'delete'],
-          requests: ['view', 'create', 'update', 'delete'],
-          team: ['view', 'create', 'update', 'delete'],
-        });
+        const fullPerms: Permissions = {
+          dashboard: ['view'] as const,
+          domains: ['view', 'create', 'update', 'delete'] as const,
+          freelancers: ['view', 'create', 'update', 'delete'] as const,
+          products: ['view', 'create', 'update', 'delete'] as const,
+          blogs: ['view', 'create', 'update', 'delete'] as const,
+          requests: ['view', 'create', 'delete'] as const,
+          team: ['view', 'create', 'update', 'delete'] as const,
+        };
+        setPermissions(fullPerms);
+        setAccessibleSections(['dashboard', 'domains', 'freelancers', 'products', 'blogs', 'requests', 'team']);
+        console.log('[PermissionsContext] Super admin - full access granted');
       } else if (userRole === 'admin') {
         setIsAdmin(true);
-        // Get team member permissions
-        const { data: teamMember } = await supabase
+        const { data: teamMember, error } = await supabase
           .from('team_members')
           .select('permissions')
           .eq('user_id', user.id)
           .eq('is_active', true)
-          .single();
+          .maybeSingle();
 
+        console.log('[PermissionsContext] Team member:', teamMember, 'Error:', error);
+
+        let perms: Permissions;
         if (teamMember?.permissions) {
-          setPermissions(teamMember.permissions);
-          // Extract accessible sections from permissions
-          const sections = Object.keys(teamMember.permissions) as PermissionSection[];
-          setAccessibleSections(
-            sections.filter(section => 
-              teamMember.permissions[section]?.includes('view')
-            )
-          );
+          perms = typeof teamMember.permissions === 'string' ? JSON.parse(teamMember.permissions) : teamMember.permissions;
+        } else {
+          // FIXED: Defaults now include dashboard:view
+          perms = {
+            dashboard: ['view'] as const,
+            domains: ['view', 'create', 'update', 'delete'] as const,
+            freelancers: ['view', 'create', 'update', 'delete'] as const,
+            products: ['view', 'create', 'update', 'delete'] as const,
+            blogs: ['view', 'create', 'update', 'delete'] as const,
+            requests: ['view', 'create', 'delete'] as const,
+            team: ['view', 'create', 'update', 'delete'] as const,
+          };
         }
+        setPermissions(perms);
+        const sections = (Object.keys(perms) as PermissionSection[]).filter(section => 
+          Array.isArray(perms[section]) && perms[section].includes('view')
+        );
+        setAccessibleSections(sections);
+        console.log('[PermissionsContext] Admin permissions:', perms);
+        console.log('[PermissionsContext] Accessible sections:', sections);
+        console.log('[PermissionsContext] Can dashboard:', perms.dashboard?.includes('view') || false);
+      } else {
+        setIsLoading(false);
       }
-
       setIsLoading(false);
     };
 
@@ -89,43 +108,38 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const hasPermission = (section: PermissionSection, action: PermissionAction): boolean => {
-    if (isSuperAdmin) return true;
-    const sectionPermissions = permissions[section];
-    if (!sectionPermissions) return false;
-    return sectionPermissions.includes(action);
+    if (isSuperAdmin) {
+      console.log(`[PermissionsContext] SuperAdmin bypass: ${section}:${action}`);
+      return true;
+    }
+    const sectionPerms = permissions[section] || [];
+    const allowed = Array.isArray(sectionPerms) && sectionPerms.includes(action);
+    if (section === 'dashboard' && action === 'view') {
+      console.log(`[PermissionsContext] Dashboard access check: ${allowed}, perms:`, sectionPerms);
+    }
+    return allowed;
   };
 
-  const canAccessSection = (section: PermissionSection): boolean => {
-    return hasPermission(section, 'view');
-  };
+  const canAccessSection = (section: PermissionSection): boolean => hasPermission(section, 'view');
+  const canCreate = (section: PermissionSection): boolean => hasPermission(section, 'create');
+  const canUpdate = (section: PermissionSection): boolean => hasPermission(section, 'update');
+  const canDelete = (section: PermissionSection): boolean => hasPermission(section, 'delete');
 
-  const canCreate = (section: PermissionSection): boolean => {
-    return hasPermission(section, 'create');
-  };
-
-  const canUpdate = (section: PermissionSection): boolean => {
-    return hasPermission(section, 'update');
-  };
-
-  const canDelete = (section: PermissionSection): boolean => {
-    return hasPermission(section, 'delete');
+  const value = {
+    isSuperAdmin,
+    isAdmin,
+    permissions,
+    accessibleSections,
+    hasPermission,
+    canAccessSection,
+    canCreate,
+    canUpdate,
+    canDelete,
+    isLoading,
   };
 
   return (
-    <PermissionsContext.Provider
-      value={{
-        isSuperAdmin,
-        isAdmin,
-        permissions,
-        accessibleSections,
-        hasPermission,
-        canAccessSection,
-        canCreate,
-        canUpdate,
-        canDelete,
-        isLoading,
-      }}
-    >
+    <PermissionsContext.Provider value={value}>
       {children}
     </PermissionsContext.Provider>
   );

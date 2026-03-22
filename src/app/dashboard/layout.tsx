@@ -56,8 +56,33 @@ export default async function DashboardLayout({
 }) {
   const { role: userRole } = await getUserStatus();
 
-  // Show sidebar for admin and super_admin roles
-  const showSidebar = userRole === 'admin' || userRole === 'super_admin';
+  // Show sidebar only if super_admin or admin with dashboard access
+  let showSidebar = userRole === 'super_admin';
+  
+  if (userRole === 'admin') {
+    const cookieStore = cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set({ name, value, ...options });
+            });
+          },
+        },
+      }
+    );
+
+    // Get team_member permissions for admin
+    // Server-side sidebar always shown for authenticated admins/super_admins
+    // Client-side PermissionsContext handles section hiding
+    showSidebar = userRole === 'super_admin' || userRole === 'admin';
+  }
 
   return (
     <SuspendedProvider>
