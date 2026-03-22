@@ -139,6 +139,15 @@ export async function POST(request: NextRequest) {
 
     // ✅ Create notification for admins when new request is created
     try {
+      // Get user's full name for dynamic message
+      const { data: userData } = await supabase
+        .from("users")
+        .select("full_name")
+        .eq("id", user.id)
+        .single();
+      
+      const fullName = userData?.full_name || "A user";
+      
       // Get all admin user IDs
       const { data: admins } = await supabase
         .from("users")
@@ -151,8 +160,8 @@ export async function POST(request: NextRequest) {
           user_id: admin.id,
           type: "request",
           title: "New Request",
-          message: `A new client request has been created: ${finalSubject || 'New Request'}`,
-          link: `/dashboard/requests`
+          message: `${fullName} has sent a request to hire a freelancer`,
+          link: `/dashboard/requests/${newRequest.id}`
         }));
         
         await supabase.from("notifications").insert(notifications);

@@ -174,6 +174,38 @@ export default function FreelancerProfilePage() {
     setNewComment("");
     setNewRating(5);
     
+    // ✅ Create notification for freelancer owner when review is added
+    try {
+      // Get reviewer's full name for dynamic message
+      const { data: reviewerData } = await supabase
+        .from("users")
+        .select("full_name")
+        .eq("id", user.id)
+        .single();
+      
+      const reviewerName = reviewerData?.full_name || "A user";
+      
+      // Get freelancer owner's user_id
+      const { data: freelancerData } = await supabase
+        .from("freelancers")
+        .select("user_id, display_name")
+        .eq("id", freelancer!.id)
+        .single();
+      
+      if (freelancerData?.user_id) {
+        await supabase.from("notifications").insert({
+          user_id: freelancerData.user_id,
+          type: "review",
+          title: "New Review",
+          message: `${reviewerName} reviewed your profile (${newRating}★)`,
+          link: `/freelancers/${freelancer!.id}`
+        });
+      }
+    } catch (notifError) {
+      // Don't fail the review if notification fails
+      console.error("Error creating review notification:", notifError);
+    }
+    
     // Refresh reviews - the database trigger will automatically update the freelancer rating
     fetchFreelancer();
     setSubmitting(false);

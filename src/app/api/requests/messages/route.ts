@@ -205,6 +205,24 @@ export async function POST(request: NextRequest) {
 
     // ✅ Create notification for the receiver (not the sender)
     try {
+      // Get sender's full name for dynamic message
+      const { data: senderData } = await supabase
+        .from("users")
+        .select("full_name")
+        .eq("id", user.id)
+        .single();
+      
+      const senderName = senderData?.full_name || "Someone";
+      
+      // Get request title for context
+      const { data: requestData } = await supabase
+        .from("requests")
+        .select("title")
+        .eq("id", request_id)
+        .single();
+      
+      const requestTitle = requestData?.title || "your request";
+      
       const receiverId = isAdmin ? existingRequest.user_id : null;
       
       // If admin sent message, notify the request owner
@@ -213,7 +231,7 @@ export async function POST(request: NextRequest) {
           user_id: receiverId,
           type: "message",
           title: "New Message",
-          message: "You received a new message from support",
+          message: `${senderName} sent you a message about "${requestTitle}"`,
           link: `/requests/${request_id}`
         });
       }
@@ -231,8 +249,8 @@ export async function POST(request: NextRequest) {
             user_id: admin.id,
             type: "message",
             title: "New Message",
-            message: "A client sent a new message",
-            link: `/requests/${request_id}`
+            message: `${senderName} sent a message about "${requestTitle}"`,
+            link: `/dashboard/requests/${request_id}`
           }));
           
           await supabase.from("notifications").insert(notifications);

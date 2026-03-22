@@ -20,7 +20,8 @@ import {
   AlertTriangle,
   Users,
   FileText,
-  Package
+  Package,
+  Star
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import EditProfileModal from '@/components/dashboard/EditProfileModal';
@@ -43,6 +44,30 @@ interface Notification {
   is_read: boolean;
   created_at: string;
 }
+
+// Sound notification function
+const playNotificationSound = () => {
+  try {
+    // Create a simple notification sound using Web Audio API
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = 800; // Higher pitch for notification
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.2);
+  } catch (error) {
+    console.log('Could not play notification sound:', error);
+  }
+};
 
 export default function Topbar() {
   const router = useRouter();
@@ -255,6 +280,16 @@ export default function Topbar() {
   // Get notification icon based on type
   const getNotificationIcon = (type: string) => {
     switch (type) {
+      case 'request':
+        return <MessageSquare className="w-4 h-4 text-blue-500" />;
+      case 'message':
+        return <MessageSquare className="w-4 h-4 text-green-500" />;
+      case 'review':
+        return <Star className="w-4 h-4 text-yellow-500" />;
+      case 'team':
+        return <Users className="w-4 h-4 text-purple-500" />;
+      case 'order':
+        return <Package className="w-4 h-4 text-cyan-500" />;
       case 'new_request':
         return <MessageSquare className="w-4 h-4 text-blue-500" />;
       case 'new_message':
@@ -269,6 +304,31 @@ export default function Topbar() {
         return <Package className="w-4 h-4 text-cyan-500" />;
       default:
         return <Bell className="w-4 h-4 text-gray-500" />;
+    }
+  };
+
+  // Handle notification click - navigate to link and mark as read
+  const handleNotificationClick = async (notification: Notification) => {
+    try {
+      // Mark as read
+      await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('id', notification.id);
+
+      // Update local state
+      setNotifications(prev =>
+        prev.map(n => n.id === notification.id ? { ...n, is_read: true } : n)
+      );
+      setNotificationCount(prev => Math.max(0, prev - 1));
+
+      // Navigate to link if provided
+      if (notification.link) {
+        router.push(notification.link);
+        setIsNotificationsOpen(false);
+      }
+    } catch (error) {
+      console.error('Error handling notification click:', error);
     }
   };
 
@@ -354,6 +414,8 @@ export default function Topbar() {
               setNotifications(prev => [payload.new as Notification, ...prev]);
               // Increment unread count
               setNotificationCount(prev => prev + 1);
+              // Play notification sound
+              playNotificationSound();
             }
           )
           .on(
@@ -587,15 +649,7 @@ export default function Topbar() {
                       className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${
                         !notification.is_read ? 'bg-cyan-50/50' : ''
                       }`}
-                      onClick={() => {
-                        if (!notification.is_read) {
-                          markAsRead(notification.id);
-                        }
-                        if (notification.link) {
-                          router.push(notification.link);
-                        }
-                        setIsNotificationsOpen(false);
-                      }}
+                      onClick={() => handleNotificationClick(notification)}
                     >
                       <div className="flex items-start gap-3">
                         <div className="flex-shrink-0 mt-0.5">
