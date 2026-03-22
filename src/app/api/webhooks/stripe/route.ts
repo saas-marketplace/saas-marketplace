@@ -62,6 +62,22 @@ export async function POST(request: NextRequest) {
         .delete()
         .eq("user_id", session.metadata.user_id);
     }
+
+    // ✅ Create notification for user when order is completed
+    try {
+      if (session.metadata?.user_id) {
+        await supabase.from("notifications").insert({
+          user_id: session.metadata.user_id,
+          type: "order",
+          title: "Order Completed",
+          message: "Your order has been completed successfully",
+          link: `/marketplace/success?session_id=${session.id}`
+        });
+      }
+    } catch (notifError) {
+      // Don't fail the webhook if notification fails
+      console.error("Error creating order notification:", notifError);
+    }
   }
 
   return NextResponse.json({ received: true });

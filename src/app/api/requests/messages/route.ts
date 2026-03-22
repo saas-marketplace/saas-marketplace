@@ -203,6 +203,46 @@ export async function POST(request: NextRequest) {
         .eq("id", request_id);
     }
 
+    // ✅ Create notification for the receiver (not the sender)
+    try {
+      const receiverId = isAdmin ? existingRequest.user_id : null;
+      
+      // If admin sent message, notify the request owner
+      if (isAdmin && receiverId) {
+        await supabase.from("notifications").insert({
+          user_id: receiverId,
+          type: "message",
+          title: "New Message",
+          message: "You received a new message from support",
+          link: `/requests/${request_id}`
+        });
+      }
+      // If user sent message, notify all admins
+      else if (!isAdmin) {
+        // Get all admin user IDs
+        const { data: admins } = await supabase
+          .from("users")
+          .select("id")
+          .in("role", ["admin", "super_admin"]);
+        
+        if (admins && admins.length > 0) {
+          // Create notification for each admin
+          const notifications = admins.map(admin => ({
+            user_id: admin.id,
+            type: "message",
+            title: "New Message",
+            message: "A client sent a new message",
+            link: `/requests/${request_id}`
+          }));
+          
+          await supabase.from("notifications").insert(notifications);
+        }
+      }
+    } catch (notifError) {
+      // Don't fail the request if notification fails
+      console.error("Error creating notification:", notifError);
+    }
+
     return NextResponse.json({ message: newMessage });
   } catch (error) {
     console.error("Error in POST /api/requests/messages:", error);

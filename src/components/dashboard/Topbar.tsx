@@ -328,6 +328,91 @@ export default function Topbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // ✅ Real-time notifications subscription
+  useEffect(() => {
+    let channel: any = null;
+
+    const setupRealtimeSubscription = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Subscribe to notifications for this user
+        channel = supabase
+          .channel('notifications')
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'notifications',
+              filter: `user_id=eq.${user.id}`
+            },
+            (payload: any) => {
+              console.log('New notification received:', payload.new);
+              // Add new notification to the list
+              setNotifications(prev => [payload.new as Notification, ...prev]);
+              // Increment unread count
+              setNotificationCount(prev => prev + 1);
+            }
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'notifications',
+              filter: `user_id=eq.${user.id}`
+            },
+            (payload: any) => {
+              console.log('Notification updated:', payload.new);
+              // Update notification in the list
+              setNotifications(prev =>
+                prev.map(n => n.id === payload.new.id ? payload.new as Notification : n)
+              );
+              // Update unread count if read status changed
+              if (payload.new.is_read && !payload.old.is_read) {
+                setNotificationCount(prev => Math.max(0, prev - 1));
+              }
+            }
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'DELETE',
+              schema: 'public',
+              table: 'notifications',
+              filter: `user_id=eq.${user.id}`
+            },
+            (payload: any) => {
+              console.log('Notification deleted:', payload.old);
+              // Remove notification from the list
+              setNotifications(prev => prev.filter(n => n.id !== payload.old.id));
+              // Update unread count if deleted notification was unread
+              if (!payload.old.is_read) {
+                setNotificationCount(prev => Math.max(0, prev - 1));
+              }
+            }
+          )
+          .subscribe();
+
+        console.log('Real-time notifications subscription established');
+      } catch (error) {
+        console.error('Error setting up real-time subscription:', error);
+      }
+    };
+
+    setupRealtimeSubscription();
+
+    // Cleanup subscription on unmount
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+        console.log('Real-time notifications subscription cleaned up');
+      }
+    };
+  }, [supabase]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/auth/login');

@@ -24,8 +24,8 @@ export default function SignupPage() {
     e.preventDefault();
     setLoading(true);
     
-    const { data, error } = await supabase.auth.signUp({ 
-      email, 
+    const { data, error } = await supabase.auth.signUp({
+      email,
       password,
       options: {
         data: {
@@ -36,7 +36,27 @@ export default function SignupPage() {
     
     if (error) {
       toast({ title: "Signup failed", description: error.message });
-    } else if (data?.user) {
+      setLoading(false);
+      return;
+    }
+    
+    if (data?.user) {
+      // Manually upsert user profile into public.users table (safe fallback)
+      const { error: profileError } = await supabase
+        .from('users')
+        .upsert({
+          id: data.user.id,
+          email: data.user.email,
+          full_name: fullName,
+          role: 'user',
+          status: 'active'
+        }, { onConflict: 'id' });
+      
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+        // Don't fail the signup if profile creation fails - the trigger might handle it
+      }
+      
       toast({ title: "Signup successful", description: "Please check your email to verify!" });
       router.push("/");
     }

@@ -137,6 +137,31 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // ✅ Create notification for admins when new request is created
+    try {
+      // Get all admin user IDs
+      const { data: admins } = await supabase
+        .from("users")
+        .select("id")
+        .in("role", ["admin", "super_admin"]);
+      
+      if (admins && admins.length > 0) {
+        // Create notification for each admin
+        const notifications = admins.map(admin => ({
+          user_id: admin.id,
+          type: "request",
+          title: "New Request",
+          message: `A new client request has been created: ${finalSubject || 'New Request'}`,
+          link: `/dashboard/requests`
+        }));
+        
+        await supabase.from("notifications").insert(notifications);
+      }
+    } catch (notifError) {
+      // Don't fail the request if notification fails
+      console.error("Error creating notification:", notifError);
+    }
+
     return NextResponse.json({ request: newRequest });
   } catch (error) {
     console.error("Error in POST /api/requests:", error);

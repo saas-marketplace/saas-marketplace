@@ -87,22 +87,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ Check admin safely
-    const { data: memberData, error: memberError } = await supabase
-      .from('team_members')
-      .select('role_label')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (memberError) throw memberError;
-
-    const isAdmin =
-      memberData?.role_label === 'Super Admin' ||
-      memberData?.role_label === 'Admin';
-
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    // ✅ REMOVED: Role restriction - notifications work for ALL users
+    // Previously checked if user was admin, now any authenticated user can create notifications
 
     // ✅ Insert safely
     const { data: notification, error } = await supabase

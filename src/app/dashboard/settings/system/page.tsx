@@ -33,7 +33,7 @@ const defaultSettings: SystemSettings = {
   support_email: 'support@militcompany.com',
   maintenance_mode: false,
   allow_registrations: true,
-  require_email_verification: true,
+  require_email_verification: false,
   enable_beta_features: false,
 };
 
