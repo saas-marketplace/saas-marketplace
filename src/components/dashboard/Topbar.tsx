@@ -462,22 +462,25 @@ export default function Topbar() {
   }, [supabase]);
 
   const { signOut } = useAuth();
+const handleLogout = async () => {
+  try {
+    // Clear local UI state
+    setProfile(null);
+    setNotifications([]);
+    setNotificationCount(0);
 
-  const handleLogout = async () => {
-    try {
-      // Clear local UI state
-      setProfile(null);
-      setNotifications([]);
-      setNotificationCount(0);
-      
-      // Centralized logout with timeout for Supabase sync
-      await signOut();
-    } catch (error) {
-      console.error('Error during logout:', error);
-      // Fallback redirect
-      window.location.href = '/auth/login';
-    }
-  };
+    // Sign out from Supabase
+    await signOut();
+
+    // ✅ Redirect to login page after successful sign-out
+    router.push('/auth/login');
+  } catch (error) {
+    console.error('Error during logout:', error);
+
+    // Fallback redirect in case something goes wrong
+    window.location.href = '/auth/login';
+  }
+};
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
