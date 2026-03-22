@@ -37,26 +37,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const signOut = useCallback(async () => {
-    try {
-      // Sign out from Supabase - await completion
-      await supabase.auth.signOut();
-      
-      // Give Supabase time to sync session state server-side (fixes race condition)
-      setTimeout(() => {
-        // Force full page reload to clear all client state, caches, and localStorage
-        window.location.href = '/auth/login';
-      }, 500);
-      
-      // Auth listeners in useSession/providers will handle state clearing
-    } catch (error) {
-      console.error('Error during logout:', error);
-      // Even on error, force redirect after delay
-      setTimeout(() => {
-        window.location.href = '/auth/login';
-      }, 500);
-    }
-  }, [supabase]);
+ // In AuthProvider
+const signOut = useCallback(async () => {
+  try {
+    await supabase.auth.signOut(); // wait for Supabase
+  } catch (error) {
+    console.error('Error signing out:', error);
+  }
+}, [supabase]);
 
   const refreshSession = useCallback(async () => {
     await checkStatus();
