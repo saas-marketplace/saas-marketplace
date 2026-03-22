@@ -23,31 +23,31 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Removed - using useSession instead
-
+// Create Supabase client once outside component to prevent recreation on every render
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 import { useSession } from '@/hooks/useSession';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { user, session, isLoading: loading, checkStatus } = useSession();
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
  // In AuthProvider
 const signOut = useCallback(async () => {
   try {
+    console.log('[AuthProvider] Starting sign out...');
     await supabase.auth.signOut(); // wait for Supabase
-    // Use window.location.href for reliable redirect (router.push can be canceled during unmount)
-    window.location.href = '/auth/login';
+    console.log('[AuthProvider] Sign out successful, redirecting...');
+    // Use window.location.replace for reliable redirect (doesn't add to history)
+    window.location.replace('/auth/login');
   } catch (error) {
-    console.error('Error signing out:', error);
+    console.error('[AuthProvider] Error signing out:', error);
     // Fallback redirect in case of error
-    window.location.href = '/auth/login';
+    window.location.replace('/auth/login');
   }
-}, [supabase]);
+}, []);
 
   const refreshSession = useCallback(async () => {
     await checkStatus();

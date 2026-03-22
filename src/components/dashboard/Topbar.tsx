@@ -474,8 +474,16 @@ const handleLogout = async () => {
   } catch (error) {
     console.error('Error during logout:', error);
     // Fallback redirect in case something goes wrong
-    window.location.href = '/auth/login';
+    window.location.replace('/auth/login');
   }
+  
+  // Additional safety net: if redirect hasn't happened after 1 second, force it
+  setTimeout(() => {
+    if (window.location.pathname !== '/auth/login') {
+      console.log('[Topbar] Redirect timeout, forcing redirect...');
+      window.location.replace('/auth/login');
+    }
+  }, 1000);
 };
 
   const handleSearch = (e: React.FormEvent) => {
