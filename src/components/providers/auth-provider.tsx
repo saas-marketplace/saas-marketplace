@@ -34,20 +34,20 @@ import { useSession } from '@/hooks/useSession';
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { user, session, isLoading: loading, checkStatus } = useSession();
 
- // In AuthProvider
-const signOut = useCallback(async () => {
-  try {
-    console.log('[AuthProvider] Starting sign out...');
-    await supabase.auth.signOut();
-    console.log('[AuthProvider] Sign out complete');
-    // Dispatch custom event for UI to handle redirect (avoids double-redirect race)
-    window.dispatchEvent(new CustomEvent('auth:logout-complete'));
-  } catch (error) {
-    console.error('[AuthProvider] Error signing out:', error);
-    // On error, dispatch anyway to trigger redirect
-    window.dispatchEvent(new CustomEvent('auth:logout-complete'));
-  }
-}, []);
+  // signOut: calls supabase, then dispatches the completion event so any
+  // registered listener (in Topbar) can handle the redirect immediately.
+  // The event is dispatched even on error so the logout flow never stalls.
+  const signOut = useCallback(async () => {
+    try {
+      console.log('[AuthProvider] Starting sign out...');
+      await supabase.auth.signOut();
+      console.log('[AuthProvider] Sign out complete');
+      window.dispatchEvent(new CustomEvent('auth:logout-complete'));
+    } catch (error) {
+      console.error('[AuthProvider] Error signing out:', error);
+      window.dispatchEvent(new CustomEvent('auth:logout-complete'));
+    }
+  }, []);
 
   const refreshSession = useCallback(async () => {
     await checkStatus();
@@ -59,13 +59,15 @@ const signOut = useCallback(async () => {
     const handleRefresh = () => {
       if (!refreshing) {
         refreshing = true;
-        setTimeout(() => { 
-          checkStatus(); 
-          refreshing = false; 
+        setTimeout(() => {
+          checkStatus();
+          refreshing = false;
         }, 100);
       }
     };
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') handleRefresh(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') handleRefresh();
+    });
     window.addEventListener('focus', handleRefresh);
     return () => {
       document.removeEventListener('visibilitychange', handleRefresh);

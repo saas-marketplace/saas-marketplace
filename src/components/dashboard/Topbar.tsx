@@ -49,20 +49,19 @@ interface Notification {
 // Sound notification function
 const playNotificationSound = () => {
   try {
-    // Create a simple notification sound using Web Audio API
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
-    
+
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
-    
-    oscillator.frequency.value = 800; // Higher pitch for notification
+
+    oscillator.frequency.value = 800;
     oscillator.type = 'sine';
-    
+
     gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
-    
+
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + 0.2);
   } catch (error) {
@@ -73,7 +72,7 @@ const playNotificationSound = () => {
 export default function Topbar() {
   const router = useRouter();
   const { user, session, isLoading: profileLoading } = useSession();
-  
+
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -84,7 +83,7 @@ export default function Topbar() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
-  
+
   const profileRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
@@ -99,27 +98,21 @@ export default function Topbar() {
     }
 
     try {
-      // Get user data from users table
       const { data: userData } = await supabase
         .from('users')
         .select('id, email, full_name, avatar_url, role')
         .eq('id', user.id)
         .maybeSingle();
 
-      // Check team_members table for display_name and role_label
       const { data: teamMember } = await supabase
         .from('team_members')
         .select('display_name, role_label, avatar_url')
         .eq('user_id', user.id)
         .maybeSingle();
 
-      // Role from users table (primary, trusted source)
       let userRole = userData?.role || 'user';
-      
-      // Get display name - priority: team_member.display_name > users.full_name > email prefix
+
       const displayName = teamMember?.display_name || userData?.full_name || user.email?.split('@')[0] || 'User';
-      
-      // Get avatar - priority: team_members.avatar_url > users.avatar_url
       const avatarUrl = teamMember?.avatar_url || userData?.avatar_url || null;
 
       const profileData: UserProfile = {
@@ -128,14 +121,12 @@ export default function Topbar() {
         full_name: displayName,
         avatar_url: avatarUrl,
         role: userRole,
-        // role_label only for display - don't override role
         role_label: teamMember?.role_label
       };
 
       setProfile(profileData);
     } catch (error) {
       console.error('Error fetching profile:', error);
-      // Set fallback profile
       setProfile({
         id: user.id,
         email: user.email || 'Admin',
@@ -169,7 +160,6 @@ export default function Topbar() {
       setLoadingNotifications(true);
       if (!user) return;
 
-      // Get user's notification settings
       const { data: userSettings } = await supabase
         .from('user_settings')
         .select('notification_settings')
@@ -178,7 +168,6 @@ export default function Topbar() {
 
       const notificationSettings = userSettings?.notification_settings || {};
 
-      // Get notifications
       const { data: notificationsData, error } = await supabase
         .from('notifications')
         .select('*')
@@ -188,7 +177,6 @@ export default function Topbar() {
 
       if (error) throw error;
 
-      // Filter notifications based on user settings
       const filteredNotifications = (notificationsData || []).filter((notification: Notification) => {
         const settingKey = `${notification.type}_alerts`;
         return notificationSettings[settingKey] !== false;
@@ -294,19 +282,16 @@ export default function Topbar() {
   // Handle notification click - navigate to link and mark as read
   const handleNotificationClick = async (notification: Notification) => {
     try {
-      // Mark as read
       await supabase
         .from('notifications')
         .update({ is_read: true })
         .eq('id', notification.id);
 
-      // Update local state
       setNotifications(prev =>
         prev.map(n => n.id === notification.id ? { ...n, is_read: true } : n)
       );
       setNotificationCount(prev => Math.max(0, prev - 1));
 
-      // Navigate to link if provided
       if (notification.link) {
         router.push(notification.link);
         setIsNotificationsOpen(false);
@@ -321,7 +306,7 @@ export default function Topbar() {
     const date = new Date(dateString);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
-    
+
     if (diff < 60000) {
       return 'Just now';
     } else if (diff < 3600000) {
@@ -340,7 +325,6 @@ export default function Topbar() {
     fetchNotificationCount();
     fetchNotifications();
 
-    // Listen for profile update events from settings page
     const handleProfileUpdate = () => {
       fetchProfile();
     };
@@ -369,7 +353,7 @@ export default function Topbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // ✅ Real-time notifications subscription
+  // Real-time notifications subscription
   useEffect(() => {
     let channel: any = null;
     let isMounted = true;
@@ -378,7 +362,6 @@ export default function Topbar() {
       try {
         if (!user || !isMounted) return;
 
-        // Subscribe to notifications for this user
         channel = supabase
           .channel('notifications')
           .on(
@@ -390,12 +373,8 @@ export default function Topbar() {
               filter: `user_id=eq.${user.id}`
             },
             (payload: any) => {
-              console.log('New notification received:', payload.new);
-              // Add new notification to the list
               setNotifications(prev => [payload.new as Notification, ...prev]);
-              // Increment unread count
               setNotificationCount(prev => prev + 1);
-              // Play notification sound
               playNotificationSound();
             }
           )
@@ -408,12 +387,9 @@ export default function Topbar() {
               filter: `user_id=eq.${user.id}`
             },
             (payload: any) => {
-              console.log('Notification updated:', payload.new);
-              // Update notification in the list
               setNotifications(prev =>
                 prev.map(n => n.id === payload.new.id ? payload.new as Notification : n)
               );
-              // Update unread count if read status changed
               if (payload.new.is_read && !payload.old.is_read) {
                 setNotificationCount(prev => Math.max(0, prev - 1));
               }
@@ -428,18 +404,13 @@ export default function Topbar() {
               filter: `user_id=eq.${user.id}`
             },
             (payload: any) => {
-              console.log('Notification deleted:', payload.old);
-              // Remove notification from the list
               setNotifications(prev => prev.filter(n => n.id !== payload.old.id));
-              // Update unread count if deleted notification was unread
               if (!payload.old.is_read) {
                 setNotificationCount(prev => Math.max(0, prev - 1));
               }
             }
           )
           .subscribe();
-
-        console.log('Real-time notifications subscription established');
       } catch (error) {
         console.error('Error setting up real-time subscription:', error);
       }
@@ -447,13 +418,11 @@ export default function Topbar() {
 
     setupRealtimeSubscription();
 
-    // Cleanup subscription on unmount
     return () => {
       isMounted = false;
       if (channel && typeof channel.unsubscribe === 'function') {
         try {
           supabase.removeChannel(channel);
-          console.log('Real-time notifications subscription cleaned up');
         } catch (error) {
           console.error('Error cleaning up subscription:', error);
         }
@@ -462,37 +431,44 @@ export default function Topbar() {
   }, [supabase]);
 
   const { signOut } = useAuth();
-const handleLogout = async () => {
-  try {
-    // Clear local UI state immediately
+
+  // ─── FIX: register the listener BEFORE awaiting signOut so the event
+  //         dispatched inside signOut() is never missed. ───────────────
+  const handleLogout = async () => {
+    // Clear UI state immediately
     setProfile(null);
     setNotifications([]);
     setNotificationCount(0);
     setIsProfileOpen(false);
     setIsNotificationsOpen(false);
 
-    // Call signOut - it will dispatch 'auth:logout-complete' when done
-    await signOut();
-  } catch (error) {
-    console.error('Error during logout:', error);
-  }
-
-  // Listen ONCE for logout-complete event and redirect
-  const handleLogoutComplete = () => {
-    console.log('[Topbar] Logout complete, redirecting to login...');
-    window.location.replace('/auth/login');
-  };
-
-  window.addEventListener('auth:logout-complete', handleLogoutComplete, { once: true });
-  
-  // Safety timeout (extended) as absolute fallback
-  setTimeout(() => {
-    if (window.location.pathname !== '/auth/login') {
-      console.log('[Topbar] Final timeout fallback redirect');
+    // Register listener BEFORE calling signOut — the event fires inside
+    // signOut(), so it must already be in place when we await.
+    const handleLogoutComplete = () => {
+      console.log('[Topbar] Logout complete, redirecting to login...');
       window.location.replace('/auth/login');
+    };
+
+    window.addEventListener('auth:logout-complete', handleLogoutComplete, { once: true });
+
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Error during logout:', error);
+      // signOut dispatches the event even on error, so the listener
+      // above will still fire. Nothing extra needed here.
     }
-  }, 3000);
-};
+
+    // True last-resort fallback — should never be reached because the
+    // listener above handles the redirect immediately.
+    setTimeout(() => {
+      window.removeEventListener('auth:logout-complete', handleLogoutComplete);
+      if (window.location.pathname !== '/auth/login') {
+        console.log('[Topbar] Safety timeout fallback redirect');
+        window.location.replace('/auth/login');
+      }
+    }, 3000);
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -510,11 +486,11 @@ const handleLogout = async () => {
     if (!name) return 'U';
     return name
       .split(' ')
-      .filter(n => n.length > 0)  // Filter out empty strings
+      .filter(n => n.length > 0)
       .map(n => n[0])
       .join('')
       .toUpperCase()
-      .slice(0, 2) || 'U';  // Fallback to 'U' if result is empty
+      .slice(0, 2) || 'U';
   };
 
   if (profileLoading) {
@@ -548,7 +524,7 @@ const handleLogout = async () => {
       </button>
 
       {/* Search Bar - Desktop */}
-      <div 
+      <div
         ref={searchRef}
         className={cn(
           "hidden md:block relative transition-all duration-300",
@@ -557,8 +533,8 @@ const handleLogout = async () => {
       >
         <form onSubmit={handleSearch}>
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input 
-            type="text" 
+          <input
+            type="text"
             placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -584,8 +560,8 @@ const handleLogout = async () => {
           <form onSubmit={handleSearch}>
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input 
-                type="text" 
+              <input
+                type="text"
                 placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -643,7 +619,7 @@ const handleLogout = async () => {
                   )}
                 </div>
               </div>
-              
+
               <div className="max-h-96 overflow-y-auto">
                 {loadingNotifications ? (
                   <div className="flex items-center justify-center py-8">
@@ -686,7 +662,7 @@ const handleLogout = async () => {
                   ))
                 )}
               </div>
-              
+
               {notifications.length > 0 && (
                 <div className="px-4 py-3 border-t border-gray-100">
                   <button
@@ -718,8 +694,8 @@ const handleLogout = async () => {
             aria-expanded={isProfileOpen}
           >
             {userAvatarUrl ? (
-              <img 
-                src={userAvatarUrl} 
+              <img
+                src={userAvatarUrl}
                 alt={userName}
                 className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm"
               />
@@ -756,7 +732,7 @@ const handleLogout = async () => {
                   {userRole}
                 </span>
               </div>
-              
+
               <button
                 onClick={() => {
                   setIsProfileOpen(false);
@@ -795,7 +771,7 @@ const handleLogout = async () => {
                 <User className="w-4 h-4" />
                 Profile
               </button>
-              
+
               <button
                 onClick={() => {
                   setIsMobileMenuOpen(false);
@@ -806,7 +782,7 @@ const handleLogout = async () => {
                 <Bell className="w-4 h-4" />
                 Notifications
               </button>
-              
+
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
