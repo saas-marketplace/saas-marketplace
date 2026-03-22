@@ -3,6 +3,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 // useSuspended + useAccessControl merged into useUserPermissions
 import { useUserPermissions } from "@/hooks/useUserPermissions";
+import { useUserStatus } from "@/stores/user-status-context";
+import { SectionAccessGuard } from "@/components/ui/section-access-guard";
 import { 
   MessageSquare, 
   Clock, 
@@ -143,6 +145,7 @@ function TypingBubble({ mobile = false }: { mobile?: boolean }) {
 
 export default function AdminRequestsPage() {
   const { isLoading, canAccessSection, canCreate, canDelete, permissions, isSuspended, user } = useUserPermissions();
+  const { getUserStatus: getUserStatusFromContext } = useUserStatus();
 
   console.log('[Requests] Permissions:', permissions);
   console.log('[Requests] canCreate(requests):', canCreate('requests'));
@@ -408,89 +411,18 @@ export default function AdminRequestsPage() {
   }, [supabase, currentUserId, isAdmin]);
 
   // ── PRESENCE: watch selected user's online status ──
+  // Now using centralized UserStatusProvider instead of individual fetches
   useEffect(() => {
     if (!selectedRequest?.user_id) return;
 
     const userId = selectedRequest.user_id;
-
-    const fetchInitialStatus = async () => {
-      const { data } = await supabase
-        .from('user_status')
-        .select('is_online, last_seen')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (data) {
-        setOnlineStatus(prev => ({
-          ...prev,
-          [userId]: { online: data.is_online, lastSeen: data.last_seen },
-        }));
-      }
-    };
-    fetchInitialStatus();
-
-    const statusChannel = supabase
-      .channel('admin_user_status_watch')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'user_status',
-        filter: `user_id=eq.${userId}`,
-      }, (payload: any) => {
-        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-          const s = payload.new as { user_id: string; is_online: boolean; last_seen: string };
-          setOnlineStatus(prev => ({
-            ...prev,
-            [s.user_id]: { online: s.is_online, lastSeen: s.last_seen },
-          }));
-        }
-      })
-      .subscribe();
-
-    const presenceWatcher = supabase.channel('chat_presence_watcher');
-    presenceWatcher
-      .on('presence', { event: 'sync' }, () => {
-        const state = presenceWatcher.presenceState();
-        const onlineUserIds = Object.keys(state);
-        const isUserOnline = onlineUserIds.includes(userId);
-        setOnlineStatus(prev => ({
-          ...prev,
-          [userId]: { 
-            online: isUserOnline, 
-            lastSeen: isUserOnline 
-              ? prev[userId]?.lastSeen 
-              : (new Date().toISOString())
-          },
-        }));
-      })
-      .on('presence', { event: 'join' }, ({ key }: { key: string }) => {
-        if (key === userId) {
-          setOnlineStatus(prev => ({
-            ...prev,
-            [userId]: { online: true, lastSeen: prev[userId]?.lastSeen },
-          }));
-        }
-      })
-      .on('presence', { event: 'leave' }, ({ key }: { key: string }) => {
-        if (key === userId) {
-          const now = new Date().toISOString();
-          setOnlineStatus(prev => ({
-            ...prev,
-            [userId]: { online: false, lastSeen: now },
-          }));
-        }
-      })
-      .subscribe();
-
-    return () => {
-      if (statusChannel && typeof statusChannel.unsubscribe === 'function') {
-        supabase.removeChannel(statusChannel);
-      }
-      if (presenceWatcher && typeof presenceWatcher.unsubscribe === 'function') {
-        supabase.removeChannel(presenceWatcher);
-      }
-    };
-  }, [supabase, selectedRequest?.id, selectedRequest?.user_id, currentUserId]);
+    const status = getUserStatusFromContext(userId);
+    
+    setOnlineStatus(prev => ({
+      ...prev,
+      [userId]: { online: status.online, lastSeen: status.lastSeen },
+    }));
+  }, [selectedRequest?.user_id, getUserStatusFromContext]);
 
   // ── TYPING CHANNEL ──
   useEffect(() => {

@@ -73,37 +73,9 @@ export default async function DashboardLayout({
 }) {
   const { role: userRole, permissions } = await getUserStatus();
 
-  // Show sidebar only if super_admin or admin with dashboard access
-  let showSidebar = userRole === 'super_admin';
-  
-  if (userRole === 'admin') {
-    // Check if admin has dashboard view permission
-    const hasDashboardAccess = permissions.dashboard?.includes('view') || false;
-    showSidebar = hasDashboardAccess;
-  }
-
-  // Show access denied screen if user doesn't have dashboard access
-  if (!showSidebar) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-white">
-        <div className="flex flex-col items-center justify-center p-8 max-w-md text-center">
-          <div className="bg-red-100 rounded-full p-4 mb-4">
-            <AlertTriangle className="w-12 h-12 text-red-600" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
-          <p className="text-gray-600 mb-6">
-            You don't have permission to access the dashboard. Please contact your administrator.
-          </p>
-          <a
-            href="/"
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Go to Home
-          </a>
-        </div>
-      </div>
-    );
-  }
+  // Always show sidebar and topbar for authenticated users
+  // Permission checks are handled per-section, not globally
+  const showSidebar = userRole === 'super_admin' || userRole === 'admin';
 
   return (
     <SuspendedProvider>
