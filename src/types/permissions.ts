@@ -3,6 +3,58 @@
 // Available permission actions
 export type PermissionAction = 'view' | 'create' | 'update' | 'delete';
 
+// Boolean permissions as specified in task
+export type BooleanPermission = 
+  | 'manage_users'
+  | 'manage_team' 
+  | 'manage_products' 
+  | 'manage_requests' 
+  | 'manage_reviews' 
+  | 'manage_settings' 
+  | 'view_dashboard';
+
+export type BooleanPermissions = Partial<Record<BooleanPermission, boolean>>;
+
+export const BOOLEAN_TO_SECTION: Record<BooleanPermission, PermissionSection> = {
+  manage_users: 'team',
+  manage_team: 'team',
+  manage_products: 'products',
+  manage_requests: 'requests',
+  manage_reviews: 'freelancers',
+  manage_settings: 'dashboard',
+  view_dashboard: 'dashboard'
+};
+
+// Task-specified helper (assumes user.permissions is BooleanPermissions)
+export const hasPermission = (user: { role?: string; permissions?: BooleanPermissions }, permission: BooleanPermission): boolean => {
+  if (user?.role === "super_admin") return true;
+  if (!user?.permissions) return false;
+  return user.permissions[permission] === true;
+};
+
+// Array <=> Boolean converters
+export const arrayToBoolean = (arrayPerms: Permissions): BooleanPermissions => {
+  const boolPerms: BooleanPermissions = {};
+  for (const [section, actions] of Object.entries(arrayPerms)) {
+    const bpKey = Object.entries(BOOLEAN_TO_SECTION).find(([k, v]) => v === section)?.[0] as BooleanPermission;
+    if (bpKey) {
+      boolPerms[bpKey] = actions?.includes('create') || actions?.includes('update') || actions?.includes('delete') || false;
+    }
+  }
+  return boolPerms;
+};
+
+export const booleanToArray = (boolPerms: BooleanPermissions): Permissions => {
+  const arrayPerms: Permissions = {};
+  for (const [bpKey, allowed] of Object.entries(boolPerms)) {
+    const section = BOOLEAN_TO_SECTION[bpKey as BooleanPermission];
+    if (allowed) {
+      arrayPerms[section] = ['view', 'create', 'update', 'delete'];
+    }
+  }
+  return arrayPerms;
+};
+
 // Available sections/domains in the system
 export type PermissionSection = 
   | 'dashboard'
@@ -111,7 +163,7 @@ export const PERMISSION_PRESETS: Record<Exclude<PermissionPreset, 'custom'>, Per
 };
 
 // Helper function to check if user has specific permission
-export function hasPermission(
+export function checkArrayPermission(
   permissions: Permissions, 
   section: PermissionSection, 
   action: PermissionAction

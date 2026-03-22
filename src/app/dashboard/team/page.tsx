@@ -41,7 +41,7 @@ import {
 
 export default function TeamPage() {
   // Get all access control state FIRST
-  const { isLoading, isRemoved, isSuspended, canAccessSection, canCreate, canUpdate, canDelete } = useAccessControl();
+  const { isLoading, isRemoved, isSuspended, canAccessSection, canCreate, canUpdate, canDelete, isSuperAdmin } = useAccessControl();
   const { toast } = useToast();
   const supabase = createClient();
 
@@ -60,7 +60,7 @@ export default function TeamPage() {
     setSelectedMember(member);
     setDetailsOpen(true);
   };
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  // Removed duplicate isSuperAdmin - using useAccessControl
 
   // ── DATA FETCHING FUNCTIONS (defined before useEffect for correct hook order) ──
   const fetchCurrentUserRole = async () => {
@@ -84,7 +84,7 @@ export default function TeamPage() {
       const userRole = data?.role || null;
       console.log('User role fetched:', userRole, 'for user ID:', user.id);
       setCurrentUserRole(userRole);
-      setIsSuperAdmin(userRole === 'super_admin');
+      // isSuperAdmin now from useAccessControl
     } catch (error) {
       console.error('Error fetching user role:', error);
     }

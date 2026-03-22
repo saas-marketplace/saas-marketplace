@@ -25,7 +25,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ROLE_LABELS, Permissions, PERMISSION_PRESETS } from '@/types/permissions';
+import { usePermissions } from '@/stores/permissions-context';
+import { ROLE_LABELS, Permissions, PERMISSION_PRESETS, hasPermission, arrayToBoolean } from '@/types/permissions';
 
 interface TeamMember {
   id: string;
@@ -42,7 +43,12 @@ interface TeamMember {
 export default function TeamSettingsPage() {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const permissionsCtx = usePermissions();
+  const userForPerm = {
+    role: permissionsCtx.isSuperAdmin ? 'super_admin' : 'admin',
+    permissions: arrayToBoolean(permissionsCtx.permissions)
+  };
+  const canManageTeam = hasPermission(userForPerm, 'manage_team');
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
@@ -60,23 +66,6 @@ export default function TeamSettingsPage() {
 
   const fetchTeamMembers = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) return;
-
-      // Get current user's role
-      const { data: memberData } = await supabase
-        .from('team_members')
-        .select('role_label')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      let isSuper = false;
-      if (memberData?.role_label === 'Super Admin') {
-        isSuper = true;
-      }
-      setIsSuperAdmin(isSuper);
-
       // Get all team members
       const { data: members, error } = await supabase
         .from('team_members')
@@ -265,13 +254,15 @@ export default function TeamSettingsPage() {
             <h1 className="text-2xl font-bold text-gray-900">Team Management</h1>
             <p className="text-gray-600 mt-1">Manage team members, roles, and permissions</p>
           </div>
-          <button
-            onClick={() => setShowInviteModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors"
-          >
-            <UserPlus className="w-4 h-4" />
-            Invite Member
-          </button>
+          {canManageTeam ?
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors"
+            >
+              <UserPlus className="w-4 h-4" />
+              Invite Member
+            </button> : null
+          }
         </div>
       </div>
 
@@ -362,15 +353,17 @@ export default function TeamSettingsPage() {
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem 
-                          onClick={() => {
-                            setSelectedMember(member);
-                            setShowEditModal(true);
-                          }}
-                        >
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit Role & Permissions
-                        </DropdownMenuItem>
+{canManageTeam ? 
+                          <DropdownMenuItem 
+                            onClick={() => {
+                              setSelectedMember(member);
+                              setShowEditModal(true);
+                            }}
+                          >
+                            <Edit className="w-4 h-4 mr-2" />
+                            Edit Role & Permissions
+                          </DropdownMenuItem> : null
+                        }
                         <DropdownMenuItem 
                           onClick={() => handleUpdateStatus(
                             member.id, 

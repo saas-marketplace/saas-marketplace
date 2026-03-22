@@ -56,6 +56,29 @@ export default function SignupPage() {
         console.error('Profile creation error:', profileError);
         // Don't fail the signup if profile creation fails - the trigger might handle it
       }
+
+      // ✅ Notify super_admin of new user signup
+      try {
+        // Find super_admin IDs
+        const { data: superAdmins } = await supabase
+          .from('users')
+          .select('id')
+          .eq('role', 'super_admin');
+
+        if (superAdmins && superAdmins.length > 0) {
+          const notifications = superAdmins.map((admin: { id: string }) => ({
+            user_id: admin.id,
+            type: 'user',
+            title: 'New User Signup',
+            message: `${fullName} just created an account`,
+            link: '/dashboard'
+          }));
+          
+          await supabase.from('notifications').insert(notifications);
+        }
+      } catch (notifError) {
+        console.error('Notification error:', notifError);
+      }
       
       toast({ title: "Signup successful", description: "Please check your email to verify!" });
       router.push("/");

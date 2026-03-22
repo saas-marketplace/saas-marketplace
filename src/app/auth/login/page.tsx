@@ -33,29 +33,16 @@ async function getUserStatus(supabase: ReturnType<typeof createClient>, userId: 
   let role = userData?.role as UserRole | undefined;
   let status: UserStatus = "active";
 
-  // If role is not set in users table, check team_members table
-  if (!role) {
-    const { data: memberData } = await supabase
-      .from("team_members")
-      .select("role_label, is_active")
-      .eq("user_id", userId)
-      .maybeSingle();
+  // Role from users table ONLY - team_members.role_label is display-only
+  // Check team_members is_active for status
+  const { data: memberData } = await supabase
+    .from("team_members")
+    .select("is_active")
+    .eq("user_id", userId)
+    .maybeSingle();
 
-    if (memberData?.role_label) {
-      // Map role_label to role
-      if (memberData.role_label === "Super Admin") {
-        role = "super_admin";
-      } else if (memberData.role_label === "Admin") {
-        role = "admin";
-      } else {
-        role = "user";
-      }
-    }
-
-    // Check if team member is active (fallback for status check)
-    if (memberData && !memberData.is_active) {
-      status = "suspended";
-    }
+  if (memberData && !memberData.is_active) {
+    status = "suspended";
   }
 
   // Final fallback to user if still undefined

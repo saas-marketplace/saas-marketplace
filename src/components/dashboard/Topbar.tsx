@@ -115,22 +115,13 @@ export default function Topbar() {
         .eq('user_id', user.id)
         .maybeSingle();
 
-      // Role is always valid now - default to 'user' only if somehow missing
+      // Role from users table (primary, trusted source)
       let userRole = userData?.role || 'user';
       
-      // Use team_members role_label if available
-      if (teamMember?.role_label) {
-        if (teamMember.role_label === 'Super Admin') {
-          userRole = 'super_admin';
-        } else if (teamMember.role_label === 'Admin') {
-          userRole = 'admin';
-        }
-      }
-
-      // Get display name - priority: team_member display_name > users full_name > email prefix
+      // Get display name - priority: team_member.display_name > users.full_name > email prefix
       const displayName = teamMember?.display_name || userData?.full_name || user.email?.split('@')[0] || 'User';
       
-      // Get avatar - priority: team_members avatar_url > users avatar_url
+      // Get avatar - priority: team_members.avatar_url > users.avatar_url
       const avatarUrl = teamMember?.avatar_url || userData?.avatar_url || null;
 
       const profileData: UserProfile = {
@@ -139,7 +130,8 @@ export default function Topbar() {
         full_name: displayName,
         avatar_url: avatarUrl,
         role: userRole,
-        role_label: teamMember?.role_label || userRole
+        // role_label only for display - don't override role
+        role_label: teamMember?.role_label
       };
 
       setProfile(profileData);

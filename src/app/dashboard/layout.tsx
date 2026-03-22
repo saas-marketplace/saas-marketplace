@@ -41,27 +41,12 @@ async function getUserStatus() {
     .eq('id', user.id)
     .maybeSingle();
 
-  // Role is always valid now - default to 'user' only if somehow missing
-  let userRole = userData?.role || 'user';
-
-  // Check team_members for role_label override (optional)
-  const { data: teamMember } = await supabase
-    .from('team_members')
-    .select('role_label')
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  // Use team_members role_label if available
-  if (teamMember?.role_label) {
-    if (teamMember.role_label === 'Super Admin') {
-      userRole = 'super_admin';
-    } else if (teamMember.role_label === 'Admin') {
-      userRole = 'admin';
-    }
-  }
+  // Role from users table ONLY - role_label is display-only
+  const userRole = userData?.role || 'user';
 
   // All authenticated users with valid role are active
   return { status: 'active' as const, role: userRole };
+
 }
 
 export default async function DashboardLayout({

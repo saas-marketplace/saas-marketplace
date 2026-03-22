@@ -1,15 +1,19 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { createClient } from '@/lib/supabase/client';
+import { Button } from '@/components/ui/button';
+import { usePermissions } from '@/stores/permissions-context';
+import { Edit, Trash2, Loader2 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu';
 
 type Freelancer = {
-  id: number;
+  id: string;
   display_name: string;
   title: string | null;
   domain: string | null;
@@ -21,7 +25,10 @@ type Freelancer = {
 };
 
 export default function FreelancerTable() {
+  const supabase = createClient();
   const [freelancers, setFreelancers] = useState<Freelancer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { canUpdate, canDelete, isLoading: permsLoading } = usePermissions();
 
   useEffect(() => {
     async function fetchFreelancers() {
@@ -35,14 +42,29 @@ export default function FreelancerTable() {
           ...f,
           skills: Array.isArray(f.skills) ? f.skills : [],
           domain: f.domain?.name || null,
+          id: f.id.toString()
         }));
-        setFreelancers(parsedData);
+        setFreelancers(parsedData as Freelancer[]);
       }
+      setLoading(false);
     }
     fetchFreelancers();
   }, []);
 
-  // Get initials for avatar
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this freelancer?')) return;
+    
+    const { error } = await supabase.from('freelancers').delete().eq('id', id);
+    if (error) {
+      console.error('Delete error:', error);
+      return;
+    }
+    
+    setFreelancers(prev => prev.filter(f => f.id !== id));
+  };
+
+  const canManageFreelancers = canUpdate('freelancers') || canDelete('freelancers');
+
   const getInitials = (name: string) => {
     return name
       .split(' ')
@@ -52,24 +74,28 @@ export default function FreelancerTable() {
       .slice(0, 2);
   };
 
+  if (loading || permsLoading) {
+    return <div className="flex items-center justify-center p-8"><Loader2 className="w-6 h-6 animate-spin" /> Loading...</div>;
+  }
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      <table className="min-w-full">
-        <thead>
-          <tr className="bg-gray-50 border-b border-gray-200">
-            <th className="py-3 px-4 text-left text-sm font-medium text-gray-600">Freelancer</th>
-            <th className="py-3 px-4 text-left text-sm font-medium text-gray-600">Domain</th>
-            <th className="py-3 px-4 text-left text-sm font-medium text-gray-600">Skills</th>
-            <th className="py-3 px-4 text-left text-sm font-medium text-gray-600">Experience</th>
-            <th className="py-3 px-4 text-left text-sm font-medium text-gray-600">Projects</th>
-            <th className="py-3 px-4 text-left text-sm font-medium text-gray-600">Status</th>
-            <th className="py-3 px-4 text-left text-sm font-medium text-gray-600">Actions</th>
+    <div className="rounded-lg border bg-card overflow-hidden">
+      <table className="w-full">
+        <thead className="bg-muted/50">
+          <tr>
+            <th className="text-left p-4 font-medium">Freelancer</th>
+            <th className="text-left p-4 font-medium">Domain</th>
+            <th className="text-left p-4 font-medium">Skills</th>
+            <th className="text-left p-4 font-medium">Experience</th>
+            <th className="text-left p-4 font-medium">Projects</th>
+            <th className="text-left p-4 font-medium">Status</th>
+            {canManageFreelancers && <th className="text-right p-4 font-medium">Actions</th>}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-border">
           {freelancers.map((freelancer) => (
-            <tr key={freelancer.id} className="border-b border-gray-100 hover:bg-gray-50">
-              <td className="py-3 px-4">
+            <tr key={freelancer.id} className="hover:bg-muted/50">
+              <td className="p-4">
                 <div className="flex items-center gap-3">
                   {freelancer.avatar_url ? (
                     <img 
@@ -88,10 +114,8 @@ export default function FreelancerTable() {
                   </div>
                 </div>
               </td>
-              <td className="py-3 px-4 text-sm text-gray-600">
-                {freelancer.domain || '-'}
-              </td>
-              <td className="py-3 px-4">
+              <td className="p-4 text-gray-600">{freelancer.domain || '-'}</td>
+              <td className="p-4">
                 <div className="flex flex-wrap gap-1">
                   {freelancer.skills.slice(0, 3).map((skill, index) => (
                     <span key={index} className="bg-purple-50 text-purple-600 text-xs px-2 py-1 rounded-full">
@@ -103,13 +127,9 @@ export default function FreelancerTable() {
                   )}
                 </div>
               </td>
-              <td className="py-3 px-4 text-sm text-gray-600">
-                {freelancer.experience_level || '-'}
-              </td>
-              <td className="py-3 px-4 text-sm text-gray-600">
-                {freelancer.completed_projects}
-              </td>
-              <td className="py-3 px-4">
+              <td className="p-4 text-gray-600">{freelancer.experience_level || '-'}</td>
+              <td className="p-4 text-gray-600">{freelancer.completed_projects}</td>
+              <td className="p-4">
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                   freelancer.is_available 
                     ? 'bg-green-50 text-green-600' 
@@ -118,14 +138,43 @@ export default function FreelancerTable() {
                   {freelancer.is_available ? 'Available' : 'Unavailable'}
                 </span>
               </td>
-              <td className="py-3 px-4">
-                <div className="flex items-center gap-2">
-                  <button className="text-blue-500 hover:text-blue-700 text-sm">Edit</button>
-                  <button className="text-red-500 hover:text-red-700 text-sm">Delete</button>
-                </div>
-              </td>
+              {canManageFreelancers && (
+                <td className="p-4">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <span className="sr-only">Open menu</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {canUpdate('freelancers') && (
+                        <DropdownMenuItem>
+                          Edit Freelancer
+                          <Edit className="w-4 h-4 ml-auto" />
+                        </DropdownMenuItem>
+                      )}
+                      {canDelete('freelancers') && (
+                        <DropdownMenuItem 
+                          onClick={() => handleDelete(freelancer.id)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          Delete
+                          <Trash2 className="w-4 h-4 ml-auto" />
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </td>
+              )}
             </tr>
           ))}
+          {freelancers.length === 0 && (
+            <tr>
+              <td colSpan={canManageFreelancers ? 7 : 6} className="p-8 text-center text-muted-foreground">
+                No freelancers found.
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

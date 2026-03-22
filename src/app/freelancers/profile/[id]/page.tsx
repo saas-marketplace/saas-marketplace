@@ -174,7 +174,7 @@ export default function FreelancerProfilePage() {
     setNewComment("");
     setNewRating(5);
     
-    // ✅ Create notification for freelancer owner when review is added
+    // ✅ Create notification for freelancer owner when review is added (MATCH TASK FORMAT)
     try {
       // Get reviewer's full name for dynamic message
       const { data: reviewerData } = await supabase
@@ -188,7 +188,7 @@ export default function FreelancerProfilePage() {
       // Get freelancer owner's user_id
       const { data: freelancerData } = await supabase
         .from("freelancers")
-        .select("user_id, display_name")
+        .select("user_id")
         .eq("id", freelancer!.id)
         .single();
       
@@ -197,7 +197,7 @@ export default function FreelancerProfilePage() {
           user_id: freelancerData.user_id,
           type: "review",
           title: "New Review",
-          message: `${reviewerName} reviewed your profile (${newRating}★)`,
+          message: `${reviewerName} rated you ${newRating}★`,
           link: `/freelancers/${freelancer!.id}`
         });
       }
