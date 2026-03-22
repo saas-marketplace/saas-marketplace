@@ -1,6 +1,19 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
+CREATE TABLE public.audit_logs (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  user_email character varying NOT NULL,
+  action character varying NOT NULL,
+  section character varying NOT NULL,
+  details text,
+  ip_address character varying,
+  user_agent text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT audit_logs_pkey PRIMARY KEY (id),
+  CONSTRAINT audit_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
 CREATE TABLE public.blog_posts (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   title text NOT NULL,
@@ -101,6 +114,19 @@ CREATE TABLE public.freelancers (
   CONSTRAINT freelancers_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT freelancers_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES public.domains(id)
 );
+CREATE TABLE public.notifications (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  type character varying NOT NULL,
+  title character varying NOT NULL,
+  message text NOT NULL,
+  link character varying,
+  is_read boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT notifications_pkey PRIMARY KEY (id),
+  CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
 CREATE TABLE public.orders (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   user_id uuid,
@@ -162,14 +188,31 @@ CREATE TABLE public.request_messages (
   CONSTRAINT request_messages_request_id_fkey FOREIGN KEY (request_id) REFERENCES public.requests(id),
   CONSTRAINT request_messages_sender_id_fkey FOREIGN KEY (sender_id) REFERENCES auth.users(id)
 );
+CREATE TABLE public.request_typing (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  request_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  is_typing boolean DEFAULT false,
+  updated_at timestamp with time zone DEFAULT now(),
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT request_typing_pkey PRIMARY KEY (id),
+  CONSTRAINT request_typing_request_id_fkey FOREIGN KEY (request_id) REFERENCES public.requests(id),
+  CONSTRAINT request_typing_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
 CREATE TABLE public.requests (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   user_id uuid NOT NULL,
   title text,
   status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'received'::text, 'answered'::text])),
   created_at timestamp with time zone DEFAULT now(),
+  freelancer_id uuid,
+  freelancer_domain text,
+  freelancer_characteristics jsonb,
+  subject_type text DEFAULT 'custom'::text CHECK (subject_type = ANY (ARRAY['hire'::text, 'info'::text, 'project'::text, 'custom'::text])),
+  freelancer_data jsonb,
   CONSTRAINT requests_pkey PRIMARY KEY (id),
-  CONSTRAINT requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT requests_freelancer_id_fkey FOREIGN KEY (freelancer_id) REFERENCES public.freelancers(id)
 );
 CREATE TABLE public.reviews (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -181,6 +224,15 @@ CREATE TABLE public.reviews (
   CONSTRAINT reviews_pkey PRIMARY KEY (id),
   CONSTRAINT reviews_freelancer_id_fkey FOREIGN KEY (freelancer_id) REFERENCES public.freelancers(id)
 );
+CREATE TABLE public.system_settings (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  key character varying NOT NULL UNIQUE,
+  value jsonb NOT NULL,
+  description text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT system_settings_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.team_members (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   user_id uuid NOT NULL UNIQUE,
@@ -191,19 +243,41 @@ CREATE TABLE public.team_members (
   created_by uuid,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  needs_access_restored boolean NOT NULL DEFAULT false,
+  avatar_url text,
   CONSTRAINT team_members_pkey PRIMARY KEY (id),
   CONSTRAINT team_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT team_members_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+);
+CREATE TABLE public.user_settings (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL UNIQUE,
+  notification_settings jsonb DEFAULT '{"weekly_summary": false, "security_alerts": true, "dashboard_alerts": true, "new_message_alerts": true, "new_request_alerts": true, "blog_comment_alerts": true, "email_notifications": true, "product_update_alerts": true, "team_invitation_alerts": true}'::jsonb,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT user_settings_pkey PRIMARY KEY (id),
+  CONSTRAINT user_settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.user_status (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL UNIQUE,
+  is_online boolean DEFAULT false,
+  last_seen timestamp with time zone DEFAULT now(),
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT user_status_pkey PRIMARY KEY (id),
+  CONSTRAINT user_status_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.users (
   id uuid NOT NULL,
   email text NOT NULL UNIQUE,
   full_name text,
   avatar_url text,
-  role text DEFAULT 'user'::text CHECK (role = ANY (ARRAY['user'::text, 'admin'::text, 'super_admin'::text])),
+  role text NOT NULL DEFAULT 'user'::text CHECK (role IS NULL OR role = 'user'::text OR role = 'admin'::text OR role = 'super_admin'::text),
   bio text,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  status text NOT NULL DEFAULT 'active'::text CHECK (status = 'active'::text OR status = 'suspended'::text OR status = 'removed'::text OR status = 'restored'::text),
   CONSTRAINT users_pkey PRIMARY KEY (id),
   CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );

@@ -106,6 +106,7 @@ export default function SystemSettingsPage() {
 
       setMessage({ type: 'success', text: 'System settings saved successfully' });
 
+
     } catch (error) {
       console.error('Error saving settings:', error);
       setMessage({ type: 'error', text: 'Failed to save settings' });

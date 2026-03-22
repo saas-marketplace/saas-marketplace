@@ -43,31 +43,15 @@ export default function Sidebar(): React.ReactElement {
           return;
         }
 
-        // Get role from users table - role is guaranteed to be valid
+        // Get role from users table
         const { data: userData } = await supabase
           .from('users')
           .select('role')
           .eq('id', authUser.id)
           .maybeSingle();
 
-        // Default to 'user' if somehow missing, but role should always exist
-        let role = userData?.role || 'user';
+        const role = userData?.role || 'user';
 
-        // Check team_members for role_label override
-        const { data: memberData } = await supabase
-          .from('team_members')
-          .select('role_label')
-          .eq('user_id', authUser.id)
-          .maybeSingle();
-
-        // Use team_members role_label if available
-        if (memberData?.role_label) {
-          if (memberData.role_label === 'Super Admin') {
-            role = 'super_admin';
-          } else{
-            role = 'admin';
-          }
-        }
         
         // Super admin has access to all sections
         if (role === 'super_admin') {

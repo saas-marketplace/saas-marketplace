@@ -37,14 +37,7 @@ export default function SignupPage() {
     if (error) {
       toast({ title: "Signup failed", description: error.message });
     } else if (data?.user) {
-      // Set role = "user" and status = "active" for new users
-      await supabase
-        .from("users")
-        .update({ role: "user", status: "active" })
-        .eq("id", data.user.id);
-      
-      toast({ title: "Signup successful", description: "Welcome!" });
-      // New users go to homepage, not dashboard
+      toast({ title: "Signup successful", description: "Please check your email to verify!" });
       router.push("/");
     }
     setLoading(false);
