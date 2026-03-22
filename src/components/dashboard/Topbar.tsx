@@ -8,7 +8,6 @@ import { useAuth } from '@/components/providers/auth-provider';
 import {
   Search,
   Bell,
-  Settings,
   LogOut,
   User,
   ChevronDown,
@@ -76,7 +75,6 @@ export default function Topbar() {
   const { user, session, isLoading: profileLoading } = useSession();
   
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
@@ -88,7 +86,6 @@ export default function Topbar() {
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   
   const profileRef = useRef<HTMLDivElement>(null);
-  const settingsRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
 
@@ -360,9 +357,6 @@ export default function Topbar() {
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
         setIsProfileOpen(false);
       }
-      if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
-        setIsSettingsOpen(false);
-      }
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setIsSearchOpen(false);
       }
@@ -597,7 +591,6 @@ export default function Topbar() {
             onClick={() => {
               setIsNotificationsOpen(!isNotificationsOpen);
               setIsProfileOpen(false);
-              setIsSettingsOpen(false);
             }}
             className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200 relative"
             aria-label="View notifications"
@@ -701,7 +694,6 @@ export default function Topbar() {
           <button
             onClick={() => {
               setIsProfileOpen(!isProfileOpen);
-              setIsSettingsOpen(false);
             }}
             className={cn(
               "flex items-center gap-2 p-1.5 rounded-lg transition-all duration-200",
@@ -761,61 +753,6 @@ export default function Topbar() {
                 Edit Profile
               </button>
 
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                Logout
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Settings Icon & Dropdown */}
-        <div ref={settingsRef} className="relative">
-          <button
-            onClick={() => {
-              setIsSettingsOpen(!isSettingsOpen);
-              setIsProfileOpen(false);
-            }}
-            className={cn(
-              "p-2 rounded-lg transition-all duration-200",
-              isSettingsOpen ? "bg-cyan-50 text-cyan-600 ring-2 ring-cyan-500/20" : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
-            )}
-            aria-label="Settings menu"
-            aria-expanded={isSettingsOpen}
-          >
-            <Settings className="w-5 h-5" />
-          </button>
-
-          {/* Settings Dropdown */}
-          {isSettingsOpen && (
-            <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-2 animate-in fade-in slide-in-from-top-2 duration-200 z-50">
-              <button
-                onClick={() => {
-                  setIsSettingsOpen(false);
-                  router.push('/dashboard/profile');
-                }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                <User className="w-4 h-4 text-gray-400" />
-                Profile
-              </button>
-              
-              <button
-                onClick={() => {
-                  setIsSettingsOpen(false);
-                  setIsNotificationsOpen(true);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                <Bell className="w-4 h-4 text-gray-400" />
-                Notifications
-              </button>
-              
-              <div className="my-1 border-t border-gray-100"></div>
-              
               <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
