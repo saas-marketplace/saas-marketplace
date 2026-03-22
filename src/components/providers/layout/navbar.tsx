@@ -141,8 +141,12 @@ function NavbarContent() {
       await supabase.auth.signOut();
       setUser(null);
       setMenuOpen(false);
+      // Force full page reload to clear all session state and caches
+      window.location.href = '/auth/login';
     } catch (error) {
       console.error("Sign out error:", error);
+      // Even if there's an error, redirect to login
+      window.location.href = '/auth/login';
     }
   };
 

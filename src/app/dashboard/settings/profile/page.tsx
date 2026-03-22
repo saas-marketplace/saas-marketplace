@@ -314,7 +314,8 @@ export default function ProfileSettingsPage() {
       // Sign out and delete auth
       await supabase.auth.signOut();
       
-      router.push('/');
+      // Force full page reload to clear all session state and caches
+      window.location.href = '/auth/login';
     } catch (error) {
       console.error('Error deleting account:', error);
       setMessage({ type: 'error', text: 'Failed to delete account' });
@@ -335,7 +336,8 @@ export default function ProfileSettingsPage() {
       // Sign out
       await supabase.auth.signOut();
       
-      router.push('/');
+      // Force full page reload to clear all session state and caches
+      window.location.href = '/auth/login';
     } catch (error) {
       console.error('Error leaving team:', error);
       setMessage({ type: 'error', text: 'Failed to leave team' });

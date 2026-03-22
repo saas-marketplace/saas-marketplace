@@ -37,9 +37,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
-    checkStatus();
-  }, [supabase, checkStatus]);
+    try {
+      // Sign out from Supabase
+      await supabase.auth.signOut();
+      // The auth state change listener in useSession will handle clearing state
+      // Force full page reload to clear all session state and caches
+      window.location.href = '/auth/login';
+    } catch (error) {
+      console.error('Error during logout:', error);
+      // Even if there's an error, redirect to login
+      window.location.href = '/auth/login';
+    }
+  }, [supabase]);
 
   const refreshSession = useCallback(async () => {
     await checkStatus();

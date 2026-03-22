@@ -170,7 +170,8 @@ export default function EditProfileModal({ profile, onClose, onUpdate }: EditPro
 
       // Sign out and redirect
       await supabase.auth.signOut();
-      router.push('/auth/login');
+      // Force full page reload to clear all session state and caches
+      window.location.href = '/auth/login';
     } catch (error) {
       console.error('Error deleting account:', error);
       alert('Failed to delete account');
@@ -202,7 +203,8 @@ export default function EditProfileModal({ profile, onClose, onUpdate }: EditPro
 
       // Sign out and redirect
       await supabase.auth.signOut();
-      router.push('/auth/login');
+      // Force full page reload to clear all session state and caches
+      window.location.href = '/auth/login';
     } catch (error) {
       console.error('Error leaving team:', error);
       alert('Failed to leave team');

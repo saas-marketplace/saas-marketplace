@@ -40,6 +40,26 @@ export function useSession() {
   const mountedRef = useRef(true);
   const authListenerRef = useRef<any>(null);
 
+  const clearState = useCallback(() => {
+    if (mountedRef.current) {
+      setState({
+        isLoading: false,
+        isSuperAdmin: false,
+        isAdmin: false,
+        isRemoved: false,
+        isSuspended: false,
+        isRestored: false,
+        permissions: {} as Record<PermissionSection, SectionPermissions>,
+        accessibleSections: [],
+        session: null,
+        user: null,
+      });
+    }
+    sessionRef.current = false;
+    isFetchingRef.current = false;
+    fetchedRef.current = false;
+  }, []);
+
   const fetchPermissions = useCallback(async () => {
     if (sessionRef.current || isFetchingRef.current) return;
     sessionRef.current = true;
@@ -55,6 +75,7 @@ export function useSession() {
       }
 
       if (!user) {
+        clearState();
         return;
       }
 
@@ -131,8 +152,8 @@ export function useSession() {
         };
 
         if (teamMember?.permissions) {
-          const parsed = typeof teamMember.permissions === 'string' 
-            ? JSON.parse(teamMember.permissions) 
+          const parsed = typeof teamMember.permissions === 'string'
+            ? JSON.parse(teamMember.permissions)
             : teamMember.permissions;
           permissionsData = { ...permissionsData, ...parsed };
         }
@@ -161,24 +182,11 @@ export function useSession() {
       }
     } catch (error) {
       console.error('[useSession] Error:', error);
-      if (mountedRef.current) {
-        setState({
-          isLoading: false,
-          isSuperAdmin: false,
-          isAdmin: false,
-          isRemoved: false,
-          isSuspended: false,
-          isRestored: false,
-          permissions: {} as Record<PermissionSection, SectionPermissions>,
-          accessibleSections: [],
-          session: null,
-          user: null,
-        });
-      }
+      clearState();
     } finally {
       isFetchingRef.current = false;
     }
-  }, [supabase]);
+  }, [supabase, clearState]);
 
   const hasPermission = useCallback((section: PermissionSection, action: PermissionAction): boolean => {
     if (state.isSuperAdmin) return true;
@@ -218,21 +226,29 @@ export function useSession() {
     // Single realtime channel for team_members
     realtimeChannelRef.current = supabase.channel('user_permissions')
       .on('postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'team_members', 
-          filter: `user_id=eq.${state.user?.id || ''}` 
+        {
+          event: '*',
+          schema: 'public',
+          table: 'team_members',
+          filter: `user_id=eq.${state.user?.id || ''}`
         },
         fetchPermissions
       )
       .subscribe();
 
     // Auth listener (debounced)
-    authListenerRef.current = supabase.auth.onAuthStateChange(async () => {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      sessionRef.current = false; // Reset ref on auth change
-      await fetchPermissions();
+    authListenerRef.current = supabase.auth.onAuthStateChange(async (event: string) => {
+      console.log('[useSession] Auth state changed:', event);
+      if (event === 'SIGNED_OUT') {
+        // Clear all state on logout
+        clearState();
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        // Refresh permissions on login or token refresh
+        await new Promise(resolve => setTimeout(resolve, 500));
+        sessionRef.current = false; // Reset ref on auth change
+        fetchedRef.current = false;
+        await fetchPermissions();
+      }
     });
 
     return () => {
@@ -245,7 +261,7 @@ export function useSession() {
         authListenerRef.current.subscription.unsubscribe();
       }
     };
-  }, [fetchPermissions, supabase]);
+  }, [fetchPermissions, supabase, clearState]);
 
   return {
     ...state,

@@ -467,9 +467,22 @@ export default function Topbar() {
   }, [supabase]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    // Force full page reload to clear all session state
-    window.location.href = '/auth/login';
+    try {
+      // Clear all local state before signing out
+      setProfile(null);
+      setNotifications([]);
+      setNotificationCount(0);
+      
+      // Sign out from Supabase
+      await supabase.auth.signOut();
+      
+      // Force full page reload to clear all session state and caches
+      window.location.href = '/auth/login';
+    } catch (error) {
+      console.error('Error during logout:', error);
+      // Even if there's an error, redirect to login
+      window.location.href = '/auth/login';
+    }
   };
 
   const handleSearch = (e: React.FormEvent) => {
