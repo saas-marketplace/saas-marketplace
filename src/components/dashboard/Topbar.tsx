@@ -468,8 +468,8 @@ export default function Topbar() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push('/auth/login');
-    router.refresh();
+    // Force full page reload to clear all session state
+    window.location.href = '/auth/login';
   };
 
   const handleSearch = (e: React.FormEvent) => {
