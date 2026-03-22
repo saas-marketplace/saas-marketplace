@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import type { Session } from "@supabase/supabase-js";
 
@@ -31,7 +30,6 @@ import { useSession } from '@/hooks/useSession';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { user, session, isLoading: loading, checkStatus } = useSession();
-  const router = useRouter();
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,14 +40,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 const signOut = useCallback(async () => {
   try {
     await supabase.auth.signOut(); // wait for Supabase
-    // Redirect to login page after successful sign-out
-    router.push('/auth/login');
+    // Use window.location.href for reliable redirect (router.push can be canceled during unmount)
+    window.location.href = '/auth/login';
   } catch (error) {
     console.error('Error signing out:', error);
     // Fallback redirect in case of error
     window.location.href = '/auth/login';
   }
-}, [supabase, router]);
+}, [supabase]);
 
   const refreshSession = useCallback(async () => {
     await checkStatus();
