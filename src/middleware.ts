@@ -69,19 +69,25 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // Try to get user - don't redirect if it fails
+  // Try to get user - redirect to login if not authenticated
   let user = null;
 
   try {
     const { data } = await supabase.auth.getUser();
     user = data?.user;
   } catch (error) {
-    // Allow request to continue on error
+    // On error, redirect to login for protected routes
+    if (!isPublicRoute && !pathname.startsWith("/api/")) {
+      return redirectTo("/auth/login");
+    }
     return response;
   }
 
-  // No user - let frontend handle
+  // No user - redirect to login for protected routes
   if (!user) {
+    if (!isPublicRoute && !pathname.startsWith("/api/")) {
+      return redirectTo("/auth/login");
+    }
     return response;
   }
 

@@ -469,14 +469,10 @@ const handleLogout = async () => {
     setNotifications([]);
     setNotificationCount(0);
 
-    // Sign out from Supabase
+    // Sign out from Supabase (redirect is handled by signOut function)
     await signOut();
-
-    // ✅ Redirect to login page after successful sign-out
-    router.push('/auth/login');
   } catch (error) {
     console.error('Error during logout:', error);
-
     // Fallback redirect in case something goes wrong
     window.location.href = '/auth/login';
   }

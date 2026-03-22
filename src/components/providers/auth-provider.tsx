@@ -31,6 +31,7 @@ import { useSession } from '@/hooks/useSession';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { user, session, isLoading: loading, checkStatus } = useSession();
+  const router = useRouter();
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -41,10 +42,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 const signOut = useCallback(async () => {
   try {
     await supabase.auth.signOut(); // wait for Supabase
+    // Redirect to login page after successful sign-out
+    router.push('/auth/login');
   } catch (error) {
     console.error('Error signing out:', error);
+    // Fallback redirect in case of error
+    window.location.href = '/auth/login';
   }
-}, [supabase]);
+}, [supabase, router]);
 
   const refreshSession = useCallback(async () => {
     await checkStatus();
