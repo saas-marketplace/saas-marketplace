@@ -464,26 +464,34 @@ export default function Topbar() {
   const { signOut } = useAuth();
 const handleLogout = async () => {
   try {
-    // Clear local UI state
+    // Clear local UI state immediately
     setProfile(null);
     setNotifications([]);
     setNotificationCount(0);
+    setIsProfileOpen(false);
+    setIsNotificationsOpen(false);
 
-    // Sign out from Supabase (redirect is handled by signOut function)
+    // Call signOut - it will dispatch 'auth:logout-complete' when done
     await signOut();
   } catch (error) {
     console.error('Error during logout:', error);
-    // Fallback redirect in case something goes wrong
-    window.location.replace('/auth/login');
   }
+
+  // Listen ONCE for logout-complete event and redirect
+  const handleLogoutComplete = () => {
+    console.log('[Topbar] Logout complete, redirecting to login...');
+    window.location.replace('/auth/login');
+  };
+
+  window.addEventListener('auth:logout-complete', handleLogoutComplete, { once: true });
   
-  // Additional safety net: if redirect hasn't happened after 1 second, force it
+  // Safety timeout (extended) as absolute fallback
   setTimeout(() => {
     if (window.location.pathname !== '/auth/login') {
-      console.log('[Topbar] Redirect timeout, forcing redirect...');
+      console.log('[Topbar] Final timeout fallback redirect');
       window.location.replace('/auth/login');
     }
-  }, 1000);
+  }, 3000);
 };
 
   const handleSearch = (e: React.FormEvent) => {

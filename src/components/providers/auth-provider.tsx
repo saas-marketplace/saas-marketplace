@@ -38,14 +38,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 const signOut = useCallback(async () => {
   try {
     console.log('[AuthProvider] Starting sign out...');
-    await supabase.auth.signOut(); // wait for Supabase
-    console.log('[AuthProvider] Sign out successful, redirecting...');
-    // Use window.location.replace for reliable redirect (doesn't add to history)
-    window.location.replace('/auth/login');
+    await supabase.auth.signOut();
+    console.log('[AuthProvider] Sign out complete');
+    // Dispatch custom event for UI to handle redirect (avoids double-redirect race)
+    window.dispatchEvent(new CustomEvent('auth:logout-complete'));
   } catch (error) {
     console.error('[AuthProvider] Error signing out:', error);
-    // Fallback redirect in case of error
-    window.location.replace('/auth/login');
+    // On error, dispatch anyway to trigger redirect
+    window.dispatchEvent(new CustomEvent('auth:logout-complete'));
   }
 }, []);
 
