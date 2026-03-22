@@ -55,14 +55,14 @@ export default function SystemSettingsPage() {
       
       if (!user) return;
 
-      // Check if super admin
-      const { data: memberData } = await supabase
-        .from('team_members')
-        .select('role_label')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      // Check if super admin using users.role
+      const { data: userData } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single();
 
-      if (memberData?.role_label !== 'Super Admin') {
+      if (userData?.role !== 'super_admin') {
         setIsSuperAdmin(false);
         setLoading(false);
         return;
@@ -70,25 +70,16 @@ export default function SystemSettingsPage() {
 
       setIsSuperAdmin(true);
       
-      // Fetch system settings from database (key-value structure)
-      const { data: settingsData } = await supabase
-        .from('system_settings')
-        .select('key, value');
-
-      if (settingsData && settingsData.length > 0) {
-        const settingsMap = new Map<string, any>(settingsData.map((s: any) => [s.key, s.value]));
-        setSettings({
-          site_name: (settingsMap.get('site_name') as string) || defaultSettings.site_name,
-          site_description: (settingsMap.get('site_description') as string) || defaultSettings.site_description,
-          support_email: (settingsMap.get('support_email') as string) || defaultSettings.support_email,
-          maintenance_mode: (settingsMap.get('maintenance_mode') as boolean) ?? defaultSettings.maintenance_mode,
-          allow_registrations: (settingsMap.get('allow_registrations') as boolean) ?? defaultSettings.allow_registrations,
-          require_email_verification: (settingsMap.get('require_email_verification') as boolean) ?? defaultSettings.require_email_verification,
-          enable_beta_features: (settingsMap.get('enable_beta_features') as boolean) ?? defaultSettings.enable_beta_features,
-        });
+      // Fetch system settings from API
+      const response = await fetch('/api/system-settings');
+      if (!response.ok) {
+        throw new Error('Failed to fetch settings');
       }
+      const { settings: apiSettings } = await response.json();
+      setSettings(apiSettings || defaultSettings);
     } catch (error) {
       console.error('Error checking admin:', error);
+
     } finally {
       setLoading(false);
     }
@@ -102,33 +93,19 @@ export default function SystemSettingsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Save to system_settings table (key-value structure)
-      const settingsToSave = [
-        { key: 'site_name', value: settings.site_name },
-        { key: 'site_description', value: settings.site_description },
-        { key: 'support_email', value: settings.support_email },
-        { key: 'maintenance_mode', value: settings.maintenance_mode },
-        { key: 'allow_registrations', value: settings.allow_registrations },
-        { key: 'require_email_verification', value: settings.require_email_verification },
-        { key: 'enable_beta_features', value: settings.enable_beta_features },
-      ];
+      // Save via API
+      const response = await fetch('/api/system-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings }),
+      });
 
-      // Upsert each setting
-      for (const setting of settingsToSave) {
-        const { error } = await supabase
-          .from('system_settings')
-          .upsert({
-            key: setting.key,
-            value: setting.value,
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'key'
-          });
-
-        if (error) throw error;
+      if (!response.ok) {
+        throw new Error('Failed to save settings');
       }
 
       setMessage({ type: 'success', text: 'System settings saved successfully' });
+
     } catch (error) {
       console.error('Error saving settings:', error);
       setMessage({ type: 'error', text: 'Failed to save settings' });

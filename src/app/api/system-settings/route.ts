@@ -3,18 +3,13 @@ import { NextResponse } from 'next/server';
 
 // Helper: check super admin safely
 async function isSuperAdmin(supabase: any, userId: string) {
-  const { data, error } = await supabase
-    .from('team_members')
-    .select('role_label')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (error) {
-    console.error('Role check error:', error);
-    return false;
-  }
-
-  return data?.role_label === 'Super Admin';
+  const { data: userRoleData, error } = await supabase
+    .from('users')
+    .select('role')
+    .eq('id', userId)
+    .single();
+  if (error) return false;
+  return userRoleData?.role === 'super_admin';
 }
 
 // GET /api/system-settings
