@@ -117,6 +117,33 @@ interface FreelancerData {
   projects_count?: number | null;
 }
 
+// ── REQUESTS CACHE (instant load on reload) ──
+const REQUESTS_CACHE_KEY = 'requests_cache';
+
+// Load cached requests for instant display
+const loadCachedRequests = (): Request[] | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = localStorage.getItem(REQUESTS_CACHE_KEY);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch (e) {
+    console.error('[Requests] Cache load error:', e);
+  }
+  return null;
+};
+
+// Save requests to cache
+const saveRequestsToCache = (requests: Request[]): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(REQUESTS_CACHE_KEY, JSON.stringify(requests));
+  } catch (e) {
+    console.error('[Requests] Cache save error:', e);
+  }
+};
+
 // ── MODULE-LEVEL COMPONENT (critical) ──
 // Defined OUTSIDE the page component so its function reference never changes between
 // parent renders. When defined inside, React sees a new component type on every render
@@ -280,19 +307,28 @@ export default function AdminRequestsPage() {
   // Prevents double-fetch on StrictMode double-mount or fast navigation.
   const fetchedRef = useRef(false);
 
-  // Fetch current user and requests
+  // Fetch current user and requests with caching for instant load
   useEffect(() => {
     if (isSuspended) return;
-    // Guard: only run once per mount cycle
+    // Guard: only run once per mount cycle AND only when user is ready
     if (fetchedRef.current) return;
+    
+    // Wait for user to be ready before fetching
+    if (!user) {
+      return;
+    }
+    
     fetchedRef.current = true;
 
-    const fetchRequests = async () => {
-      if (!user) {
-        setLoading(false);
-        return;
-      }
+    // STEP 1: Load cached data FIRST for instant display (zero delay on reload)
+    const cachedRequests = loadCachedRequests();
+    if (cachedRequests && cachedRequests.length > 0) {
+      console.log('[Requests] Loaded from cache:', cachedRequests.length);
+      setRequests(cachedRequests);
+    }
 
+    // STEP 2: Fetch fresh data in background
+    const fetchRequests = async () => {
       setCurrentUserId(user.id);
       const isAdminUser =
         permissions.dashboard?.includes('view') ||
@@ -389,6 +425,9 @@ export default function AdminRequestsPage() {
           .map(r => injectDomain(r))
           .map(r => ({ ...r, users: map.get(r.user_id) || null, last_message: lastMsgMap.get(r.id) || '' }));
         setRequests(requestsWithUsers);
+        
+        // Save to cache for instant load on next visit
+        saveRequestsToCache(requestsWithUsers);
       } else {
         // ── WAVE 2 (non-admin): only last messages needed ──
         const { data: lastMessages } = await supabase
@@ -403,6 +442,9 @@ export default function AdminRequestsPage() {
           .map(r => injectDomain(r))
           .map(r => ({ ...r, last_message: lastMsgMap.get(r.id) || '' }));
         setRequests(requestsWithLastMsg);
+        
+        // Save to cache for instant load on next visit
+        saveRequestsToCache(requestsWithLastMsg);
       }
 
       setLoading(false);
@@ -413,6 +455,14 @@ export default function AdminRequestsPage() {
     // Reset guard on unmount so navigating away then back re-fetches correctly
     return () => { fetchedRef.current = false; };
   }, [supabase, isSuspended, user]);
+
+  // ── CACHE SYNC: keep localStorage in sync with state ──
+  // This ensures any realtime updates are also cached
+  useEffect(() => {
+    if (requests.length > 0) {
+      saveRequestsToCache(requests);
+    }
+  }, [requests]);
 
   // ── PRESENCE: admin tracks their own presence ──
   // Activity listeners are THROTTLED — only one DB upsert per PRESENCE_THROTTLE_MS
