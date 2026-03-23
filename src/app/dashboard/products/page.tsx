@@ -2,7 +2,9 @@
 
 import { createClient } from '@/lib/supabase/client';
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useUserPermissions } from '@/hooks/useUserPermissions';
+// Centralized permissions - loads once at app level
+import { usePermissions } from '@/stores/permissions-context';
+import { useSuspended } from '@/components/ui/suspended-context';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,7 +57,11 @@ interface Product {
 }
 
 export default function ProductsPage() {
-  const { canCreate, canUpdate, canDelete, isSuspended } = useUserPermissions();
+  // Centralized permissions - no duplicate API calls
+  const { isLoading: permsLoading, all } = usePermissions();
+  const { isSuspended, isRestored } = useSuspended();
+
+  const isLoading = permsLoading || isSuspended;
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   
@@ -96,9 +102,24 @@ export default function ProductsPage() {
 
   const supabase = createClient();
 
+  // Guard to prevent duplicate fetches in React StrictMode
+  const productsFetchedRef = useRef(false);
+  const isFetchingRef = useRef(false); // Track ongoing fetches
+
   // Removed duplicate checkUser/role fetch - handled by useUserPermissions
 
   const fetchProducts = useCallback(async () => {
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) return;
+    
+    // Only use ref guard for initial mount, not for subsequent refreshes
+    const isInitialFetch = !productsFetchedRef.current;
+    if (isInitialFetch) {
+      productsFetchedRef.current = true;
+    }
+    
+    isFetchingRef.current = true;
+    
     setLoading(true);
     const { data, error } = await supabase
       .from('products')
@@ -114,6 +135,7 @@ export default function ProductsPage() {
       setProducts(parsedData);
     }
     setLoading(false);
+    isFetchingRef.current = false;
   }, [supabase]);
 
   useEffect(() => {
@@ -124,6 +146,15 @@ export default function ProductsPage() {
     }
     fetchProducts();
   }, [fetchProducts, isSuspended]);
+
+  // Fetch current user on mount
+  useEffect(() => {
+    async function fetchUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    }
+    fetchUser();
+  }, [supabase]);
 
   function generateSlug(title: string) {
     return title
@@ -177,6 +208,13 @@ export default function ProductsPage() {
   }
 
   async function handleImageUpload(file: File): Promise<string> {
+    // Verify session before upload
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      alert('Please log in to upload images');
+      return '';
+    }
+
     const fileName = `products/${Date.now()}-${file.name}`;
     
     try {
@@ -315,7 +353,7 @@ export default function ProductsPage() {
         
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            {canCreate('products') && (
+            {all.products.includes('create') && (
               <Button onClick={openAddDialog}>
                 <Plus className="w-4 h-4 mr-2" />
                 Add Product
@@ -570,10 +608,13 @@ export default function ProductsPage() {
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-3">
                       {product.image_url ? (
-                        <img 
+                        <Image 
                           src={product.image_url} 
                           alt={product.title}
+                          width={48}
+                          height={48}
                           className="w-12 h-12 object-cover rounded"
+                          loading="lazy"
                         />
                       ) : (
                         <div className="w-12 h-12 bg-slate-200 rounded flex items-center justify-center">
@@ -623,7 +664,7 @@ export default function ProductsPage() {
                   </td>
                   <td className="py-3 px-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {canUpdate('products') && (
+                      {all.products.includes('update') && (
                         <Button
                           variant="outline"
                           size="icon"
@@ -633,7 +674,7 @@ export default function ProductsPage() {
                           <Pencil className="w-4 h-4" />
                         </Button>
                       )}
-                      {canDelete('products') && (
+                      {all.products.includes('delete') && (
                         <Button
                           variant="outline"
                           size="icon"

@@ -1,6 +1,7 @@
 "use client";
 
 import { TeamMember } from '@/types/index';
+import Image from 'next/image';
 import { LetterAvatar } from '@/components/ui/avatar';
 import {
   Dialog,
@@ -160,10 +161,13 @@ export default function TeamMemberDetails({
             <div className="flex justify-center mb-4">
               <div className="relative">
                 {member.avatar_url ? (
-                  <img
+                  <Image
                     src={member.avatar_url}
                     alt={member.display_name || 'Team member'}
+                    width={120}
+                    height={120}
                     className="avatar-desktop rounded-full object-cover border-4 border-white shadow-xl"
+                    loading="lazy"
                   />
                 ) : (
                   <div className="avatar-desktop rounded-full border-4 border-white shadow-xl overflow-hidden">

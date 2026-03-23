@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -140,10 +141,13 @@ export function BlogSection() {
                     {/* Image */}
                     {blog.image_url ? (
                       <div className="h-48 relative overflow-hidden">
-                        <img
+                        <Image
                           src={blog.image_url}
                           alt={blog.title}
+                          width={400}
+                          height={192}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          loading="lazy"
                         />
                         <div className="absolute inset-0 bg-black/20" />
                       </div>

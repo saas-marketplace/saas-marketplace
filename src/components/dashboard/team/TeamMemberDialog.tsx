@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { TeamMember } from '@/types/index';
 import { Permissions, ROLE_LABELS, PERMISSION_PRESETS } from '@/types/permissions';
@@ -409,10 +410,13 @@ export default function TeamMemberDialog({
               <div className="relative">
                 {avatarPreview ? (
                   <div className="relative">
-                    <img
+                    <Image
                       src={avatarPreview}
                       alt="Avatar preview"
+                      width={64}
+                      height={64}
                       className="w-16 h-16 rounded-full object-cover border-2 border-slate-200"
+                      loading="lazy"
                     />
                     <button
                       type="button"

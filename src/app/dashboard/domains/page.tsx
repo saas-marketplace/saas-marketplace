@@ -38,7 +38,7 @@ interface Domain {
 
 export default function DomainsPage() {
   // Get all access control state FIRST
-  const { isLoading, isRemoved, isSuspended, canAccessSection, canCreate, canUpdate, canDelete } = useAccessControl();
+  const { isLoading, isRemoved, isSuspended, canAccessSection, permissions, all } = useAccessControl();
   const [domains, setDomains] = useState<Domain[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -121,7 +121,9 @@ export default function DomainsPage() {
     e.preventDefault();
     
     // Check permission - use editingDomain to determine if create or update
-    const hasPermission = editingDomain ? canUpdate('domains') : canCreate('domains');
+    const hasPermission = editingDomain 
+      ? all.domains.includes('update') 
+      : all.domains.includes('create');
     if (!hasPermission) {
       alert('You do not have permission to perform this action');
       return;
@@ -167,7 +169,7 @@ export default function DomainsPage() {
       return;
     
     // Check permission
-    if (!canDelete('domains')) {
+    if (!all.domains.includes('delete')) {
       alert('You do not have permission to delete domains');
       return;
     }
@@ -197,7 +199,7 @@ export default function DomainsPage() {
         {/* Add/Edit Domain Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            {canCreate('domains') && (
+            {all.domains.includes('create') && (
               <Button onClick={openAddDialog} className="bg-cyan-600 hover:bg-cyan-700 text-white">
                 <Plus className="w-4 h-4 mr-2" />
                 Add Domain
@@ -313,9 +315,9 @@ export default function DomainsPage() {
                   </div>
 
                   {/* Edit/Delete - Only show if user has update or delete permission */}
-                  {(canUpdate('domains') || canDelete('domains')) && (
+                  {(all.domains.includes('update') || all.domains.includes('delete')) && (
                     <div className="flex items-center gap-1">
-                      {canUpdate('domains') && (
+                      {all.domains.includes('update') && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -325,7 +327,7 @@ export default function DomainsPage() {
                           <Pencil className="w-4 h-4" />
                         </Button>
                       )}
-                      {canDelete('domains') && (
+                      {all.domains.includes('delete') && (
                         <Button
                           variant="ghost"
                           size="icon"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { 
   Shield, 
@@ -217,7 +218,7 @@ export default function PermissionsSettingsPage() {
                   }`}
                 >
                   {member.avatar_url ? (
-                    <img src={member.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+                    <Image src={member.avatar_url} alt="" width={32} height={32} className="w-8 h-8 rounded-full object-cover" loading="lazy" />
                   ) : (
                     <div className="w-8 h-8 rounded-full bg-cyan-100 flex items-center justify-center">
                       <span className="text-xs font-medium text-cyan-600">{getInitials(member.display_name)}</span>

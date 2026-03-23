@@ -34,15 +34,24 @@ import { useSession } from '@/hooks/useSession';
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { user, session, isLoading: loading, checkStatus } = useSession();
 
-  // signOut: calls supabase, then dispatches the completion event so any
-  // registered listener (in Topbar) can handle the redirect immediately.
-  // The event is dispatched even on error so the logout flow never stalls.
+  // signOut: stops all channels first, then signs out to prevent
+  // race conditions where other requests revalidate the session
   const signOut = useCallback(async () => {
     try {
       console.log('[AuthProvider] Starting sign out...');
+      
+      // CRITICAL: Remove all channels first to stop any pending subscriptions
+      // This prevents race conditions where other requests might revalidate the session
+      supabase.removeAllChannels();
+      console.log('[AuthProvider] All channels removed');
+      
+      // Now sign out
       await supabase.auth.signOut();
       console.log('[AuthProvider] Sign out complete');
+      
+      // Dispatch event for any listeners (but don't redirect here - caller handles redirect)
       window.dispatchEvent(new CustomEvent('auth:logout-complete'));
+      
     } catch (error) {
       console.error('[AuthProvider] Error signing out:', error);
       window.dispatchEvent(new CustomEvent('auth:logout-complete'));

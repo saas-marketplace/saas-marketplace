@@ -1,5 +1,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
+import Image from "next/image";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -40,10 +41,13 @@ export default async function BlogPostPage({ params }: Props) {
           {/* Featured Image */}
           {blog.image_url && (
             <div className="mb-8 rounded-2xl overflow-hidden">
-              <img
+              <Image
                 src={blog.image_url}
                 alt={blog.title}
+                width={800}
+                height={400}
                 className="w-full h-[400px] object-cover"
+                priority
               />
             </div>
           )}

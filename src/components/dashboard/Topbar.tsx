@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { useSession } from '@/hooks/useSession';
@@ -46,24 +47,39 @@ interface Notification {
   created_at: string;
 }
 
-// Sound notification function
-const playNotificationSound = () => {
+// Sound notification types
+type SoundType = 'new_user' | 'new_request' | 'freelancer_reviewed' | 'product_update' | 'user_contact' | 'default';
+
+// Different sounds for different notification types
+const playNotificationSound = (type?: string) => {
   try {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
-
+    
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
-
-    oscillator.frequency.value = 800;
+    
+    // Different frequencies for different notification types
+    const soundConfig: Record<SoundType, { frequency: number; duration: number }> = {
+      new_user: { frequency: 880, duration: 0.3 },      // High pitch - new user signup
+      new_request: { frequency: 660, duration: 0.25 },   // Medium-high - new request
+      freelancer_reviewed: { frequency: 720, duration: 0.2 }, // Medium - review
+      product_update: { frequency: 600, duration: 0.2 },  // Medium-low - product
+      user_contact: { frequency: 540, duration: 0.25 },  // Low-medium - contact
+      default: { frequency: 800, duration: 0.2 },        // Default sound
+    };
+    
+    const config = soundConfig[type as SoundType] || soundConfig.default;
+    
+    oscillator.frequency.value = config.frequency;
     oscillator.type = 'sine';
-
+    
     gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
-
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + config.duration);
+    
     oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.2);
+    oscillator.stop(audioContext.currentTime + config.duration);
   } catch (error) {
     console.log('Could not play notification sound:', error);
   }
@@ -83,10 +99,13 @@ export default function Topbar() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const profileRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
+  // Track notification IDs that have already triggered sound to prevent duplicates
+  const playedSoundRef = useRef<Set<string>>(new Set());
 
   const supabase = createClient();
 
@@ -363,7 +382,7 @@ export default function Topbar() {
         if (!user || !isMounted) return;
 
         channel = supabase
-          .channel('notifications')
+          .channel('dashboard-notifications')
           .on(
             'postgres_changes',
             {
@@ -373,9 +392,15 @@ export default function Topbar() {
               filter: `user_id=eq.${user.id}`
             },
             (payload: any) => {
-              setNotifications(prev => [payload.new as Notification, ...prev]);
+              const newNotification = payload.new as Notification;
+              // Only play sound once per notification (no duplicates)
+              if (!playedSoundRef.current.has(newNotification.id)) {
+                playedSoundRef.current.add(newNotification.id);
+                playNotificationSound(newNotification.type);
+              }
+              setNotifications(prev => [newNotification, ...prev]);
               setNotificationCount(prev => prev + 1);
-              playNotificationSound();
+              console.log('[Notifications] New notification received:', newNotification.type, newNotification.id);
             }
           )
           .on(
@@ -432,42 +457,24 @@ export default function Topbar() {
 
   const { signOut } = useAuth();
 
-  // ─── FIX: register the listener BEFORE awaiting signOut so the event
-  //         dispatched inside signOut() is never missed. ───────────────
+  // ─── FAST LOGOUT: Fire and forget, redirect immediately ───
   const handleLogout = async () => {
-    // Clear UI state immediately
+    // 🔥 INSTANT FEEDBACK: Set logging out state immediately
+    setIsLoggingOut(true);
+    
+    // Clear UI state immediately (non-blocking)
     setProfile(null);
     setNotifications([]);
     setNotificationCount(0);
     setIsProfileOpen(false);
     setIsNotificationsOpen(false);
 
-    // Register listener BEFORE calling signOut — the event fires inside
-    // signOut(), so it must already be in place when we await.
-    const handleLogoutComplete = () => {
-      console.log('[Topbar] Logout complete, redirecting to login...');
-      window.location.replace('/auth/login');
-    };
-
-    window.addEventListener('auth:logout-complete', handleLogoutComplete, { once: true });
-
-    try {
-      await signOut();
-    } catch (error) {
-      console.error('Error during logout:', error);
-      // signOut dispatches the event even on error, so the listener
-      // above will still fire. Nothing extra needed here.
-    }
-
-    // True last-resort fallback — should never be reached because the
-    // listener above handles the redirect immediately.
-    setTimeout(() => {
-      window.removeEventListener('auth:logout-complete', handleLogoutComplete);
-      if (window.location.pathname !== '/auth/login') {
-        console.log('[Topbar] Safety timeout fallback redirect');
-        window.location.replace('/auth/login');
-      }
-    }, 3000);
+    // 🚀 IMMEDIATE REDIRECT - don't wait for Supabase signOut
+    // Fire signOut in background and redirect immediately
+    signOut().catch(console.error); // Fire and forget
+    
+    // Direct redirect without waiting - this is the key for "instant" feel
+    window.location.replace('/auth/login');
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -694,10 +701,13 @@ export default function Topbar() {
             aria-expanded={isProfileOpen}
           >
             {userAvatarUrl ? (
-              <img
+              <Image
                 src={userAvatarUrl}
                 alt={userName}
+                width={40}
+                height={40}
                 className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm"
+                loading="lazy"
               />
             ) : (
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white font-medium shadow-sm">
@@ -746,10 +756,11 @@ export default function Topbar() {
 
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                disabled={isLoggingOut}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <LogOut className="w-4 h-4" />
-                Logout
+                {isLoggingOut ? 'Logging out...' : 'Logout'}
               </button>
             </div>
           )}
@@ -785,10 +796,11 @@ export default function Topbar() {
 
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                disabled={isLoggingOut}
+                className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <LogOut className="w-4 h-4" />
-                Logout
+                {isLoggingOut ? 'Logging out...' : 'Logout'}
               </button>
             </div>
           </div>
@@ -805,6 +817,16 @@ export default function Topbar() {
             setIsEditProfileOpen(false);
           }}
         />
+      )}
+
+      {/* 🔥 Fullscreen logout loader */}
+      {isLoggingOut && (
+        <div className="fixed inset-0 bg-white/90 flex items-center justify-center z-50">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin"></div>
+            <span className="text-gray-600 font-medium">Logging out...</span>
+          </div>
+        </div>
       )}
     </div>
   );

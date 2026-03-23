@@ -2,117 +2,78 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+// ── SINGLE CLIENT FACTORY ──
+// One Supabase client per request — used by every helper below.
+// Previously getUserFromRequest was creating 2–3 separate clients per call.
 function createSupabaseServerClient() {
   const cookieStore = cookies();
-  
   const response = NextResponse.next();
-  
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
+
+  return {
+    client: createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              response.cookies.set({ name, value, ...options });
+            });
+          },
         },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set({ name, value, ...options });
-          });
-        },
-      },
-    }
-  );
+      }
+    ),
+    response,
+  };
 }
 
-// Helper function to get user from request (cookie or header)
-async function getUserFromRequest(request: NextRequest) {
-  const cookieStore = cookies();
+// ── AUTH HELPER ──
+// Tries cookie-based auth first (normal browser flow).
+// Falls back to the Authorization header only if cookies yield no user.
+// Uses the SAME client instance — no extra createServerClient calls.
+async function getUserFromRequest(
+  request: NextRequest,
+  supabase: ReturnType<typeof createSupabaseServerClient>["client"]
+) {
+  // 1. Cookie-based (standard browser session)
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (user && !error) return user;
+
+  // 2. Bearer token fallback (mobile / API clients that pass the token explicitly)
   const authHeader = request.headers.get("authorization");
-  
-  // First try cookie-based auth
-  const response = NextResponse.next();
-  const supabaseFromCookies = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set({ name, value, ...options });
-          });
-        },
-      },
-    }
-  );
-  
-  const { data: { user }, error } = await supabaseFromCookies.auth.getUser();
-  
-  if (user && !error) {
-    return user;
-  }
-  
-  // Fallback to Authorization header
-  if (authHeader && authHeader.startsWith("Bearer ")) {
+  if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.substring(7);
     try {
-      // Verify and decode the token to get user info
-      const supabaseWithToken = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          cookies: {
-            getAll() { return []; },
-            setAll() {}
-          },
-          auth: {
-            persistSession: false,
-            autoRefreshToken: false
-          }
-        }
-      );
-      
-      // Set the token manually
-      supabaseWithToken.auth.setSession({
-        access_token: token,
-        refresh_token: ''
-      });
-      
-      const { data: { user: headerUser } } = await supabaseWithToken.auth.getUser();
-      return headerUser || null;
+      // Temporarily set the session so getUser() resolves against the token.
+      // We only do this when cookies didn't work — happens at most once per request.
+      await supabase.auth.setSession({ access_token: token, refresh_token: "" });
+      const { data: { user: tokenUser } } = await supabase.auth.getUser();
+      return tokenUser ?? null;
     } catch (e) {
-      console.error("Error parsing auth token:", e);
+      console.error("[auth] Error verifying bearer token:", e);
     }
   }
-  
+
   return null;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createSupabaseServerClient();
-    
-    // Check authentication (supports both cookie and Authorization header)
-    const user = await getUserFromRequest(request);
-    
+    const { client: supabase } = createSupabaseServerClient();
+    const user = await getUserFromRequest(request, supabase);
+
     if (!user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
     const { request_id, message } = body;
 
     if (!request_id || !message) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
     // Verify the user has access to this request
@@ -123,47 +84,40 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (requestError || !existingRequest) {
-      return NextResponse.json(
-        { error: "Request not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
 
-    // Check if user has access to this request
     const isOwner = existingRequest.user_id === user.id;
     const { data: userData } = await supabase
       .from("users")
       .select("role")
       .eq("id", user.id)
       .single();
-    
-    // Check for both admin and super_admin
+
     const isAdmin = userData?.role === "admin" || userData?.role === "super_admin";
     const isSuperAdmin = userData?.role === "super_admin";
 
     if (!isOwner && !isAdmin) {
-      return NextResponse.json(
-        { error: "Access denied" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    // For admin users (non-super_admin), check create permission on requests
+    // For non-super admins check create permission on requests
     if (isAdmin && !isSuperAdmin) {
       const { data: teamMember } = await supabase
-        .from('team_members')
-        .select('permissions, is_active')
-        .eq('user_id', user.id)
+        .from("team_members")
+        .select("permissions, is_active")
+        .eq("user_id", user.id)
         .maybeSingle();
 
       if (teamMember && teamMember.is_active !== false) {
-        const permissions = teamMember.permissions ? 
-          (typeof teamMember.permissions === 'string' ? JSON.parse(teamMember.permissions) : teamMember.permissions) : 
-          {};
+        const permissions =
+          teamMember.permissions
+            ? typeof teamMember.permissions === "string"
+              ? JSON.parse(teamMember.permissions)
+              : teamMember.permissions
+            : {};
         const requestPermissions = permissions.requests || [];
-        const hasCreatePermission = requestPermissions.includes('create');
-
-        if (!hasCreatePermission) {
+        if (!requestPermissions.includes("create")) {
           return NextResponse.json(
             { error: "Permission denied - you don't have permission to send messages in this chat" },
             { status: 403 }
@@ -172,129 +126,87 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Determine sender type based on role
-    const senderType = isAdmin ? "admin" : "user";
-
     // Insert the message
     const { data: newMessage, error: messageError } = await supabase
       .from("request_messages")
-      .insert({
-        request_id,
-        sender_id: user.id,
-        message,
-      })
+      .insert({ request_id, sender_id: user.id, message })
       .select()
       .single();
 
     if (messageError) {
       console.error("Error inserting message:", messageError);
-      return NextResponse.json(
-        { error: "Failed to send message" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to send message" }, { status: 500 });
     }
 
-    // Update request status - only set to "answered" when admin responds
-    // Do NOT change status when user sends a message
+    // Only update status to "answered" when admin responds
     if (isAdmin) {
-      await supabase
-        .from("requests")
-        .update({ status: "answered" })
-        .eq("id", request_id);
+      await supabase.from("requests").update({ status: "answered" }).eq("id", request_id);
     }
 
-    // ✅ Create notification for the receiver (not the sender)
+    // Notifications (fire-and-forget — failures don't block the response)
     try {
-      // Get sender's full name for dynamic message
-      const { data: senderData } = await supabase
-        .from("users")
-        .select("full_name")
-        .eq("id", user.id)
-        .single();
-      
+      const [{ data: senderData }, { data: requestData }] = await Promise.all([
+        supabase.from("users").select("full_name").eq("id", user.id).single(),
+        supabase.from("requests").select("title").eq("id", request_id).single(),
+      ]);
+
       const senderName = senderData?.full_name || "Someone";
-      
-      // Get request title for context
-      const { data: requestData } = await supabase
-        .from("requests")
-        .select("title")
-        .eq("id", request_id)
-        .single();
-      
       const requestTitle = requestData?.title || "your request";
-      
       const receiverId = isAdmin ? existingRequest.user_id : null;
-      
-      // If admin sent message, notify the request owner
+
       if (isAdmin && receiverId) {
         await supabase.from("notifications").insert({
           user_id: receiverId,
           type: "message",
           title: "New Message",
           message: `${senderName} sent you a message about "${requestTitle}"`,
-          link: `/requests/${request_id}`
+          link: `/requests/${request_id}`,
         });
-      }
-      // If user sent message, notify all admins
-      else if (!isAdmin) {
-        // Get all admin user IDs
+      } else if (!isAdmin) {
         const { data: admins } = await supabase
           .from("users")
           .select("id")
           .in("role", ["admin", "super_admin"]);
-        
-        if (admins && admins.length > 0) {
-          // Create notification for each admin
-          const notifications = admins.map(admin => ({
-            user_id: admin.id,
-            type: "message",
-            title: "New Message",
-            message: `${senderName} sent a message about "${requestTitle}"`,
-            link: `/dashboard/requests/${request_id}`
-          }));
-          
-          await supabase.from("notifications").insert(notifications);
+
+        if (admins?.length) {
+          await supabase.from("notifications").insert(
+            admins.map((admin) => ({
+              user_id: admin.id,
+              type: "message",
+              title: "New Message",
+              message: `${senderName} sent a message about "${requestTitle}"`,
+              link: `/dashboard/requests/${request_id}`,
+            }))
+          );
         }
       }
     } catch (notifError) {
-      // Don't fail the request if notification fails
       console.error("Error creating notification:", notifError);
     }
 
     return NextResponse.json({ message: newMessage });
   } catch (error) {
     console.error("Error in POST /api/requests/messages:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createSupabaseServerClient();
+    const { client: supabase } = createSupabaseServerClient();
+    const user = await getUserFromRequest(request, supabase);
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const request_id = searchParams.get("request_id");
 
-    // Check authentication (supports both cookie and Authorization header)
-    const user = await getUserFromRequest(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
     if (!request_id) {
-      return NextResponse.json(
-        { error: "Missing request_id" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing request_id" }, { status: 400 });
     }
 
-    // Verify the user has access to this request
     const { data: existingRequest, error: requestError } = await supabase
       .from("requests")
       .select("id, user_id")
@@ -302,31 +214,22 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (requestError || !existingRequest) {
-      return NextResponse.json(
-        { error: "Request not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
 
-    // Check if user has access to this request
     const isOwner = existingRequest.user_id === user.id;
     const { data: userData } = await supabase
       .from("users")
       .select("role")
       .eq("id", user.id)
       .single();
-    
-    // Check for both admin and super_admin
+
     const isAdmin = userData?.role === "admin" || userData?.role === "super_admin";
 
     if (!isOwner && !isAdmin) {
-      return NextResponse.json(
-        { error: "Access denied" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    // Get messages for this request
     const { data: messages, error: messagesError } = await supabase
       .from("request_messages")
       .select("*")
@@ -335,46 +238,32 @@ export async function GET(request: NextRequest) {
 
     if (messagesError) {
       console.error("Error fetching messages:", messagesError);
-      return NextResponse.json(
-        { error: "Failed to fetch messages" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to fetch messages" }, { status: 500 });
     }
 
     return NextResponse.json({ messages: messages || [] });
   } catch (error) {
     console.error("Error in GET /api/requests/messages:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createSupabaseServerClient();
+    const { client: supabase } = createSupabaseServerClient();
+    const user = await getUserFromRequest(request, supabase);
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const message_id = searchParams.get("message_id");
 
-    // Check authentication (supports both cookie and Authorization header)
-    const user = await getUserFromRequest(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
     if (!message_id) {
-      return NextResponse.json(
-        { error: "Missing message_id" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing message_id" }, { status: 400 });
     }
 
-    // Get the message to find its request_id
     const { data: existingMessage, error: messageError } = await supabase
       .from("request_messages")
       .select("id, request_id, sender_id")
@@ -382,13 +271,9 @@ export async function DELETE(request: NextRequest) {
       .single();
 
     if (messageError || !existingMessage) {
-      return NextResponse.json(
-        { error: "Message not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Message not found" }, { status: 404 });
     }
 
-    // Get the request to check ownership
     const { data: existingRequest, error: requestError } = await supabase
       .from("requests")
       .select("id, user_id")
@@ -396,26 +281,18 @@ export async function DELETE(request: NextRequest) {
       .single();
 
     if (requestError || !existingRequest) {
-      return NextResponse.json(
-        { error: "Request not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
 
-    // Check if user has access to this request
-    const isOwner = existingRequest.user_id === user.id;
     const isMessageSender = existingMessage.sender_id === user.id;
     const { data: userData } = await supabase
       .from("users")
       .select("role")
       .eq("id", user.id)
       .single();
-    
-    // Check for both admin and super_admin
+
     const isAdmin = userData?.role === "admin" || userData?.role === "super_admin";
 
-    // Allow deletion if: user is admin, OR user is the message sender
-    // Note: We allow both the sender AND admin to delete any message (global delete)
     if (!isAdmin && !isMessageSender) {
       return NextResponse.json(
         { error: "Access denied - only the sender or admin can delete this message" },
@@ -423,7 +300,6 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Delete the message
     const { error: deleteError } = await supabase
       .from("request_messages")
       .delete()
@@ -431,18 +307,12 @@ export async function DELETE(request: NextRequest) {
 
     if (deleteError) {
       console.error("Error deleting message:", deleteError);
-      return NextResponse.json(
-        { error: "Failed to delete message" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to delete message" }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, message_id });
   } catch (error) {
     console.error("Error in DELETE /api/requests/messages:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

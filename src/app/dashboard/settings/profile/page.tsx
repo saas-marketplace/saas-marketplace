@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/providers/auth-provider';
 import { 
@@ -415,10 +416,13 @@ export default function ProfileSettingsPage() {
           <div className="flex items-center gap-6 mb-8">
             <div className="relative">
               {avatarUrl ? (
-                <img 
+                <Image 
                   src={avatarUrl} 
                   alt="Avatar" 
+                  width={96}
+                  height={96}
                   className="w-24 h-24 rounded-full object-cover border-4 border-gray-100"
+                  loading="lazy"
                 />
               ) : (
                 <div className="w-24 h-24 rounded-full bg-cyan-100 border-4 border-cyan-200 flex items-center justify-center">

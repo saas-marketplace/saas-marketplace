@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from 'react';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useRouter } from 'next/navigation';
@@ -232,10 +233,13 @@ export default function EditProfileModal({ profile, onClose, onUpdate }: EditPro
           <div className="flex flex-col items-center">
             <div className="relative">
               {avatarUrl ? (
-                <img
+                <Image
                   src={avatarUrl}
                   alt={name}
+                  width={96}
+                  height={96}
                   className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg"
+                  loading="lazy"
                 />
               ) : (
                 <div className="w-24 h-24 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white text-2xl font-medium border-4 border-white shadow-lg">

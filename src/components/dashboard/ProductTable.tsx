@@ -27,7 +27,7 @@ export default function ProductTable() {
   const supabase = createClient();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const { canUpdate, canDelete, isLoading: permsLoading } = usePermissions();
+  const { all, isLoading: permsLoading } = usePermissions();
 
   useEffect(() => {
     async function fetchProducts() {
@@ -52,7 +52,7 @@ export default function ProductTable() {
     setProducts(prev => prev.filter(p => p.id !== id));
   };
 
-  const canManageProducts = canUpdate('products') || canDelete('products');
+  const canManageProducts = all.products.includes('update') || all.products.includes('delete');
 
   if (loading || permsLoading) {
     return <div className="flex items-center justify-center p-8"><Loader2 className="w-6 h-6 animate-spin" /> Loading...</div>;
@@ -86,7 +86,7 @@ export default function ProductTable() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      {canUpdate('products') && (
+                      {all.products.includes('update') && (
                         <DropdownMenuItem asChild>
                           <Link href={`/dashboard/products/manage?id=${product.id}`}>
                             <Edit className="w-4 h-4 mr-2" />
@@ -94,7 +94,7 @@ export default function ProductTable() {
                           </Link>
                         </DropdownMenuItem>
                       )}
-                      {canDelete('products') && (
+                      {all.products.includes('delete') && (
                         <DropdownMenuItem 
                           onClick={() => handleDelete(product.id)}
                           className="text-destructive focus:text-destructive"
@@ -112,7 +112,7 @@ export default function ProductTable() {
           {products.length === 0 && (
             <tr>
               <td colSpan={canManageProducts ? 5 : 4} className="p-8 text-center text-muted-foreground">
-                No products found. {canUpdate('products') && 'Add your first product to get started.'}
+                No products found. {all.products.includes('update') && 'Add your first product to get started.'}
               </td>
             </tr>
           )}

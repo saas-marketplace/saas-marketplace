@@ -1,6 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
@@ -167,10 +168,13 @@ export default function ProductForm({ onSuccess }: { onSuccess: () => void }) {
         <label className="text-sm font-medium text-slate-200">Preview Image</label>
         {previewImage ? (
           <div className="relative mt-2">
-            <img 
+            <Image 
               src={previewImage} 
               alt="Preview" 
+              width={800}
+              height={192}
               className="w-full h-48 object-cover rounded-md"
+              loading="lazy"
             />
             <button
               type="button"

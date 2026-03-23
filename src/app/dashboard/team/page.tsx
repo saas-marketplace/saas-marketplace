@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { TeamMember } from '@/types/index';
@@ -41,7 +41,7 @@ import {
 
 export default function TeamPage() {
   // Get all access control state FIRST
-  const { isLoading, isRemoved, isSuspended, canAccessSection, canCreate, canUpdate, canDelete, isSuperAdmin } = useAccessControl();
+  const { isLoading, isRemoved, isSuspended, canAccessSection, all, isSuperAdmin } = useAccessControl();
   const { toast } = useToast();
   const supabase = createClient();
 
@@ -62,8 +62,16 @@ export default function TeamPage() {
   };
   // Removed duplicate isSuperAdmin - using useAccessControl
 
+  // Guards to prevent duplicate fetches in React StrictMode
+  const roleFetchedRef = useRef(false);
+  const teamFetchedRef = useRef(false);
+  const isFetchingRef = useRef(false); // Track ongoing fetches
+
   // ── DATA FETCHING FUNCTIONS (defined before useEffect for correct hook order) ──
   const fetchCurrentUserRole = async () => {
+    if (roleFetchedRef.current) return;
+    roleFetchedRef.current = true;
+    
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -91,6 +99,17 @@ export default function TeamPage() {
   };
 
   const fetchTeamMembers = async () => {
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) return;
+    
+    // Only use ref guard for initial mount, not for subsequent refreshes
+    const isInitialFetch = !teamFetchedRef.current;
+    if (isInitialFetch) {
+      teamFetchedRef.current = true;
+    }
+    
+    isFetchingRef.current = true;
+    
     setLoading(true);
     try {
       const { data: membersData, error: membersError } = await supabase
@@ -105,6 +124,7 @@ export default function TeamPage() {
       if (membersData && membersData.length > 0) {
         const userIds = membersData.map((m: { user_id: string }) => m.user_id);
 
+        // Batch user data fetch with Promise.all
         const { data: usersData, error: usersError } = await supabase
           .from('users')
           .select('id, email, full_name, avatar_url')
@@ -130,6 +150,7 @@ export default function TeamPage() {
       });
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
   };
 
@@ -270,7 +291,7 @@ export default function TeamPage() {
             Manage team members and their permissions
           </p>
         </div>
-        {canCreate('team') && (
+        {all.team.includes('create') && (
           <Button
             onClick={() => {
               setEditingMember(null);
@@ -344,7 +365,7 @@ export default function TeamPage() {
               <p className="text-slate-500 mb-4">
                 Add team members to give them admin access with custom permissions
               </p>
-              {canCreate('team') && (
+              {all.team.includes('create') && (
                 <Button
                   onClick={() => setDialogOpen(true)}
                   variant="outline"
@@ -363,7 +384,7 @@ export default function TeamPage() {
                   <TableHead>Permissions</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Added</TableHead>
-                  {(canUpdate('team') || canDelete('team')) && <TableHead className="text-right">Actions</TableHead>}
+                  {(all.team.includes('update') || all.team.includes('delete')) && <TableHead className="text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -416,7 +437,7 @@ export default function TeamPage() {
                     <TableCell className="text-slate-500">
                       {new Date(member.created_at).toLocaleDateString()}
                     </TableCell>
-                    {(canUpdate('team') || canDelete('team')) && (
+                    {(all.team.includes('update') || all.team.includes('delete')) && (
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -429,7 +450,7 @@ export default function TeamPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            {canUpdate('team') && (
+                            {all.team.includes('update') && (
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -440,7 +461,7 @@ export default function TeamPage() {
                                 Edit
                               </DropdownMenuItem>
                             )}
-                            {canUpdate('team') && (
+                            {all.team.includes('update') && (
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -451,7 +472,7 @@ export default function TeamPage() {
                                 {member.is_active ? 'Deactivate' : 'Activate'}
                               </DropdownMenuItem>
                             )}
-                            {canDelete('team') && (
+                            {all.team.includes('delete') && (
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem

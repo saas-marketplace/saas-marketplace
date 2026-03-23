@@ -1,8 +1,10 @@
 "use client";
 
 import { supabase } from "@/lib/supabase/client";
-import { useEffect, useState, useCallback } from "react";
-import { useUserPermissions } from "@/hooks/useUserPermissions";
+import { useEffect, useState, useCallback, useRef } from "react";
+// Centralized permissions - loads once at app level
+import { usePermissions } from "@/stores/permissions-context";
+import { useSuspended } from "@/components/ui/suspended-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -48,8 +50,11 @@ interface Freelancer {
 }
 
 export default function FreelancersPage() {
-  // Unified permissions - replaces useAccessControl + permissions-context + suspended
-  const { isLoading, isRemoved, isSuspended, canAccessSection, canCreate, canUpdate, canDelete } = useUserPermissions();
+  // Centralized permissions - no duplicate API calls
+  const { isLoading: permsLoading, isSuperAdmin, all } = usePermissions();
+  const { isSuspended, isRestored } = useSuspended();
+
+  const isLoading = permsLoading || isSuspended;
   const [freelancers, setFreelancers] = useState<Freelancer[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +62,10 @@ export default function FreelancersPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingFreelancer, setEditingFreelancer] = useState<Freelancer | null>(null);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null); // For filtering
+
+  // Guard to prevent duplicate fetches in React StrictMode
+  const fetchDataRef = useRef(false);
+  const isFetchingRef = useRef(false); // Track ongoing fetches
 
   const [formData, setFormData] = useState({
     display_name: "",
@@ -73,6 +82,17 @@ export default function FreelancersPage() {
   });
 
   const fetchData = useCallback(async () => {
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) return;
+    
+    // Only use ref guard for initial mount, not for subsequent refreshes
+    const isInitialFetch = !fetchDataRef.current;
+    if (isInitialFetch) {
+      fetchDataRef.current = true;
+    }
+    
+    isFetchingRef.current = true;
+    
     setLoading(true);
     try {
       const [domainsResult, freelancersResult, reviewsResult] = await Promise.all([
@@ -102,6 +122,7 @@ export default function FreelancersPage() {
       console.error("Error fetching freelancers data:", error);
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
   }, [supabase]);
 
@@ -165,7 +186,9 @@ export default function FreelancersPage() {
     e.preventDefault();
     
     // Check permission - use editingFreelancer to determine if create or update
-    const hasPermission = editingFreelancer ? canUpdate('freelancers') : canCreate('freelancers');
+    const hasPermission = editingFreelancer 
+      ? all.freelancers.includes('update') 
+      : all.freelancers.includes('create');
     if (!hasPermission) {
       alert('You do not have permission to perform this action');
       return;
@@ -216,7 +239,7 @@ export default function FreelancersPage() {
     if (!confirm("Are you sure you want to delete this freelancer?")) return;
     
     // Check permission
-    if (!canDelete('freelancers')) {
+    if (!all.freelancers.includes('delete')) {
       alert('You do not have permission to delete freelancers');
       return;
     }
@@ -252,7 +275,7 @@ export default function FreelancersPage() {
             </div>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
-                {canCreate('freelancers') && (
+                {all.freelancers.includes('create') && (
                   <Button 
                     onClick={openAddDialog}
                     className="bg-cyan-600 hover:bg-cyan-700 text-white"
@@ -534,7 +557,7 @@ export default function FreelancersPage() {
                   </span>
 
                   {/* Edit Button */}
-                  {canUpdate('freelancers') && (
+                  {all.freelancers.includes('update') && (
                     <button
                       onClick={() => openEditDialog(f)}
                       className="p-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-600 transition flex items-center justify-center"
@@ -544,7 +567,7 @@ export default function FreelancersPage() {
                   )}
 
                   {/* Delete Button */}
-                  {canDelete('freelancers') && (
+                  {all.freelancers.includes('delete') && (
                     <button
                       onClick={() => handleDelete(f.id)}
                       className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition flex items-center justify-center"

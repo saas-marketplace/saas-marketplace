@@ -1,9 +1,11 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
-// useSuspended + useAccessControl merged into useUserPermissions
-import { useUserPermissions } from "@/hooks/useUserPermissions";
+// Centralized permissions - loads once at app level
+import { usePermissions } from "@/stores/permissions-context";
+import { useSuspended } from "@/components/ui/suspended-context";
 import { useUserStatus } from "@/stores/user-status-context";
+import { useAuth } from "@/components/providers/auth-provider";
 import { SectionAccessGuard } from "@/components/ui/section-access-guard";
 import { 
   MessageSquare, 
@@ -144,11 +146,20 @@ function TypingBubble({ mobile = false }: { mobile?: boolean }) {
 }
 
 export default function AdminRequestsPage() {
-  const { isLoading, canAccessSection, canCreate, canDelete, permissions, isSuspended, user } = useUserPermissions();
+  // Centralized permissions - no duplicate API calls
+  const { isLoading: permsLoading, isSuperAdmin, permissions, canAccessSection, all } = usePermissions();
+  const { isSuspended, isRestored } = useSuspended();
   const { getUserStatus: getUserStatusFromContext } = useUserStatus();
+  const { user } = useAuth();
 
-  console.log('[Requests] Permissions:', permissions);
-  console.log('[Requests] canCreate(requests):', canCreate('requests'));
+  const isLoading = permsLoading || isSuspended;
+
+  // Debug: Log once when permissions finish loading
+  useEffect(() => {
+    if (!isLoading && permissions && Object.keys(permissions).length > 0) {
+      console.log('[Requests] Permissions loaded ONCE - centralized:', permissions);
+    }
+  }, [isLoading, permissions]);
 
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
@@ -183,28 +194,56 @@ export default function AdminRequestsPage() {
   const [localIsTyping, setLocalIsTyping] = useState(false);
   const typingChannelRef = useRef<any>(null);
 
+  // ── SESSION CACHE ──
+  // Fetched ONCE on mount. All API calls reuse this token instead of calling
+  // getSession() every time a message is loaded or sent — eliminates duplicate
+  // /auth/v1/user round-trips that were clogging the network.
+  const sessionRef = useRef<{ access_token: string } | null>(null);
+  const sessionFetchedRef = useRef(false);
+
+  // ── PRESENCE THROTTLE ──
+  // Limits admin "I'm online" upserts to once every 30 s no matter how fast
+  // the user moves their mouse / types. Prevents hundreds of DB writes per minute.
+  const presenceThrottleRef = useRef<NodeJS.Timeout | null>(null);
+  const PRESENCE_THROTTLE_MS = 30_000; // 30 seconds
+
   const supabase = createClient();
 
+  // ── FETCH SESSION ONCE ──
+  // Everything downstream reads sessionRef.current — no component ever calls
+  // getSession() or getUser() again on its own.
+  useEffect(() => {
+    if (sessionFetchedRef.current) return;
+    sessionFetchedRef.current = true;
+
+    supabase.auth.getSession().then(({ data: { session } }: { data: { session: { access_token: string } | null } }) => {
+      if (session) {
+        sessionRef.current = { access_token: session.access_token };
+      }
+    });
+
+    // Keep the cached token fresh whenever Supabase auto-refreshes it.
+    // This fires at most once per refresh interval (~1 hour) — not on every render.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: { access_token: string } | null) => {
+      sessionRef.current = session ? { access_token: session.access_token } : null;
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
   // ── SCROLL HELPER ──
-  // Uses the scroll container's scrollTop directly (most reliable cross-device method).
-  // Falls back to scrollIntoView on the anchor div.
-  // Wrapped in requestAnimationFrame so it always runs after the DOM has painted
-  // the new message / typing bubble — avoiding the "one message behind" problem.
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    // Cancel any pending RAF to avoid stacking
     if (scrollRafRef.current !== null) {
       cancelAnimationFrame(scrollRafRef.current);
     }
     scrollRafRef.current = requestAnimationFrame(() => {
       scrollRafRef.current = null;
-
-      // Primary: scroll the container element directly — works on all devices/keyboards
       if (chatContainerRef.current) {
         chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
         return;
       }
-
-      // Fallback: scroll the anchor into view
       if (messagesEndRef.current) {
         messagesEndRef.current.scrollIntoView({ behavior, block: 'end' });
       }
@@ -220,8 +259,6 @@ export default function AdminRequestsPage() {
   const handleScroll = useCallback(() => {
     if (!chatContainerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
-    // Show button when user has scrolled up (not at bottom)
-    // scrollTop + clientHeight < scrollHeight - 50 (50px threshold)
     const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50;
     setShowScrollButton(!isAtBottom);
   }, []);
@@ -239,92 +276,147 @@ export default function AdminRequestsPage() {
     );
   }
 
+  // ── FETCH GUARD ──
+  // Prevents double-fetch on StrictMode double-mount or fast navigation.
+  const fetchedRef = useRef(false);
+
   // Fetch current user and requests
   useEffect(() => {
-    // Don't fetch data if suspended - handled by useUserPermissions
-    if (isSuspended) {
-      return;
-    }
+    if (isSuspended) return;
+    // Guard: only run once per mount cycle
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
 
     const fetchRequests = async () => {
-      if (user) {
-        setCurrentUserId(user.id);
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
-        // Admin check from useUserPermissions state
-        const isAdminUser = permissions.dashboard?.includes('view') || permissions.team?.includes('view') || false;
-        setIsAdmin(isAdminUser);
+      setCurrentUserId(user.id);
+      const isAdminUser =
+        permissions.dashboard?.includes('view') ||
+        permissions.team?.includes('view') ||
+        false;
+      setIsAdmin(isAdminUser);
 
-        let query = supabase
-          .from("requests")
-          .select("*")
-          .order("created_at", { ascending: false });
+      // ── WAVE 1: requests + domains fire in parallel ──
+      // Previously sequential (requests first, then domains); now simultaneous.
+      let requestsQuery = supabase
+        .from("requests")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-        if (!isAdminUser) query = query.eq("user_id", user.id);
-        const { data } = await query;
+      if (!isAdminUser) requestsQuery = requestsQuery.eq("user_id", user.id);
 
-        if (data) {
-          const { data: allDomains } = await supabase.from('domains').select('id, name');
-          const domainNameMap = new Map<string, string>();
-          (allDomains as any[])?.forEach(d => domainNameMap.set(d.id, d.name));
+      const [{ data }, { data: allDomains }] = await Promise.all([
+        requestsQuery,
+        supabase.from('domains').select('id, name'),
+      ]);
 
-          const isUUID = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-          const injectDomain = (r: any) => {
-            if (!r.freelancer_data) return r;
-            const fd = r.freelancer_data;
-            const existing = typeof fd.domain === 'string' && fd.domain.trim() !== '' && !isUUID(fd.domain) ? fd.domain : null;
-            const fromCol = typeof r.freelancer_domain === 'string' && r.freelancer_domain.trim() !== '' && !isUUID(r.freelancer_domain) ? r.freelancer_domain : null;
-            const fromMap = typeof fd.domain_id === 'string' ? (domainNameMap.get(fd.domain_id) ?? null) : null;
-            const domainName = existing || fromCol || fromMap || null;
-            console.log(`[domain] "${fd.name}" domain_id=${fd.domain_id} → "${domainName}"`);
-            return { ...r, freelancer_data: { ...fd, domain: domainName }, freelancer_domain: domainName ?? r.freelancer_domain };
-          };
+      if (!data) {
+        setLoading(false);
+        return;
+      }
 
-          if (isAdminUser && data.length > 0) {
-            const userIds = Array.from(new Set((data as any[]).map(r => r.user_id)));
-            const { data: usersData } = await supabase
-              .from('users').select('id, email, full_name').in('id', userIds);
-            const map = new Map<string, UserInfo>();
-            (usersData as any[])?.forEach(u => map.set(u.id, u));
-            setUserInfoMap(map);
+      // Build domain lookup map
+      const domainNameMap = new Map<string, string>();
+      (allDomains as any[])?.forEach(d => domainNameMap.set(d.id, d.name));
 
-            const freelancerIds = Array.from(new Set((data as any[]).filter(r => r.freelancer_id).map(r => r.freelancer_id)));
-            if (freelancerIds.length > 0) {
-              const { data: freelancersData } = await supabase
+      const isUUID = (v: string) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
+      const injectDomain = (r: any) => {
+        if (!r.freelancer_data) return r;
+        const fd = r.freelancer_data;
+        const existing =
+          typeof fd.domain === 'string' && fd.domain.trim() !== '' && !isUUID(fd.domain)
+            ? fd.domain : null;
+        const fromCol =
+          typeof r.freelancer_domain === 'string' &&
+          r.freelancer_domain.trim() !== '' &&
+          !isUUID(r.freelancer_domain)
+            ? r.freelancer_domain : null;
+        const fromMap =
+          typeof fd.domain_id === 'string' ? (domainNameMap.get(fd.domain_id) ?? null) : null;
+        const domainName = existing || fromCol || fromMap || null;
+        console.log(`[domain] "${fd.name}" domain_id=${fd.domain_id} → "${domainName}"`);
+        return {
+          ...r,
+          freelancer_data: { ...fd, domain: domainName },
+          freelancer_domain: domainName ?? r.freelancer_domain,
+        };
+      };
+
+      if (isAdminUser && data.length > 0) {
+        // ── WAVE 2 (admin): users + freelancers + last messages all fire together ──
+        // Previously 3 sequential awaits (each blocked on the previous).
+        const userIds = Array.from(new Set((data as any[]).map(r => r.user_id)));
+        const freelancerIds = Array.from(
+          new Set((data as any[]).filter(r => r.freelancer_id).map(r => r.freelancer_id))
+        ) as string[];
+
+        const [
+          { data: usersData },
+          { data: freelancersData },
+          { data: lastMessages },
+        ] = await Promise.all([
+          supabase.from('users').select('id, email, full_name').in('id', userIds),
+          freelancerIds.length > 0
+            ? supabase
                 .from('freelancers')
                 .select('id, display_name, title, domain_id, skills, experience_level, description, domains(name)')
-                .in('id', freelancerIds as string[]);
-              const freelancerMap = new Map<string, FreelancerInfo>();
-              (freelancersData as any[])?.forEach(f => freelancerMap.set(f.id, f));
-              setFreelancerInfoMap(freelancerMap);
-            }
+                .in('id', freelancerIds)
+            : Promise.resolve({ data: [] as any[] }),
+          supabase
+            .from('request_messages')
+            .select('request_id, message, created_at')
+            .order('created_at', { ascending: true }),
+        ]);
 
-            const { data: lastMessages } = await supabase
-              .from('request_messages').select('request_id, message, created_at').order('created_at', { ascending: true });
-            const lastMsgMap = new Map<string, string>();
-            (lastMessages as any[])?.forEach(m => lastMsgMap.set(m.request_id, m.message));
+        const map = new Map<string, UserInfo>();
+        (usersData as any[])?.forEach(u => map.set(u.id, u));
+        setUserInfoMap(map);
 
-            const requestsWithUsers = (data as any[])
-              .map(r => injectDomain(r))
-              .map(r => ({ ...r, users: map.get(r.user_id) || null, last_message: lastMsgMap.get(r.id) || '' }));
-            setRequests(requestsWithUsers);
-          } else {
-            const { data: lastMessages } = await supabase
-              .from('request_messages').select('request_id, message, created_at').order('created_at', { ascending: true });
-            const lastMsgMap = new Map<string, string>();
-            (lastMessages as any[])?.forEach(m => lastMsgMap.set(m.request_id, m.message));
-            const requestsWithLastMsg = (data as any[])
-              .map(r => injectDomain(r))
-              .map(r => ({ ...r, last_message: lastMsgMap.get(r.id) || '' }));
-            setRequests(requestsWithLastMsg);
-          }
-        }
+        const freelancerMap = new Map<string, FreelancerInfo>();
+        (freelancersData as any[])?.forEach(f => freelancerMap.set(f.id, f));
+        setFreelancerInfoMap(freelancerMap);
+
+        const lastMsgMap = new Map<string, string>();
+        (lastMessages as any[])?.forEach(m => lastMsgMap.set(m.request_id, m.message));
+
+        const requestsWithUsers = (data as any[])
+          .map(r => injectDomain(r))
+          .map(r => ({ ...r, users: map.get(r.user_id) || null, last_message: lastMsgMap.get(r.id) || '' }));
+        setRequests(requestsWithUsers);
+      } else {
+        // ── WAVE 2 (non-admin): only last messages needed ──
+        const { data: lastMessages } = await supabase
+          .from('request_messages')
+          .select('request_id, message, created_at')
+          .order('created_at', { ascending: true });
+
+        const lastMsgMap = new Map<string, string>();
+        (lastMessages as any[])?.forEach(m => lastMsgMap.set(m.request_id, m.message));
+
+        const requestsWithLastMsg = (data as any[])
+          .map(r => injectDomain(r))
+          .map(r => ({ ...r, last_message: lastMsgMap.get(r.id) || '' }));
+        setRequests(requestsWithLastMsg);
       }
+
       setLoading(false);
     };
+
     fetchRequests();
+
+    // Reset guard on unmount so navigating away then back re-fetches correctly
+    return () => { fetchedRef.current = false; };
   }, [supabase, isSuspended, user]);
 
   // ── PRESENCE: admin tracks their own presence ──
+  // Activity listeners are THROTTLED — only one DB upsert per PRESENCE_THROTTLE_MS
+  // instead of one on every mouse-move / key-down event.
   useEffect(() => {
     if (!currentUserId || !isAdmin) return;
 
@@ -353,10 +445,18 @@ export default function AdminRequestsPage() {
 
     updateAdminStatus(true);
 
+    // ── THROTTLED activity handler ──
+    // Fires at most once per PRESENCE_THROTTLE_MS regardless of how many
+    // mouse-move / key-down events the browser emits.
     const handleActivity = () => {
-      presenceChannel.track({ online_at: new Date().toISOString() });
-      updateAdminStatus(true);
+      if (presenceThrottleRef.current) return; // already scheduled → skip
+      presenceThrottleRef.current = setTimeout(() => {
+        presenceThrottleRef.current = null;
+        presenceChannel.track({ online_at: new Date().toISOString() });
+        updateAdminStatus(true);
+      }, PRESENCE_THROTTLE_MS);
     };
+
     window.addEventListener('mousemove', handleActivity);
     window.addEventListener('keydown', handleActivity);
     window.addEventListener('click', handleActivity);
@@ -395,6 +495,11 @@ export default function AdminRequestsPage() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      // Clear any pending throttle timer so we don't fire after unmount
+      if (presenceThrottleRef.current) {
+        clearTimeout(presenceThrottleRef.current);
+        presenceThrottleRef.current = null;
+      }
       window.removeEventListener('mousemove', handleActivity);
       window.removeEventListener('keydown', handleActivity);
       window.removeEventListener('click', handleActivity);
@@ -411,7 +516,7 @@ export default function AdminRequestsPage() {
   }, [supabase, currentUserId, isAdmin]);
 
   // ── PRESENCE: watch selected user's online status ──
-  // Now using centralized UserStatusProvider instead of individual fetches
+  // Uses centralized UserStatusProvider — no per-component fetch.
   useEffect(() => {
     if (!selectedRequest?.user_id) return;
 
@@ -458,24 +563,33 @@ export default function AdminRequestsPage() {
   }, [selectedRequest?.id, currentUserId, supabase]);
 
   // Fetch messages when a request is selected
+  // Uses the CACHED session token — no extra getSession() call per fetch.
   useEffect(() => {
     const fetchMessages = async () => {
       if (!selectedRequest) return;
-      
-      // Verify user is authenticated before fetching
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.warn("No active session, cannot fetch messages");
-        setMessagesLoading(false);
-        return;
+
+      // Wait up to 2 s for the cached session to be available (set on mount).
+      // In practice it will already be there; this just guards the rare cold-start race.
+      let token = sessionRef.current?.access_token;
+      if (!token) {
+        // One-time fallback fetch if the cache isn't warm yet
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          console.warn("No active session, cannot fetch messages");
+          setMessagesLoading(false);
+          return;
+        }
+        // Warm the cache for all subsequent calls
+        sessionRef.current = { access_token: session.access_token };
+        token = session.access_token;
       }
-      
+
       setMessagesLoading(true);
       try {
         const response = await fetch(`/api/requests/messages?request_id=${selectedRequest.id}`, {
           credentials: 'include',
           headers: {
-            'Authorization': `Bearer ${session.access_token}`
+            'Authorization': `Bearer ${token}`
           }
         });
         
@@ -514,7 +628,6 @@ export default function AdminRequestsPage() {
         table: 'request_messages',
         filter: `request_id=eq.${selectedRequest.id}`,
       }, (payload: any) => {
-        // Handle INSERT - new message
         if (payload.eventType === 'INSERT') {
           const newMessage = payload.new as RequestMessage;
           setMessages(prev => {
@@ -525,7 +638,6 @@ export default function AdminRequestsPage() {
             );
           });
         }
-        // Handle DELETE - message removed
         if (payload.eventType === 'DELETE') {
           const deletedMessage = payload.old as RequestMessage;
           setMessages(prev => prev.filter(m => m.id !== deletedMessage.id));
@@ -574,44 +686,35 @@ export default function AdminRequestsPage() {
   }, [selectedRequest?.id, supabase]);
 
   // ── AUTO-SCROLL: messages or typing indicator changed ──
-  // No early return guard on messagesLoading — we want to scroll after load completes too.
-  // RAF ensures the DOM has painted the new node before we measure scrollHeight.
   useEffect(() => {
     scrollToBottom('smooth');
   }, [messages, userIsTyping, scrollToBottom]);
 
-  // ── AUTO-SCROLL: initial load — jump instantly (no animation) ──
+  // ── AUTO-SCROLL: initial load — jump instantly ──
   useEffect(() => {
     if (!messagesLoading) {
       scrollToBottom('instant' as ScrollBehavior);
     }
   }, [messagesLoading, scrollToBottom]);
 
-  // ── AUTO-SCROLL: container / keyboard resize (mobile keyboards, orientation) ──
-  // Attached only while a chat is open. Uses ResizeObserver on the container
-  // (fires whenever its height changes, e.g. mobile soft keyboard) and
-  // visualViewport for extra reliability on iOS Safari.
+  // ── AUTO-SCROLL: container / keyboard resize ──
   useEffect(() => {
     if (!selectedRequest?.id) return;
 
     const container = chatContainerRef.current;
 
-    // ResizeObserver fires whenever the container's bounding rect changes —
-    // covers orientation flip, keyboard open/close, sidebar collapse, etc.
     let ro: ResizeObserver | null = null;
     if (container && typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(() => scrollToBottom('smooth'));
       ro.observe(container);
     }
 
-    // visualViewport fires on iOS Safari when the soft keyboard appears/disappears
     const handleVVResize = () => scrollToBottom('smooth');
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', handleVVResize);
       window.visualViewport.addEventListener('scroll', handleVVResize);
     }
 
-    // Add scroll event listener for scroll button visibility
     const handleScroll = () => {
       if (!chatContainerRef.current) return;
       const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
@@ -627,7 +730,6 @@ export default function AdminRequestsPage() {
         window.visualViewport.removeEventListener('scroll', handleVVResize);
       }
       container?.removeEventListener('scroll', handleScroll);
-      // Cancel any pending RAF on unmount
       if (scrollRafRef.current !== null) {
         cancelAnimationFrame(scrollRafRef.current);
         scrollRafRef.current = null;
@@ -657,10 +759,11 @@ export default function AdminRequestsPage() {
     }, 2000);
   };
 
+  // Send message using the CACHED session token — no extra getSession() call.
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedRequest) return;
 
-    if (!canCreate('requests')) {
+    if (!all.requests.includes('create')) {
       alert('You do not have permission to send messages');
       return;
     }
@@ -669,22 +772,25 @@ export default function AdminRequestsPage() {
     setLocalIsTyping(false);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
-    setSendingMessage(true);
-    
-    // Get session for authorization header
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      console.warn("No active session, cannot send message");
-      setSendingMessage(false);
-      return;
+    // Use cached token; fall back to a one-time fetch only if cache is cold.
+    let token = sessionRef.current?.access_token;
+    if (!token) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn("No active session, cannot send message");
+        return;
+      }
+      sessionRef.current = { access_token: session.access_token };
+      token = session.access_token;
     }
-    
+
+    setSendingMessage(true);
     try {
       const response = await fetch("/api/requests/messages", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ request_id: selectedRequest.id, message: newMessage.trim() }),
         credentials: 'include',
@@ -715,8 +821,7 @@ export default function AdminRequestsPage() {
   const handleDeleteRequest = async () => {
     if (!requestToDelete || deleting) return;
 
-    // Check permission
-    if (!canDelete('requests')) {
+    if (!all.requests.includes('delete')) {
       alert('You do not have permission to delete this request');
       return;
     }
@@ -734,10 +839,8 @@ export default function AdminRequestsPage() {
         return;
       }
 
-      // Remove from state immediately (no reload)
       setRequests(prev => prev.filter(r => r.id !== requestToDelete.id));
       
-      // If inside chat, go back to list
       if (selectedRequest?.id === requestToDelete.id) {
         setSelectedRequest(null);
       }
@@ -905,7 +1008,7 @@ export default function AdminRequestsPage() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                {canDelete('requests') && (
+                {all.requests.includes('delete') && (
                   <button
                     onClick={() => {
                       setRequestToDelete(selectedRequest);
@@ -926,14 +1029,12 @@ export default function AdminRequestsPage() {
               ref={chatContainerRef}
               className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 p-3 sm:p-4 pb-2 sm:pb-4 bg-white"
             >
-              {/* Subject */}
               {selectedRequest.title && (
                 <div className="p-3 bg-cyan-50 rounded-xl border border-cyan-100 shrink-0">
                   <p className="font-medium text-sm text-slate-800">{selectedRequest.title}</p>
                 </div>
               )}
               
-              {/* Freelancer Mini Card */}
               {selectedRequest.freelancer_data && (
                 <div className="shrink-0">
                   <FreelancerMiniCard 
@@ -969,7 +1070,6 @@ export default function AdminRequestsPage() {
                         isUserMsg={isUserMsg}
                         currentUserId={currentUserId || ''}
                         onDelete={(messageId) => {
-                          // Optimistic update: immediately remove message from UI
                           setMessages(prev => prev.filter(m => m.id !== messageId));
                         }}
                         mobile
@@ -979,13 +1079,10 @@ export default function AdminRequestsPage() {
                 </div>
               )}
 
-              {/* Typing indicator bubble */}
               {userIsTyping && <TypingBubble mobile />}
-              {/* Scroll anchor — must be the absolute last node in the container */}
               <div ref={messagesEndRef} style={{ height: 0, flexShrink: 0 }} />
             </div>
 
-            {/* Scroll to Bottom Button - Mobile/Tablet Only */}
             {showScrollButton && (
               <button
                 onClick={handleScrollToBottom}
@@ -1042,7 +1139,7 @@ export default function AdminRequestsPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {canDelete('requests') && (
+              {all.requests.includes('delete') && (
                 <button
                   onClick={() => {
                     setRequestToDelete(selectedRequest);
@@ -1063,14 +1160,12 @@ export default function AdminRequestsPage() {
             ref={chatContainerRef}
             className="flex-1 custom-scrollbar overflow-y-auto flex flex-col gap-4 px-6 py-4 bg-white"
           >
-            {/* Subject */}
             {selectedRequest.title && (
               <div className="p-4 bg-cyan-50 rounded-xl border border-cyan-100 shrink-0">
                 <p className="font-medium text-slate-800">{selectedRequest.title}</p>
               </div>
             )}
 
-            {/* Freelancer Mini Card */}
             {selectedRequest.freelancer_data && (
               <div className="shrink-0">
                 <FreelancerMiniCard 
@@ -1106,7 +1201,6 @@ export default function AdminRequestsPage() {
                       isUserMsg={isUserMsg}
                       currentUserId={currentUserId || ''}
                       onDelete={(messageId) => {
-                        // Optimistic update: immediately remove message from UI
                         setMessages(prev => prev.filter(m => m.id !== messageId));
                       }}
                     />
@@ -1115,9 +1209,7 @@ export default function AdminRequestsPage() {
               </>
             )}
 
-            {/* Typing indicator bubble */}
             {userIsTyping && <TypingBubble />}
-            {/* Scroll anchor — must be the absolute last node in the container */}
             <div ref={messagesEndRef} style={{ height: 0, flexShrink: 0 }} />
           </div>
 
@@ -1172,11 +1264,7 @@ export default function AdminRequestsPage() {
                   className="flex-1 bg-red-500 hover:bg-red-600 text-white"
                   disabled={deleting}
                 >
-                  {deleting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    'Delete'
-                  )}
+                  {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Delete'}
                 </Button>
               </div>
             </div>
@@ -1247,7 +1335,7 @@ export default function AdminRequestsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      {canDelete('requests') && (
+                      {all.requests.includes('delete') && (
                         <button
                           onClick={(e) => openDeleteConfirm(request, e)}
                           className="p-2 rounded-full bg-gradient-to-r from-white to-cyan-50 border border-cyan-200 text-slate-500 hover:text-red-500 hover:border-red-300 hover:from-red-50 hover:to-red-50/50 transition-all duration-200"
@@ -1260,14 +1348,12 @@ export default function AdminRequestsPage() {
                     </div>
                   </div>
                   
-                  {/* Subject */}
                   {request.title && (
                     <div className="mb-4">
                       <p className="text-lg font-semibold text-gray-900">{request.title}</p>
                     </div>
                   )}
                   
-                  {/* Freelancer Mini Card */}
                   {request.freelancer_data && (
                     <div className="mb-4 bg-gray-50 border border-gray-200 rounded-xl p-4">
                       <FreelancerMiniCard 
@@ -1283,7 +1369,6 @@ export default function AdminRequestsPage() {
                     </div>
                   )}
                   
-                  {/* Last message preview */}
                   {request.last_message && (
                     <div className="bg-gray-50 rounded-xl p-3 mb-4">
                       <p className="text-sm text-gray-700 line-clamp-2">
@@ -1301,7 +1386,7 @@ export default function AdminRequestsPage() {
                         {request.status === "answered" && "Answered"}
                       </span>
                     </div>
-                    {canCreate('requests') && (
+                    {all.requests.includes('create') && (
                       <Button variant="ghost" size="sm" className="shrink-0 text-gray-600 hover:text-gray-900 hover:bg-gray-100" onClick={() => handleSelectRequest(request)}>
                         Open Chat →
                       </Button>
@@ -1344,11 +1429,7 @@ export default function AdminRequestsPage() {
                 className="flex-1 bg-red-500 hover:bg-red-600 text-white"
                 disabled={deleting}
               >
-                {deleting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  'Delete'
-                )}
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Delete'}
               </Button>
             </div>
           </div>

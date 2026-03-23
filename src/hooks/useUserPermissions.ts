@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/components/providers/auth-provider';
 import type { User } from '@supabase/supabase-js';
 import type { PermissionSection, PermissionAction, SectionPermissions } from '@/types/permissions';
 
@@ -18,6 +19,11 @@ interface UserPermissionsState {
 }
 
 export function useUserPermissions() {
+  // CRITICAL: Use centralized user from AuthProvider instead of calling supabase.auth.getUser()
+  // This prevents duplicate /auth/v1/user calls that cause request spam
+  const { user: authUser, loading: authLoading } = useAuth();
+  const supabase = createClient();
+  
   const [state, setState] = useState<UserPermissionsState>({
     isLoading: true,
     isSuperAdmin: false,
@@ -30,36 +36,17 @@ export function useUserPermissions() {
     user: null,
   });
 
-  const supabase = createClient();
   const isFetchingRef = useRef(false);
   const fetchedRef = useRef(false);
   const realtimeChannelRef = useRef<any>(null);
   const mountedRef = useRef(true);
-  const authListenerRef = useRef<any>(null);
 
-  const fetchPermissions = useCallback(async () => {
+  // Fetch permissions based on user from AuthProvider - no duplicate auth calls
+  const fetchPermissions = useCallback(async (user: User) => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        if (mountedRef.current) {
-          setState({
-            isLoading: false,
-            isSuperAdmin: false,
-            isAdmin: false,
-            isRemoved: false,
-            isSuspended: false,
-            isRestored: false,
-            permissions: {} as Record<PermissionSection, SectionPermissions>,
-            accessibleSections: [],
-            user: null,
-          });
-        }
-        return;
-      }
-
       // Single parallel fetch: users.role + team_members
       const [userResult, teamResult] = await Promise.all([
         supabase.from('users').select('role').eq('id', user.id).maybeSingle(),
@@ -178,6 +165,67 @@ export function useUserPermissions() {
     }
   }, [supabase]);
 
+  // Primary effect: Sync with AuthProvider user (NO duplicate auth calls)
+  useEffect(() => {
+    mountedRef.current = true;
+    
+    // Wait for auth to finish loading
+    if (authLoading) {
+      setState(prev => ({ ...prev, isLoading: true }));
+      return;
+    }
+    
+    const user = authUser;
+    if (!user) {
+      if (mountedRef.current) {
+        setState({
+          isLoading: false,
+          isSuperAdmin: false,
+          isAdmin: false,
+          isRemoved: false,
+          isSuspended: false,
+          isRestored: false,
+          permissions: {} as Record<PermissionSection, SectionPermissions>,
+          accessibleSections: [],
+          user: null,
+        });
+      }
+      return;
+    }
+    
+    // User exists from AuthProvider - fetch permissions once
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      fetchPermissions(user);
+    }
+  }, [authUser, authLoading, fetchPermissions]);
+
+  // Setup realtime subscription for team_members changes
+  useEffect(() => {
+    if (!authUser?.id) return;
+    
+    const channel = supabase.channel('user_permissions')
+      .on('postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'team_members', 
+          filter: `user_id=eq.${authUser.id}` 
+        },
+        () => fetchPermissions(authUser)
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      if (realtimeChannelRef.current && typeof realtimeChannelRef.current.unsubscribe === 'function') {
+        realtimeChannelRef.current.unsubscribe();
+        supabase.removeChannel(realtimeChannelRef.current);
+      }
+    };
+  }, [authUser?.id, supabase, fetchPermissions]);
+
   const hasPermission = useCallback((section: PermissionSection, action: PermissionAction): boolean => {
     if (state.isSuperAdmin) return true;
     if (!state.isAdmin) return false;
@@ -202,54 +250,30 @@ export function useUserPermissions() {
   }, [hasPermission]);
 
   const checkStatus = useCallback(async () => {
-    await fetchPermissions();
-  }, [fetchPermissions]);
-
-  // Setup: initial fetch + realtime + auth listener (debounced)
-  useEffect(() => {
-    mountedRef.current = true;
-    if (!fetchedRef.current) {
-      fetchedRef.current = true;
-      fetchPermissions();
+    if (authUser) {
+      fetchedRef.current = false;
+      await fetchPermissions(authUser);
     }
+  }, [authUser, fetchPermissions]);
 
-    // Single realtime channel for team_members
-    const userId = supabase.auth.getUser().then(({ data }: { data: { user?: { id: string } | null } }) => data?.user?.id || '');
-    const channel = supabase.channel('user_permissions')
-      .on('postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'team_members', 
-          filter: `user_id=eq.${userId}` 
-        },
-        fetchPermissions
-      )
-      .subscribe();
+  // Combine auth loading state with permissions loading
+  const isLoading = authLoading || state.isLoading;
 
-    realtimeChannelRef.current = channel;
-
-    // Debounced auth listener
-    authListenerRef.current = supabase.auth.onAuthStateChange(async () => {
-      // Debounce 500ms
-      await new Promise(resolve => setTimeout(resolve, 500));
-      await fetchPermissions();
-    });
-
-    return () => {
-      mountedRef.current = false;
-      if (realtimeChannelRef.current && typeof realtimeChannelRef.current.unsubscribe === 'function') {
-        realtimeChannelRef.current.unsubscribe();
-        supabase.removeChannel(realtimeChannelRef.current);
-      }
-      if (authListenerRef.current?.subscription && typeof authListenerRef.current.subscription.unsubscribe === 'function') {
-        authListenerRef.current.subscription.unsubscribe();
-      }
-    };
-  }, [fetchPermissions, supabase]);
+  // Direct access to all permissions - avoids repeated function calls
+  const all = useMemo(() => ({
+    domains: state.permissions.domains || [],
+    blogs: state.permissions.blogs || [],
+    freelancers: state.permissions.freelancers || [],
+    products: state.permissions.products || [],
+    requests: state.permissions.requests || [],
+    team: state.permissions.team || [],
+    dashboard: state.permissions.dashboard || [],
+  }), [state.permissions]);
 
   return {
     ...state,
+    isLoading,
+    all, // Direct access to all permissions
     hasPermission,
     canAccessSection,
     canCreate,
@@ -258,4 +282,3 @@ export function useUserPermissions() {
     checkStatus,
   };
 }
-

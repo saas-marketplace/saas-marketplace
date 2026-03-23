@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
+import Image from "next/image";
+import {  
   MessageSquare, 
   X, 
   Send, 
@@ -123,10 +124,13 @@ export function RequestModal({
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center shadow-lg shadow-cyan-500/25">
                     {freelancer?.avatar_url ? (
-                      <img 
+                      <Image 
                         src={freelancer.avatar_url} 
                         alt={freelancer.display_name}
+                        width={48}
+                        height={48}
                         className="w-full h-full rounded-full object-cover"
+                        loading="lazy"
                       />
                     ) : (
                       <User className="w-6 h-6 text-white" />

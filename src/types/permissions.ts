@@ -175,22 +175,22 @@ export function checkArrayPermission(
 
 // Helper function to check if user can view section
 export function canViewSection(permissions: Permissions, section: PermissionSection): boolean {
-  return hasPermission(permissions, section, 'view');
+  return checkArrayPermission(permissions, section, 'view');
 }
 
 // Helper function to check if user can create in section
 export function canCreateInSection(permissions: Permissions, section: PermissionSection): boolean {
-  return hasPermission(permissions, section, 'create');
+  return checkArrayPermission(permissions, section, 'create');
 }
 
 // Helper function to check if user can update in section
 export function canUpdateInSection(permissions: Permissions, section: PermissionSection): boolean {
-  return hasPermission(permissions, section, 'update');
+  return checkArrayPermission(permissions, section, 'update');
 }
 
 // Helper function to check if user can delete in section
 export function canDeleteInSection(permissions: Permissions, section: PermissionSection): boolean {
-  return hasPermission(permissions, section, 'delete');
+  return checkArrayPermission(permissions, section, 'delete');
 }
 
 // Get all sections user has view access to

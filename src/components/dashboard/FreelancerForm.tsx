@@ -3,6 +3,7 @@
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -137,7 +138,7 @@ export default function FreelancerForm({ onSuccess, domains = [], initialData }:
       <div className="flex items-center gap-4">
         {avatarUrl ? (
           <div className="relative w-20 h-20 rounded-full overflow-hidden border-2 border-slate-600">
-            <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+            <Image src={avatarUrl} alt="Avatar" width={80} height={80} className="w-full h-full object-cover" loading="lazy" />
           </div>
         ) : (
           <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white font-bold text-2xl">

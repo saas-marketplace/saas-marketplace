@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -50,10 +51,13 @@ export default function TeamTable({ members, onEdit, onDelete, onToggleActive }:
               <td className="px-4 py-3">
                 <div className="flex items-center gap-3">
                   {member.avatar_url ? (
-                    <img
+                    <Image
                       src={member.avatar_url}
                       alt={member.display_name || 'Team member'}
+                      width={40}
+                      height={40}
                       className="h-10 w-10 rounded-full object-cover"
+                      loading="lazy"
                     />
                   ) : (
                     <LetterAvatar

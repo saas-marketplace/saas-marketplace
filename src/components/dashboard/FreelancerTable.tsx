@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { usePermissions } from '@/stores/permissions-context';
@@ -28,7 +29,7 @@ export default function FreelancerTable() {
   const supabase = createClient();
   const [freelancers, setFreelancers] = useState<Freelancer[]>([]);
   const [loading, setLoading] = useState(true);
-  const { canUpdate, canDelete, isLoading: permsLoading } = usePermissions();
+  const { all, isLoading: permsLoading } = usePermissions();
 
   useEffect(() => {
     async function fetchFreelancers() {
@@ -63,7 +64,7 @@ export default function FreelancerTable() {
     setFreelancers(prev => prev.filter(f => f.id !== id));
   };
 
-  const canManageFreelancers = canUpdate('freelancers') || canDelete('freelancers');
+  const canManageFreelancers = all.freelancers.includes('update') || all.freelancers.includes('delete');
 
   const getInitials = (name: string) => {
     return name
@@ -98,10 +99,13 @@ export default function FreelancerTable() {
               <td className="p-4">
                 <div className="flex items-center gap-3">
                   {freelancer.avatar_url ? (
-                    <img 
+                    <Image 
                       src={freelancer.avatar_url} 
                       alt={freelancer.display_name}
-                      className="w-10 h-10 rounded-full object-cover"
+                      width={40}
+                      height={40}
+                      className="rounded-full object-cover"
+                      loading="lazy"
                     />
                   ) : (
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
@@ -147,13 +151,13 @@ export default function FreelancerTable() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      {canUpdate('freelancers') && (
+                      {all.freelancers.includes('update') && (
                         <DropdownMenuItem>
                           Edit Freelancer
                           <Edit className="w-4 h-4 ml-auto" />
                         </DropdownMenuItem>
                       )}
-                      {canDelete('freelancers') && (
+                      {all.freelancers.includes('delete') && (
                         <DropdownMenuItem 
                           onClick={() => handleDelete(freelancer.id)}
                           className="text-destructive focus:text-destructive"

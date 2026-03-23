@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState, useCallback, useRef } from "react";
+import Image from "next/image";
 import { useAccessControl } from "@/hooks/useAccessControl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,7 +43,7 @@ interface Blog {
 
 export default function BlogPage() {
   // Get all access control state FIRST
-  const { isLoading, isRemoved, isSuspended, canAccessSection, canCreate, canUpdate, canDelete } = useAccessControl();
+  const { isLoading, isRemoved, isSuspended, canAccessSection, all } = useAccessControl();
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -61,7 +62,22 @@ export default function BlogPage() {
 
   const [previewImage, setPreviewImage] = useState<string>("");
 
+  // Guard to prevent duplicate fetches in React StrictMode
+  const blogsFetchedRef = useRef(false);
+  const isFetchingRef = useRef(false); // Track ongoing fetches
+
   const fetchBlogs = useCallback(async () => {
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) return;
+    
+    // Only use ref guard for initial mount, not for subsequent refreshes
+    const isInitialFetch = !blogsFetchedRef.current;
+    if (isInitialFetch) {
+      blogsFetchedRef.current = true;
+    }
+    
+    isFetchingRef.current = true;
+    
     setLoading(true);
     const { data, error } = await supabase
       .from("blogs")
@@ -72,6 +88,7 @@ export default function BlogPage() {
       setBlogs(data);
     }
     setLoading(false);
+    isFetchingRef.current = false;
   }, []);
 
   // ALL hooks must be called before any early returns - useEffect FIRST
@@ -167,7 +184,9 @@ export default function BlogPage() {
     e.preventDefault();
     
     // Check permission - use editingBlog to determine if create or update
-    const hasPermission = editingBlog ? canUpdate('blogs') : canCreate('blogs');
+    const hasPermission = editingBlog 
+      ? all.blogs.includes('update') 
+      : all.blogs.includes('create');
     if (!hasPermission) {
       alert('You do not have permission to perform this action');
       return;
@@ -207,7 +226,7 @@ export default function BlogPage() {
     if (!confirm("Are you sure you want to delete this blog post?")) return;
     
     // Check permission
-    if (!canDelete('blogs')) {
+    if (!all.blogs.includes('delete')) {
       alert('You do not have permission to delete blog posts');
       return;
     }
@@ -222,6 +241,14 @@ export default function BlogPage() {
 
     setUploading(true);
     try {
+      // Verify session before upload
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('Please log in to upload images');
+        setUploading(false);
+        return;
+      }
+
       const fileName = `${Date.now()}-${file.name.replace(/\s+/g, '-')}`;
       
       const { data, error } = await supabase.storage
@@ -262,7 +289,7 @@ export default function BlogPage() {
         <h1 className="text-2xl font-bold">Blog Management</h1>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            {canCreate('blogs') && (
+            {all.blogs.includes('create') && (
               <Button onClick={openAddDialog} className="bg-primary text-white">
                 <Plus className="w-4 h-4 mr-2" />
                 Add Blog Post
@@ -294,10 +321,13 @@ export default function BlogPage() {
                 <label className="text-sm font-medium">Blog Image</label>
                 {previewImage ? (
                   <div className="relative mt-2">
-                    <img 
+                    <Image 
                       src={previewImage} 
                       alt="Preview" 
+                      width={800}
+                      height={192}
                       className="w-full h-48 object-cover rounded-md"
+                      loading="lazy"
                     />
                     <button
                       type="button"
@@ -409,10 +439,13 @@ export default function BlogPage() {
               {/* Image */}
               {blog.image_url ? (
                 <div className="h-40 rounded-lg overflow-hidden bg-gray-900">
-                  <img
+                  <Image
                     src={blog.image_url}
                     alt={blog.title}
+                    width={400}
+                    height={160}
                     className="w-full h-full object-cover"
+                    loading="lazy"
                   />
                 </div>
               ) : (
@@ -454,7 +487,7 @@ export default function BlogPage() {
 
               {/* Actions */}
               <div className="flex items-center justify-end gap-2">
-                {canUpdate('blogs') && (
+                {all.blogs.includes('update') && (
                   <button
                     onClick={() => openEditDialog(blog)}
                     className="p-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-600 transition flex items-center justify-center"
@@ -463,7 +496,7 @@ export default function BlogPage() {
                   </button>
                 )}
 
-                {canDelete('blogs') && (
+                {all.blogs.includes('delete') && (
                   <button
                     onClick={() => handleDelete(blog.id)}
                     className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition flex items-center justify-center"

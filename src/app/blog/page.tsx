@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/utils";
@@ -86,10 +87,13 @@ export default function BlogPage() {
                     {/* Image */}
                     {blog.image_url ? (
                       <div className="h-48 overflow-hidden">
-                        <img
+                        <Image
                           src={blog.image_url}
                           alt={blog.title}
+                          width={400}
+                          height={192}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          loading="lazy"
                         />
                       </div>
                     ) : (

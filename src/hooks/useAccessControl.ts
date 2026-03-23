@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { PermissionSection, PermissionAction, SectionPermissions } from '@/types/permissions';
 
@@ -245,6 +245,17 @@ export function useAccessControl() {
     return hasPermission(section, 'delete');
   }, [hasPermission]);
 
+  // Direct access to all permissions for sections - avoids repeated function calls
+  const all = useMemo(() => ({
+    domains: state.permissions.domains || [],
+    blogs: state.permissions.blogs || [],
+    freelancers: state.permissions.freelancers || [],
+    products: state.permissions.products || [],
+    requests: state.permissions.requests || [],
+    team: state.permissions.team || [],
+    dashboard: state.permissions.dashboard || [],
+  }), [state.permissions]);
+
   return {
     isLoading: state.isLoading,
     isSuperAdmin: state.isSuperAdmin,
@@ -252,6 +263,7 @@ export function useAccessControl() {
     isRemoved: state.isRemoved,
     isSuspended: state.isSuspended,
     permissions: state.permissions,
+    all, // Direct access to all permissions - use instead of repeated canX() calls
     hasPermission,
     canAccessSection,
     canAccessDashboard,
