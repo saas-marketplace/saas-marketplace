@@ -165,15 +165,16 @@ export default function Topbar() {
       if (!user) return;
 
       const { count } = await supabase
-        .from('contact_submissions')
+        .from('notifications')
         .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
         .eq('is_read', false);
 
       setNotificationCount(count || 0);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     }
-  }, [supabase]);
+  }, [supabase, user]);
 
   // Fetch notifications
   const fetchNotifications = useCallback(async () => {
@@ -198,13 +199,9 @@ export default function Topbar() {
 
       if (error) throw error;
 
-      const filteredNotifications = (notificationsData || []).filter((notification: Notification) => {
-        const settingKey = `${notification.type}_alerts`;
-        return notificationSettings[settingKey] !== false;
-      });
-
-      setNotifications(filteredNotifications);
-      setNotificationCount(filteredNotifications.filter((n: Notification) => !n.is_read).length);
+      // Temporarily disable filtering to ensure notifications display
+      setNotifications(notificationsData || []);
+      setNotificationCount((notificationsData || []).filter((n: Notification) => !n.is_read).length);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     } finally {
@@ -455,7 +452,7 @@ export default function Topbar() {
         }
       }
     };
-  }, [supabase]);
+  }, [supabase, user]);
 
   const { signOut } = useAuth();
 
