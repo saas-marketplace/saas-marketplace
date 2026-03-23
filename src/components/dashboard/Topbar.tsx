@@ -161,9 +161,9 @@ export default function Topbar() {
 
   // Fetch notification count
   const fetchNotificationCount = useCallback(async () => {
+    if (!user) return;
+    
     try {
-      if (!user) return;
-
       const { count } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
@@ -172,34 +172,34 @@ export default function Topbar() {
 
       setNotificationCount(count || 0);
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      console.error('Error fetching notification count:', error);
     }
   }, [supabase, user]);
 
   // Fetch notifications
   const fetchNotifications = useCallback(async () => {
+    if (!user) return;
+    
     try {
       setLoadingNotifications(true);
-      if (!user) return;
 
-      const { data: userSettings } = await supabase
-        .from('user_settings')
-        .select('notification_settings')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      const notificationSettings = userSettings?.notification_settings || {};
+      console.log('[Notifications] Fetching for user ID:', user.id);
 
       const { data: notificationsData, error } = await supabase
         .from('notifications')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(20);
+        .limit(50);
 
-      if (error) throw error;
+      if (error) {
+        console.error('[Notifications] Fetch error:', error);
+        throw error;
+      }
 
-      // Temporarily disable filtering to ensure notifications display
+      console.log('[Notifications] Fetched notifications:', notificationsData?.length || 0);
+
+      // Disable filtering - show all notifications
       setNotifications(notificationsData || []);
       setNotificationCount((notificationsData || []).filter((n: Notification) => !n.is_read).length);
     } catch (error) {
@@ -207,7 +207,7 @@ export default function Topbar() {
     } finally {
       setLoadingNotifications(false);
     }
-  }, [supabase]);
+  }, [supabase, user]);
 
   // Mark notification as read
   const markAsRead = async (notificationId: string) => {
@@ -339,6 +339,9 @@ export default function Topbar() {
   };
 
   useEffect(() => {
+    // Only fetch when user is available
+    if (!user) return;
+    
     fetchProfile();
     fetchNotificationCount();
     fetchNotifications();
@@ -351,7 +354,7 @@ export default function Topbar() {
     return () => {
       window.removeEventListener('profile-updated', handleProfileUpdate);
     };
-  }, [fetchProfile, fetchNotificationCount, fetchNotifications]);
+  }, [user, fetchProfile, fetchNotificationCount, fetchNotifications]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
