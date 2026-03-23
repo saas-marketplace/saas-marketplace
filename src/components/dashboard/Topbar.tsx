@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -23,7 +23,9 @@ import {
   Users,
   FileText,
   Package,
-  Star
+  Star,
+  ChevronRight,
+  Filter
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import EditProfileModal from '@/components/dashboard/EditProfileModal';
@@ -46,6 +48,138 @@ interface Notification {
   is_read: boolean;
   created_at: string;
 }
+
+// Notification type metadata for grouping and display
+interface NotificationTypeConfig {
+  type: string;
+  label: string;
+  icon: React.ReactNode;
+  color: string;
+}
+
+// Notification type configurations
+const NOTIFICATION_TYPES: Record<string, NotificationTypeConfig> = {
+  request: { type: 'request', label: 'Requests', icon: <MessageSquare className="w-4 h-4" />, color: 'text-blue-500 bg-blue-50' },
+  message: { type: 'message', label: 'Messages', icon: <MessageSquare className="w-4 h-4" />, color: 'text-green-500 bg-green-50' },
+  review: { type: 'review', label: 'Reviews', icon: <Star className="w-4 h-4" />, color: 'text-yellow-500 bg-yellow-50' },
+  team: { type: 'team', label: 'Team', icon: <Users className="w-4 h-4" />, color: 'text-purple-500 bg-purple-50' },
+  order: { type: 'order', label: 'Orders', icon: <Package className="w-4 h-4" />, color: 'text-cyan-500 bg-cyan-50' },
+  new_request: { type: 'new_request', label: 'New Requests', icon: <MessageSquare className="w-4 h-4" />, color: 'text-blue-500 bg-blue-50' },
+  new_message: { type: 'new_message', label: 'Messages', icon: <MessageSquare className="w-4 h-4" />, color: 'text-green-500 bg-green-50' },
+  team_activity: { type: 'team_activity', label: 'Team Activity', icon: <Users className="w-4 h-4" />, color: 'text-purple-500 bg-purple-50' },
+  system_alert: { type: 'system_alert', label: 'System Alerts', icon: <AlertTriangle className="w-4 h-4" />, color: 'text-amber-500 bg-amber-50' },
+  blog_comment: { type: 'blog_comment', label: 'Blog Comments', icon: <FileText className="w-4 h-4" />, color: 'text-pink-500 bg-pink-50' },
+  product_update: { type: 'product_update', label: 'Product Updates', icon: <Package className="w-4 h-4" />, color: 'text-cyan-500 bg-cyan-50' },
+};
+
+// Format notification time - standalone function for use in components
+const formatNotificationTime = (dateString: string): string => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+
+  if (diff < 60000) {
+    return 'Just now';
+  } else if (diff < 3600000) {
+    const mins = Math.floor(diff / 60000);
+    return `${mins}m ago`;
+  } else if (diff < 86400000) {
+    const hours = Math.floor(diff / 3600000);
+    return `${hours}h ago`;
+  } else {
+    return date.toLocaleDateString();
+  }
+};
+
+// Get notification type config - standalone function for use in components
+const getNotificationTypeConfigStandalone = (type: string): NotificationTypeConfig => {
+  const config = NOTIFICATION_TYPES[type];
+  if (config) {
+    return config;
+  }
+  return { type: 'default', label: 'Other', icon: <Bell className="w-4 h-4" />, color: 'text-gray-500 bg-gray-50' };
+};
+
+// Cache keys
+const NOTIFICATIONS_CACHE_KEY = 'notifications_cache';
+const NOTIFICATION_PERMISSION_KEY = 'notification_permission_requested';
+
+// Browser native notification helper
+const requestBrowserNotificationPermission = async (): Promise<boolean> => {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return false;
+  }
+  
+  // Check if already requested before
+  const hasRequestedBefore = localStorage.getItem(NOTIFICATION_PERMISSION_KEY);
+  if (hasRequestedBefore) {
+    return Notification.permission === 'granted';
+  }
+  
+  if (Notification.permission === 'granted') {
+    return true;
+  }
+  
+  if (Notification.permission !== 'denied') {
+    try {
+      const permission = await Notification.requestPermission();
+      localStorage.setItem(NOTIFICATION_PERMISSION_KEY, 'true');
+      return permission === 'granted';
+    } catch (error) {
+      console.error('Error requesting notification permission:', error);
+      return false;
+    }
+  }
+  
+  return false;
+};
+
+// Show browser native notification
+const showBrowserNotification = (notification: Notification): void => {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return;
+  }
+  
+  if (Notification.permission === 'granted') {
+    const browserNotification = new Notification(notification.title, {
+      body: notification.message,
+      icon: '/favicon.ico',
+      badge: '/favicon.ico',
+      tag: notification.id, // Prevent duplicates
+      requireInteraction: false,
+    });
+    
+    browserNotification.onclick = () => {
+      window.focus();
+      if (notification.link) {
+        window.location.href = notification.link;
+      }
+      browserNotification.close();
+    };
+  }
+};
+
+// Load cached notifications
+const loadCachedNotifications = (): Notification[] | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = localStorage.getItem(NOTIFICATIONS_CACHE_KEY);
+    return cached ? JSON.parse(cached) : null;
+  } catch (error) {
+    console.error('Error loading cached notifications:', error);
+    return null;
+  }
+};
+
+// Save notifications to cache
+const saveNotificationsToCache = (notifications: Notification[]): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(notifications));
+  } catch (error) {
+    console.error('Error saving notifications to cache:', error);
+  }
+};
 
 // Sound notification types
 type SoundType = 'user' | 'request' | 'team' | 'message' | 'review' | 'product_update' | 'order' | 'default';
@@ -87,6 +221,40 @@ const playNotificationSound = (type?: string) => {
   }
 };
 
+// Notification Item Component
+const NotificationItem = ({ notification, onClick }: { notification: Notification; onClick: () => void }) => {
+  const typeConfig = getNotificationTypeConfigStandalone(notification.type);
+  
+  return (
+    <div
+      className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${
+        !notification.is_read ? 'bg-cyan-50/50' : ''
+      }`}
+      onClick={onClick}
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex-shrink-0 mt-0.5">
+          {typeConfig.icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm ${!notification.is_read ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+            {notification.title}
+          </p>
+          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+            {notification.message}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            {formatNotificationTime(notification.created_at)}
+          </p>
+        </div>
+        {!notification.is_read && (
+          <div className="w-2 h-2 bg-cyan-500 rounded-full flex-shrink-0 mt-1.5"></div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function Topbar() {
   const router = useRouter();
   const { user, session, isLoading: profileLoading } = useSession();
@@ -102,6 +270,10 @@ export default function Topbar() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [browserNotifEnabled, setBrowserNotifEnabled] = useState(false);
+  const notificationsLoadedRef = useRef(false);
 
   const profileRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -176,14 +348,31 @@ export default function Topbar() {
     }
   }, [supabase, user]);
 
-  // Fetch notifications
-  const fetchNotifications = useCallback(async () => {
+  // Fetch notifications - with instant cache loading
+  const fetchNotifications = useCallback(async (forceRefresh = false) => {
     if (!user) return;
     
+    // Skip if already loaded (unless force refresh)
+    if (notificationsLoadedRef.current && !forceRefresh) {
+      return;
+    }
+    
     try {
-      setLoadingNotifications(true);
+      // Only show loading if not from cache
+      const cachedNotifications = !forceRefresh ? loadCachedNotifications() : null;
+      const isFromCache = cachedNotifications && cachedNotifications.length > 0;
+      
+      if (isFromCache) {
+        // INSTANT LOAD: Use cached data immediately
+        console.log('[Notifications] Loading from cache:', cachedNotifications.length);
+        setNotifications(cachedNotifications);
+        setNotificationCount(cachedNotifications.filter((n: Notification) => !n.is_read).length);
+        notificationsLoadedRef.current = true;
+      }
 
-      console.log('[Notifications] Fetching for user ID:', user.id);
+      // Fetch fresh data in background
+      setLoadingNotifications(true);
+      console.log('[Notifications] Fetching fresh data for user ID:', user.id);
 
       const { data: notificationsData, error } = await supabase
         .from('notifications')
@@ -199,11 +388,21 @@ export default function Topbar() {
 
       console.log('[Notifications] Fetched notifications:', notificationsData?.length || 0);
 
-      // Disable filtering - show all notifications
-      setNotifications(notificationsData || []);
-      setNotificationCount((notificationsData || []).filter((n: Notification) => !n.is_read).length);
+      // Update state and cache
+      const freshNotifications = notificationsData || [];
+      setNotifications(freshNotifications);
+      setNotificationCount(freshNotifications.filter((n: Notification) => !n.is_read).length);
+      saveNotificationsToCache(freshNotifications);
+      notificationsLoadedRef.current = true;
     } catch (error) {
       console.error('Error fetching notifications:', error);
+      // If fetch fails but we have cached data, keep using it
+      const cachedNotifications = loadCachedNotifications();
+      if (cachedNotifications && cachedNotifications.length > 0) {
+        setNotifications(cachedNotifications);
+        setNotificationCount(cachedNotifications.filter((n: Notification) => !n.is_read).length);
+        notificationsLoadedRef.current = true;
+      }
     } finally {
       setLoadingNotifications(false);
     }
@@ -267,34 +466,70 @@ export default function Topbar() {
     }
   };
 
-  // Get notification icon based on type
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'request':
-        return <MessageSquare className="w-4 h-4 text-blue-500" />;
-      case 'message':
-        return <MessageSquare className="w-4 h-4 text-green-500" />;
-      case 'review':
-        return <Star className="w-4 h-4 text-yellow-500" />;
-      case 'team':
-        return <Users className="w-4 h-4 text-purple-500" />;
-      case 'order':
-        return <Package className="w-4 h-4 text-cyan-500" />;
-      case 'new_request':
-        return <MessageSquare className="w-4 h-4 text-blue-500" />;
-      case 'new_message':
-        return <MessageSquare className="w-4 h-4 text-green-500" />;
-      case 'team_activity':
-        return <Users className="w-4 h-4 text-purple-500" />;
-      case 'system_alert':
-        return <AlertTriangle className="w-4 h-4 text-amber-500" />;
-      case 'blog_comment':
-        return <FileText className="w-4 h-4 text-pink-500" />;
-      case 'product_update':
-        return <Package className="w-4 h-4 text-cyan-500" />;
-      default:
-        return <Bell className="w-4 h-4 text-gray-500" />;
+  // Compute grouped notifications (uses standalone getNotificationTypeConfigStandalone)
+  const groupedNotifications = useMemo(() => {
+    const groups: Record<string, { notifications: Notification[]; unreadCount: number }> = {};
+    
+    notifications.forEach(notification => {
+      const typeConfig = getNotificationTypeConfigStandalone(notification.type);
+      const groupKey = typeConfig.type;
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          notifications: [],
+          unreadCount: 0
+        };
+      }
+      
+      groups[groupKey].notifications.push(notification);
+      if (!notification.is_read) {
+        groups[groupKey].unreadCount++;
+      }
+    });
+    
+    return groups;
+  }, [notifications]);
+
+  // Compute unread count per type
+  const unreadByType = useMemo(() => {
+    const counts: Record<string, number> = {};
+    
+    notifications.forEach(notification => {
+      const typeConfig = getNotificationTypeConfigStandalone(notification.type);
+      const groupKey = typeConfig.type;
+      
+      if (!notification.is_read) {
+        counts[groupKey] = (counts[groupKey] || 0) + 1;
+      }
+    });
+    
+    return counts;
+  }, [notifications]);
+
+  // Filter notifications by type
+  const filteredNotifications = useMemo(() => {
+    if (!activeFilter) {
+      return notifications;
     }
+    return notifications.filter(n => getNotificationTypeConfigStandalone(n.type).type === activeFilter);
+  }, [notifications, activeFilter]);
+
+  // Toggle group expansion
+  const toggleGroupExpansion = (groupKey: string) => {
+    setExpandedGroups(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupKey)) {
+        newSet.delete(groupKey);
+      } else {
+        newSet.add(groupKey);
+      }
+      return newSet;
+    });
+  };
+
+  // Clear filter
+  const clearFilter = () => {
+    setActiveFilter(null);
   };
 
   // Handle notification click - navigate to link and mark as read
@@ -344,7 +579,8 @@ export default function Topbar() {
     
     fetchProfile();
     fetchNotificationCount();
-    fetchNotifications();
+    // Load with cache (instant load)
+    fetchNotifications(false);
 
     const handleProfileUpdate = () => {
       fetchProfile();
@@ -355,6 +591,13 @@ export default function Topbar() {
       window.removeEventListener('profile-updated', handleProfileUpdate);
     };
   }, [user, fetchProfile, fetchNotificationCount, fetchNotifications]);
+
+  // Sync cache when notifications change (for manual updates)
+  useEffect(() => {
+    if (notifications.length > 0) {
+      saveNotificationsToCache(notifications);
+    }
+  }, [notifications]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -395,13 +638,24 @@ export default function Topbar() {
             },
             (payload: any) => {
               const newNotification = payload.new as Notification;
+              
               // Only play sound once per notification (no duplicates)
               if (!playedSoundRef.current.has(newNotification.id)) {
                 playedSoundRef.current.add(newNotification.id);
                 playNotificationSound(newNotification.type);
               }
-              setNotifications(prev => [newNotification, ...prev]);
+              
+              // Update state with cache sync
+              setNotifications(prev => {
+                const updated = [newNotification, ...prev];
+                saveNotificationsToCache(updated);
+                return updated;
+              });
               setNotificationCount(prev => prev + 1);
+              
+              // Show browser native notification
+              showBrowserNotification(newNotification);
+              
               console.log('[Notifications] New notification received:', newNotification.type, newNotification.id);
             }
           )
@@ -414,9 +668,11 @@ export default function Topbar() {
               filter: `user_id=eq.${user.id}`
             },
             (payload: any) => {
-              setNotifications(prev =>
-                prev.map(n => n.id === payload.new.id ? payload.new as Notification : n)
-              );
+              setNotifications(prev => {
+                const updated = prev.map(n => n.id === payload.new.id ? payload.new as Notification : n);
+                saveNotificationsToCache(updated);
+                return updated;
+              });
               if (payload.new.is_read && !payload.old.is_read) {
                 setNotificationCount(prev => Math.max(0, prev - 1));
               }
@@ -431,7 +687,11 @@ export default function Topbar() {
               filter: `user_id=eq.${user.id}`
             },
             (payload: any) => {
-              setNotifications(prev => prev.filter(n => n.id !== payload.old.id));
+              setNotifications(prev => {
+                const updated = prev.filter(n => n.id !== payload.old.id);
+                saveNotificationsToCache(updated);
+                return updated;
+              });
               if (!payload.old.is_read) {
                 setNotificationCount(prev => Math.max(0, prev - 1));
               }
@@ -604,10 +864,10 @@ export default function Topbar() {
             )}
           </button>
 
-          {/* Notifications Dropdown */}
+          {/* Notifications Dropdown - With Grouped Notifications & Unread Badges */}
           {isNotificationsOpen && (
-            <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-lg border border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200 z-50">
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+            <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-xl shadow-lg border border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200 z-50 max-h-[500px] flex flex-col">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between shrink-0">
                 <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
                 <div className="flex items-center gap-2">
                   {notificationCount > 0 && (
@@ -629,51 +889,133 @@ export default function Topbar() {
                 </div>
               </div>
 
-              <div className="max-h-96 overflow-y-auto">
-                {loadingNotifications ? (
+              {/* Filter Tabs - Unread Badges Per Type */}
+              {Object.keys(groupedNotifications).length > 0 && (
+                <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-2 overflow-x-auto shrink-0 scrollbar-hide">
+                  <button
+                    onClick={clearFilter}
+                    className={cn(
+                      "px-3 py-1.5 text-xs font-medium rounded-full transition-colors whitespace-nowrap flex items-center gap-1.5",
+                      !activeFilter ? "bg-cyan-100 text-cyan-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    )}
+                  >
+                    All
+                    {notificationCount > 0 && (
+                      <span className="ml-1 px-1.5 py-0.5 bg-red-500 text-white text-[10px] rounded-full">
+                        {notificationCount}
+                      </span>
+                    )}
+                  </button>
+                  {Object.entries(groupedNotifications).map(([groupKey, group]) => {
+                    const typeConfig = getNotificationTypeConfigStandalone(groupKey);
+                    return (
+                      <button
+                        key={groupKey}
+                        onClick={() => setActiveFilter(groupKey)}
+                        className={cn(
+                          "px-3 py-1.5 text-xs font-medium rounded-full transition-colors whitespace-nowrap flex items-center gap-1.5",
+                          activeFilter === groupKey ? "bg-cyan-100 text-cyan-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        )}
+                      >
+                        {typeConfig.label}
+                        {group.unreadCount > 0 && (
+                          <span className="ml-1 px-1.5 py-0.5 bg-red-500 text-white text-[10px] rounded-full">
+                            {group.unreadCount}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Notification List - Grouped or Flat */}
+              <div className="flex-1 overflow-y-auto">
+                {loadingNotifications && notifications.length === 0 ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-cyan-500" />
                   </div>
-                ) : notifications.length === 0 ? (
+                ) : filteredNotifications.length === 0 ? (
                   <div className="px-4 py-8 text-center">
                     <Bell className="w-8 h-8 text-gray-300 mx-auto mb-2" />
                     <p className="text-sm text-gray-500">No notifications</p>
                   </div>
                 ) : (
-                  notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${
-                        !notification.is_read ? 'bg-cyan-50/50' : ''
-                      }`}
-                      onClick={() => handleNotificationClick(notification)}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="flex-shrink-0 mt-0.5">
-                          {getNotificationIcon(notification.type)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm ${!notification.is_read ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
-                            {notification.title}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
-                            {notification.message}
-                          </p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            {formatNotificationTime(notification.created_at)}
-                          </p>
-                        </div>
-                        {!notification.is_read && (
-                          <div className="w-2 h-2 bg-cyan-500 rounded-full flex-shrink-0 mt-1.5"></div>
-                        )}
-                      </div>
+                  // Show grouped view if no filter active and more than one group
+                  !activeFilter && Object.keys(groupedNotifications).length > 1 ? (
+                    <div>
+                      {Object.entries(groupedNotifications).map(([groupKey, group]) => {
+                        const typeConfig = getNotificationTypeConfigStandalone(groupKey);
+                        const isExpanded = expandedGroups.has(groupKey);
+                        const displayCount = isExpanded ? group.notifications.length : 1;
+                        
+                        return (
+                          <div key={groupKey} className="border-b border-gray-50">
+                            {/* Group Header */}
+                            <button
+                              onClick={() => toggleGroupExpansion(groupKey)}
+                              className="w-full px-4 py-2 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className={cn("p-1.5 rounded-lg", typeConfig.color)}>
+                                  {typeConfig.icon}
+                                </span>
+                                <span className="text-sm font-medium text-gray-900">
+                                  {typeConfig.label}
+                                </span>
+                                {group.unreadCount > 0 && (
+                                  <span className="px-1.5 py-0.5 bg-red-500 text-white text-[10px] font-medium rounded-full">
+                                    {group.unreadCount}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-gray-400">
+                                <span className="text-xs">
+                                  {group.notifications.length} {group.notifications.length === 1 ? 'notification' : 'notifications'}
+                                </span>
+                                <ChevronRight className={cn(
+                                  "w-4 h-4 transition-transform",
+                                  isExpanded && "rotate-90"
+                                )} />
+                              </div>
+                            </button>
+                            
+                            {/* Group Notifications */}
+                            {isExpanded && (
+                              <div>
+                                {group.notifications.slice(0, 5).map((notification) => (
+                                  <NotificationItem
+                                    key={notification.id}
+                                    notification={notification}
+                                    onClick={() => handleNotificationClick(notification)}
+                                  />
+                                ))}
+                                {group.notifications.length > 5 && (
+                                  <div className="px-4 py-2 text-xs text-gray-500 text-center bg-gray-50">
+                                    +{group.notifications.length - 5} more
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))
+                  ) : (
+                    // Flat list view
+                    filteredNotifications.map((notification) => (
+                      <NotificationItem
+                        key={notification.id}
+                        notification={notification}
+                        onClick={() => handleNotificationClick(notification)}
+                      />
+                    ))
+                  )
                 )}
               </div>
 
               {notifications.length > 0 && (
-                <div className="px-4 py-3 border-t border-gray-100">
+                <div className="px-4 py-3 border-t border-gray-100 shrink-0">
                   <button
                     onClick={() => {
                       setIsNotificationsOpen(false);
