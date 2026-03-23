@@ -48,7 +48,7 @@ interface Notification {
 }
 
 // Sound notification types
-type SoundType = 'new_user' | 'new_request' | 'freelancer_reviewed' | 'product_update' | 'user_contact' | 'default';
+type SoundType = 'user' | 'request' | 'team' | 'message' | 'review' | 'product_update' | 'order' | 'default';
 
 // Different sounds for different notification types
 const playNotificationSound = (type?: string) => {
@@ -62,11 +62,13 @@ const playNotificationSound = (type?: string) => {
     
     // Different frequencies for different notification types
     const soundConfig: Record<SoundType, { frequency: number; duration: number }> = {
-      new_user: { frequency: 880, duration: 0.3 },      // High pitch - new user signup
-      new_request: { frequency: 660, duration: 0.25 },   // Medium-high - new request
-      freelancer_reviewed: { frequency: 720, duration: 0.2 }, // Medium - review
-      product_update: { frequency: 600, duration: 0.2 },  // Medium-low - product
-      user_contact: { frequency: 540, duration: 0.25 },  // Low-medium - contact
+      user: { frequency: 880, duration: 0.3 },          // High pitch - new user signup
+      request: { frequency: 660, duration: 0.25 },      // Medium-high - new request
+      team: { frequency: 720, duration: 0.2 },          // Medium - team activity
+      message: { frequency: 600, duration: 0.25 },      // Medium-low - new message
+      review: { frequency: 780, duration: 0.2 },         // Medium-high - new review
+      product_update: { frequency: 540, duration: 0.2 }, // Low-medium - product update
+      order: { frequency: 700, duration: 0.3 },         // Medium - order completed
       default: { frequency: 800, duration: 0.2 },        // Default sound
     };
     

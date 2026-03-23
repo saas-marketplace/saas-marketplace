@@ -119,6 +119,29 @@ export default function ProductForm({ onSuccess }: { onSuccess: () => void }) {
         setError(insertError.message);
         console.error('Supabase error:', insertError);
       } else {
+        // Create notifications for super admins about new product
+        try {
+          const { data: superAdmins } = await supabase
+            .from('users')
+            .select('id')
+            .eq('role', 'super_admin');
+          
+          if (superAdmins && superAdmins.length > 0) {
+            const notifications = superAdmins.map((admin: { id: string }) => ({
+              user_id: admin.id,
+              type: 'product_update',
+              title: 'New Product Added',
+              message: `Product "${data.title}" has been added`,
+              link: '/dashboard/products',
+              is_read: false,
+            }));
+            
+            await supabase.from('notifications').insert(notifications);
+          }
+        } catch (notifError) {
+          console.error('Error creating notification:', notifError);
+        }
+        
         onSuccess();
       }
     } catch (err) {

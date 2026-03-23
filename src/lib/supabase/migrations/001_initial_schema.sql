@@ -43,7 +43,6 @@ CREATE TABLE public.blogs (
 );
 CREATE TABLE public.cart (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  -- Optional FK to public.users(id): links freelancer to platform user account if registered, NULL for external/standalone freelancers (supports independent existence)
   user_id uuid,
   product_id uuid,
   quantity integer DEFAULT 1,
@@ -91,7 +90,6 @@ CREATE TABLE public.domains (
 );
 CREATE TABLE public.freelancers (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  user_id uuid,
   domain_id uuid,
   display_name text NOT NULL,
   title text,
@@ -112,7 +110,6 @@ CREATE TABLE public.freelancers (
   experience_level text,
   description text,
   CONSTRAINT freelancers_pkey PRIMARY KEY (id),
-  CONSTRAINT freelancers_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT freelancers_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES public.domains(id)
 );
 CREATE TABLE public.notifications (
