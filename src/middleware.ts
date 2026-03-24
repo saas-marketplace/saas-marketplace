@@ -30,8 +30,17 @@ export async function middleware(request: NextRequest) {
   const redirectTo = (path: string) => {
     const res = NextResponse.redirect(new URL(path, request.url));
     response.cookies.getAll().forEach((c) => res.cookies.set(c));
+    // Ensure no caching of auth-protected pages
+    res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.headers.set("Pragma", "no-cache");
+    res.headers.set("Expires", "0");
     return res;
   };
+
+  // Add cache control headers to prevent caching of auth checks
+  response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  response.headers.set("Pragma", "no-cache");
+  response.headers.set("Expires", "0");
 
   // Public routes that don't require authentication
   const publicRoutes = [
@@ -53,7 +62,10 @@ export async function middleware(request: NextRequest) {
     "/community", 
     "/testimonials", 
     "/freelancers", 
-    "/marketplace"
+    "/marketplace",
+    "/banned",
+    "/access-removed",
+    "/access-restored"
   ];
 
   const isPublicRoute = publicRoutes.some(
@@ -95,40 +107,35 @@ export async function middleware(request: NextRequest) {
   // NEVER redirect suspended users - let them access dashboard and show UI message
   
   // Get user's role and ban status from users table
+  // IMPORTANT: is_banned is the ONLY source of truth for blocking
+  // IP-based blocking is NOT used - it's unreliable (shared IPs, VPNs, etc.)
   let userRole = "user";
   let isBanned = false;
-  let bannedIp: string | null = null;
 
   try {
     const { data } = await supabase
       .from("users")
-      .select("role, is_banned, banned_ip")
+      .select("role, is_banned")
       .eq("id", user.id)
       .maybeSingle();
     
     if (data) {
       userRole = data.role || "user";
       isBanned = data.is_banned || false;
-      bannedIp = data.banned_ip || null;
     }
   } catch (error) {
     // Continue with default role
   }
 
   // ── CHECK IF USER IS BANNED ──
-  // Get client IP
-  const clientIp = request.headers.get("x-forwarded-for") || 
-                    request.headers.get("x-real-ip") || 
-                    "unknown";
-
-  // Block if banned OR if IP matches banned IP
-  if (isBanned || (bannedIp && bannedIp !== "unknown" && bannedIp === clientIp)) {
+  // PRIMARY: Check is_banned flag (user_id based)
+  if (isBanned) {
     // Force logout by clearing auth cookies
     response.cookies.set("sb-access-token", "", { maxAge: -1, path: "/" });
     response.cookies.set("sb-refresh-token", "", { maxAge: -1, path: "/" });
     
-    // Redirect to access removed page
-    return redirectTo("/access-removed");
+    // Redirect to banned page
+    return redirectTo("/banned");
   }
 
   // Check team_members for role_label override

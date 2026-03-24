@@ -44,8 +44,7 @@ export async function GET(request: NextRequest) {
         full_name,
         role,
         created_at,
-        is_banned,
-        banned_ip
+        is_banned
       `)
       .eq("role", "user")
       .order("created_at", { ascending: false })
@@ -134,7 +133,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { user_id, action, banned_ip } = body;
+    const { user_id, action } = body;
 
     if (!user_id || !action) {
       return NextResponse.json(
@@ -164,15 +163,13 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Get client IP for banning
-    const clientIp = banned_ip || "unknown";
-
+    // Ban/unban user - only use is_banned flag, never IP-based blocking
+    // IP-based blocking is unreliable (shared IPs, VPNs, mobile data)
     if (action === "ban") {
       const { error: banError } = await supabase
         .from("users")
         .update({
           is_banned: true,
-          banned_ip: clientIp,
           updated_at: new Date().toISOString()
         })
         .eq("id", user_id);
@@ -192,7 +189,6 @@ export async function PUT(request: NextRequest) {
         .from("users")
         .update({
           is_banned: false,
-          banned_ip: null,
           updated_at: new Date().toISOString()
         })
         .eq("id", user_id);

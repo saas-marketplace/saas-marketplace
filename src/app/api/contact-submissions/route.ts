@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
       // Not authenticated - continue as guest
     }
 
-    // Insert contact submission
+    // Insert contact submission (no user_id - table doesn't have this column)
     const { data: submission, error } = await supabase
       .from("contact_submissions")
       .insert({

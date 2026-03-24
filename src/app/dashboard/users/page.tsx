@@ -31,7 +31,6 @@ interface User {
   role: string;
   created_at: string;
   is_banned: boolean;
-  banned_ip: string | null;
 }
 
 export default function UsersManagementPage() {
@@ -104,27 +103,16 @@ export default function UsersManagementPage() {
     setSearchTimeout(timeout);
   };
 
-  // Handle ban/unban
+  // Handle ban/unban - only use is_banned flag, never IP-based
   const handleBanUser = async (userId: string, action: "ban" | "unban") => {
     setBanning(userId);
     try {
-      // Get client IP
-      let clientIp = "unknown";
-      try {
-        const ipResponse = await fetch("https://api.ipify.org?format=json");
-        const ipData = await ipResponse.json();
-        clientIp = ipData.ip;
-      } catch (e) {
-        console.log("Could not get IP:", e);
-      }
-
       const response = await fetch("/api/users", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: userId,
-          action,
-          banned_ip: clientIp
+          action
         })
       });
 
