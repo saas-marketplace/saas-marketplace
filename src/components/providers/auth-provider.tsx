@@ -13,6 +13,19 @@ export function setPasswordChanging(value: boolean) {
   isPasswordChanging = value;
 }
 
+// Shared lock mechanism to prevent concurrent auth requests causing "Lock broken" errors
+let _authLock = false;
+
+export function acquireAuthLock(): boolean {
+  if (_authLock) return false;
+  _authLock = true;
+  return true;
+}
+
+export function releaseAuthLock() {
+  _authLock = false;
+}
+
 // Types
 export type UserRole = "user" | "admin" | "super_admin";
 
@@ -164,45 +177,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initAuth();
   }, [initialized, fetchUserData]);
 
-  // Listen for auth state changes
+  // Listen for auth state changes (excluding INITIAL_SESSION as it's handled above)
   useEffect(() => {
+    let isProcessing = false;
+    
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: Session | null) => {
       console.log('[AuthProvider] Auth state changed:', event);
 
-            // Ignore noisy events that break flows
-      if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+      // Ignore INITIAL_SESSION - it's already handled in the initialization effect above
+      // Ignore noisy events that break flows
+      if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') {
         return;
       }
 
-      if (event === 'SIGNED_OUT') {
-        setSession(null);
-        setUser(null);
-        setLoading(false);
+      // Prevent concurrent processing
+      if (isProcessing) {
+        console.log('[AuthProvider] Already processing, skipping event:', event);
         return;
       }
+      
+      isProcessing = true;
 
-      if (event === 'SIGNED_IN' && session) {
-        // Avoid duplicate fetch
-        if (user?.id === session.user.id) return;
+      try {
+        if (event === 'SIGNED_OUT') {
+          setSession(null);
+          setUser(null);
+          setLoading(false);
+          return;
+        }
 
-        setSession(session);
-        const userData = await fetchUserData(session);
-        setUser(userData);
-        return;
-      }
+        if (event === 'SIGNED_IN' && session) {
+          // Avoid duplicate fetch
+          if (user?.id === session.user.id) return;
 
-      if (event === 'INITIAL_SESSION' && session) {
-        setSession(session);
-        const userData = await fetchUserData(session);
-        setUser(userData);
-        setLoading(false);
+          setSession(session);
+          const userData = await fetchUserData(session);
+          setUser(userData);
+          return;
+        }
+      } finally {
+        isProcessing = false;
+        releaseAuthLock();
       }
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [fetchUserData]);
+  }, [fetchUserData, user?.id]);
 
   // Sign out function
   const signOut = useCallback(async () => {

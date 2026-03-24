@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { 
   Database, 
@@ -15,7 +15,9 @@ import {
   Eye,
   Calendar,
   User,
-  Activity
+  Activity,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -26,23 +28,92 @@ interface AuditLogEntry {
   user_email: string;
   section: string;
   details: string;
+  metadata?: any;
   created_at: string;
 }
+
+const PAGE_SIZE = 15;
 
 export default function UtilitiesSettingsPage() {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
+  const [logsLoading, setLogsLoading] = useState(true);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [activeTab, setActiveTab] = useState<'export' | 'import' | 'logs'>('export');
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [filteredLogs, setFilteredLogs] = useState<AuditLogEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterAction, setFilterAction] = useState<string>('all');
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalLogs, setTotalLogs] = useState(0);
+  
+  // Debounced search
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Get unique actions for filter dropdown
+  const [uniqueActions, setUniqueActions] = useState<string[]>([]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   useEffect(() => {
     checkAdminAndFetch();
   }, []);
+
+  // Subscribe to real-time updates
+  useEffect(() => {
+    if (activeTab !== 'logs' || !isSuperAdmin) return;
+
+    const channel = supabase
+      .channel('audit-logs-realtime')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'audit_logs'
+      }, (payload: any) => {
+        console.log('[AuditLogs] New log inserted:', payload);
+        // Fetch the new log with user data
+        fetchAuditLogs();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeTab, isSuperAdmin]);
+
+  // Filter logs when search or action filter changes
+  useEffect(() => {
+    let filtered = [...auditLogs];
+    
+    // Apply search filter
+    if (debouncedSearch) {
+      const search = debouncedSearch.toLowerCase();
+      filtered = filtered.filter(log => 
+        log.action.toLowerCase().includes(search) ||
+        log.user_email.toLowerCase().includes(search) ||
+        log.section.toLowerCase().includes(search) ||
+        (log.details && log.details.toLowerCase().includes(search))
+      );
+    }
+    
+    // Apply action filter
+    if (filterAction !== 'all') {
+      filtered = filtered.filter(log => log.action === filterAction);
+    }
+    
+    setFilteredLogs(filtered);
+    setTotalLogs(filtered.length);
+    setCurrentPage(1); // Reset to first page on filter change
+  }, [auditLogs, debouncedSearch, filterAction]);
 
   const checkAdminAndFetch = async () => {
     try {
@@ -75,35 +146,56 @@ export default function UtilitiesSettingsPage() {
   };
 
   const fetchAuditLogs = async () => {
+    setLogsLoading(true);
     try {
-      // Fetch from audit_logs table
+      // Fetch from audit_logs table with user join
       const { data: logs, error } = await supabase
         .from('audit_logs')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(100);
+        .limit(200); // Limit for performance
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching logs:', error);
+        setAuditLogs([]);
+        setFilteredLogs([]);
+        setLogsLoading(false);
+        return;
+      }
 
-      // Get user emails for the logs
-      const userIds = [...new Set(logs?.map((log: any) => log.user_id) || [])];
-      const { data: users } = await supabase
-        .from('users')
-        .select('id, email')
-        .in('id', userIds);
+      // Get unique user IDs
+      const userIds = [...new Set(logs?.map((log: any) => log.user_id).filter(Boolean) || [])];
+      
+      // Fetch user emails
+      let emailMap = new Map<string, string>();
+      if (userIds.length > 0) {
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, email')
+          .in('id', userIds);
+        
+        emailMap = new Map<string, string>(users?.map((u: any) => [u.id, u.email]) || []);
+      }
 
-      const emailMap = new Map<string, string>(users?.map((u: any) => [u.id, u.email]) || []);
-
-      const mappedLogs = (logs || []).map((log: any) => ({
+      // Map logs with user emails
+      const mappedLogs: AuditLogEntry[] = (logs || []).map((log: any) => ({
         ...log,
         user_email: emailMap.get(log.user_id) || 'Unknown'
       }));
 
+      // Get unique actions for filter
+      const actions = [...new Set(mappedLogs.map(log => log.action).filter(Boolean))];
+      setUniqueActions(actions.sort());
+
       setAuditLogs(mappedLogs);
+      setFilteredLogs(mappedLogs);
+      setTotalLogs(mappedLogs.length);
     } catch (error) {
       console.error('Error fetching logs:', error);
-      // Fallback to empty array if table doesn't exist
       setAuditLogs([]);
+      setFilteredLogs([]);
+    } finally {
+      setLogsLoading(false);
     }
   };
 
@@ -233,13 +325,7 @@ export default function UtilitiesSettingsPage() {
     return csvRows.join('\n');
   };
 
-  const filteredLogs = auditLogs.filter(log => {
-    const matchesSearch = log.details.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.user_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.section.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filterAction === 'all' || log.action === filterAction;
-    return matchesSearch && matchesFilter;
-  });
+  // Computed filtered logs removed - now handled by useEffect
 
   const getActionColor = (action: string) => {
     switch (action) {
@@ -425,7 +511,7 @@ export default function UtilitiesSettingsPage() {
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-semibold">Audit Logs</h2>
-            <span className="text-sm text-gray-500">{filteredLogs.length} entries</span>
+            <span className="text-sm text-gray-500">{totalLogs} entries</span>
           </div>
           
           {/* Filters */}
@@ -446,57 +532,113 @@ export default function UtilitiesSettingsPage() {
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500"
             >
               <option value="all">All Actions</option>
-              <option value="CREATE">Create</option>
-              <option value="UPDATE">Update</option>
-              <option value="DELETE">Delete</option>
+              {uniqueActions.map(action => (
+                <option key={action} value={action}>{action}</option>
+              ))}
             </select>
           </div>
 
-          {/* Logs Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Action</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">User</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Section</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Details</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${getActionColor(log.action)}`}>
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm">{log.user_email}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm capitalize">{log.section}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-gray-600">{log.details}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2 text-sm text-gray-500">
-                        <Calendar className="w-4 h-4" />
-                        {formatDate(log.created_at)}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {/* Loading State */}
+          {logsLoading && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
+            </div>
+          )}
 
-          {filteredLogs.length === 0 && (
+          {/* Logs Table */}
+          {!logsLoading && filteredLogs.length > 0 && (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Action</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">User</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Section</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Details</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredLogs
+                      .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+                      .map((log) => (
+                      <tr key={log.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${getActionColor(log.action)}`}>
+                            {log.action}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <User className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm">{log.user_email}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm capitalize">{log.section}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm text-gray-600">{log.details || '-'}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2 text-sm text-gray-500">
+                            <Calendar className="w-4 h-4" />
+                            {formatDate(log.created_at)}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200">
+                <div className="text-sm text-gray-500">
+                  Showing {((currentPage - 1) * PAGE_SIZE) + 1} to {Math.min(currentPage * PAGE_SIZE, totalLogs)} of {totalLogs} entries
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="flex items-center gap-1 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Previous
+                  </button>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.ceil(totalLogs / PAGE_SIZE) }, (_, i) => i + 1)
+                      .slice(Math.max(0, currentPage - 3), Math.min(Math.ceil(totalLogs / PAGE_SIZE), currentPage + 2))
+                      .map(page => (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`w-8 h-8 text-sm rounded-lg ${
+                          currentPage === page
+                            ? 'bg-cyan-500 text-white'
+                            : 'border border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(Math.ceil(totalLogs / PAGE_SIZE), p + 1))}
+                    disabled={currentPage >= Math.ceil(totalLogs / PAGE_SIZE)}
+                    className="flex items-center gap-1 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Empty State */}
+          {!logsLoading && filteredLogs.length === 0 && (
             <div className="text-center py-12">
               <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500">No audit logs found</p>

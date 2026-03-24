@@ -33,12 +33,28 @@ export function UserStatusProvider({ children }: { children: ReactNode }) {
 
   // Fetch all user statuses once
   const fetchAllUserStatuses = useCallback(async () => {
+    // First check if user is authenticated
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError || !session) {
+      console.log('[UserStatus] No session, skipping status fetch');
+      setIsLoading(false);
+      return;
+    }
+    
     try {
       const { data, error } = await supabase
         .from('user_status')
         .select('user_id, is_online, last_seen');
 
-      if (error) throw error;
+      if (error) {
+        // Ignore AbortError from Supabase lock conflicts
+        if (error.name === 'AbortError') {
+          console.log('[UserStatus] AbortError - skipping');
+          return;
+        }
+        throw error;
+      }
 
       const statuses: Record<string, UserStatus> = {};
       data?.forEach((status: any) => {
@@ -51,6 +67,11 @@ export function UserStatusProvider({ children }: { children: ReactNode }) {
       setUserStatuses(statuses);
       setIsLoading(false);
     } catch (error) {
+      // Ignore AbortError
+      if (error && typeof error === 'object' && 'name' in error && (error as any).name === 'AbortError') {
+        console.log('[UserStatus] AbortError - ignoring');
+        return;
+      }
       console.error('[UserStatus] Error fetching statuses:', error);
       setIsLoading(false);
     }

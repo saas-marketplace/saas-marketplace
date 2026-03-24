@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { safeGetSession } from "@/lib/auth-lock-manager";
 import { AlertTriangle, Mail, ArrowLeft, Loader2, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -16,12 +17,8 @@ export default function BannedPage() {
     // Check if user is actually still banned (handles cached sessions after unban)
     const checkBanStatus = async () => {
       try {
-        // First, refresh the session to get fresh user data
-        const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
-        
-        if (refreshError) {
-          console.error("Error refreshing session:", refreshError);
-        }
+        // Use safeGetSession to avoid lock conflicts
+        const { session } = await safeGetSession();
         
         if (!session?.user) {
           // No session, user is logged out - they're not banned, just logged out
@@ -101,10 +98,6 @@ export default function BannedPage() {
     );
   }
 
-  const handleGoHome = () => {
-    router.push("/");
-  };
-
   const handleContactSupport = () => {
     window.location.href = "mailto:support@militcompany.com?subject=Account Ban Appeal";
   };
@@ -137,15 +130,6 @@ export default function BannedPage() {
           >
             <Mail className="w-4 h-4 mr-2" />
             Contact Support
-          </Button>
-          
-          <Button
-            variant="outline"
-            onClick={handleGoHome}
-            className="w-full h-12"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Return to Home
           </Button>
         </div>
 

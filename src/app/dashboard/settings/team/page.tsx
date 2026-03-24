@@ -36,6 +36,7 @@ interface TeamMember {
   email: string;
   role_label: string;
   permissions: Permissions;
+  is_active: boolean;
   status: string;
   avatar_url: string | null;
   created_at: string;
@@ -86,7 +87,10 @@ export default function TeamSettingsPage() {
 
       const mappedMembers = (members || []).map((member: any) => ({
         ...member,
-        email: emailMap.get(member.user_id) || ''
+        email: emailMap.get(member.user_id) || '',
+        // Map is_active boolean to status string for the UI
+        // Explicitly check for true - anything else (false/null/undefined) is suspended
+        status: member.is_active === true ? 'active' : 'suspended'
       }));
 
       setTeamMembers(mappedMembers);
@@ -139,7 +143,8 @@ export default function TeamSettingsPage() {
           display_name: inviteEmail.split('@')[0],
           role_label: inviteRole === 'admin' ? 'Admin' : 'Team Member',
           permissions: invitePermissions,
-          status: 'active'
+          is_active: true,
+          needs_access_restored: true  // Flag triggers access-restored page for the user
         });
 
         setMessage({ type: 'success', text: 'Team member added successfully' });
@@ -164,9 +169,16 @@ export default function TeamSettingsPage() {
 
   const handleUpdateStatus = async (memberId: string, newStatus: 'active' | 'suspended') => {
     try {
+      // Update is_active boolean in the database (maps to status in UI)
+      // When reactivating, also set needs_access_restored so user sees /access-restored page
+      const isActive = newStatus === 'active';
+      const updateData = isActive 
+        ? { is_active: true, needs_access_restored: true }  // reactivate → flag triggers access-restored
+        : { is_active: false };  // suspend
+
       await supabase
         .from('team_members')
-        .update({ status: newStatus })
+        .update(updateData)
         .eq('id', memberId);
 
       setTeamMembers(prev => 

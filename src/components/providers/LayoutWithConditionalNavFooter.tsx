@@ -10,10 +10,10 @@ export default function LayoutWithConditionalNavFooter({ children }: { children:
   
   // Routes that should NOT show navbar/footer (full-screen standalone pages)
   const hideLayoutRoutes = [
-    "/verify-access",
     "/access-restored",
     "/access-removed",
-    "/dashboard"
+    "/dashboard",
+    "/banned"
   ];
   const isStandalonePage = hideLayoutRoutes.some(route => pathname === route);
   

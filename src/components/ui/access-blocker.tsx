@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { safeGetSession } from "@/lib/auth-lock-manager";
 
 // AccessBlocker wraps children and handles access control on the client side
 // Checks for banned status and redirects immediately
@@ -19,8 +20,8 @@ export function AccessBlocker({ children }: { children: React.ReactNode }) {
 
     const checkBanStatus = async () => {
       try {
-        // Get current session
-        const { data: { session } } = await supabase.auth.getSession();
+        // Use safeGetSession to avoid lock conflicts
+        const { session } = await safeGetSession();
         
         if (!session?.user) {
           return; // Not logged in, let other components handle auth

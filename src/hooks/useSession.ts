@@ -80,6 +80,21 @@ export function useSession() {
       const { data, error } = await supabase.auth.getSession();
       const session = data?.session;
       
+      // No session yet - wait and retry
+      if (!session) {
+        console.log('[useSession] No session yet, waiting...');
+        isFetchingRef.current = false;
+        sessionRef.current = false;
+        // Retry after a short delay
+        setTimeout(() => {
+          if (mountedRef.current) {
+            sessionRef.current = false;
+            fetchPermissions();
+          }
+        }, 500);
+        return;
+      }
+      
       if (error) {
         // Handle AbortError gracefully
         if (error.name === 'AbortError') {

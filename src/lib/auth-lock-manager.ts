@@ -1,11 +1,8 @@
 import { createClient } from '@/lib/supabase/client';
 import type { Session, User } from '@supabase/supabase-js';
 
-// Simple session/user getters without complex locking
-// The complex locking was causing race conditions with password changes
-
 /**
- * Get current session - simple wrapper
+ * Simple session getter - lets Supabase handle its own locking
  */
 export async function safeGetSession(): Promise<{ session: Session | null; error: Error | null }> {
   const supabase = createClient();
@@ -19,7 +16,7 @@ export async function safeGetSession(): Promise<{ session: Session | null; error
 }
 
 /**
- * Get current user - simple wrapper
+ * Simple user getter - lets Supabase handle its own locking
  */
 export async function safeGetUser(): Promise<{ user: User | null; error: Error | null }> {
   const supabase = createClient();
@@ -33,7 +30,7 @@ export async function safeGetUser(): Promise<{ user: User | null; error: Error |
 }
 
 /**
- * Refresh session - simple wrapper
+ * Simple refresh - lets Supabase handle its own locking
  */
 export async function safeRefreshSession(): Promise<{ session: Session | null; user: User | null; error: Error | null }> {
   const supabase = createClient();
@@ -47,21 +44,17 @@ export async function safeRefreshSession(): Promise<{ session: Session | null; u
 }
 
 /**
- * Clear auth cache - no-op since we don't cache anymore
+ * Clear auth cache - no-op
  */
 export function clearAuthCache() {
-  // No-op - keeping for API compatibility
-  console.log('[clearAuthCache] called (no-op)');
+  // No-op
 }
 
-// Re-export isPasswordChanging from auth-provider for compatibility
-// This is now handled in AuthProvider, so this is a stub for backward compatibility
+// For backward compatibility
 export function isPasswordChangeInProgress(): boolean {
   return false;
 }
 
-// Simple authLockManager for backward compatibility
-// The complex locking was causing MORE issues than solving
 export const authLockManager = {
   getCachedUser: (): User | null => null,
   getCachedSession: (): Session | null => null,

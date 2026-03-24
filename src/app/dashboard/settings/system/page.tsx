@@ -13,7 +13,9 @@ import {
   Palette,
   Zap,
   Server,
-  AlertTriangle
+  AlertTriangle,
+  ExternalLink,
+  Key
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -28,14 +30,22 @@ interface SystemSettings {
 }
 
 const defaultSettings: SystemSettings = {
-  site_name: 'Milit Company',
+  site_name: 'Freelanseha',
   site_description: 'Your trusted marketplace for freelancer services',
-  support_email: 'support@militcompany.com',
+  support_email: 'support@freelanseha.com',
   maintenance_mode: false,
   allow_registrations: true,
   require_email_verification: false,
   enable_beta_features: false,
 };
+
+interface Integration {
+  id: string;
+  name: string;
+  description: string;
+  connected: boolean;
+  hasApiKey: boolean;
+}
 
 export default function SystemSettingsPage() {
   const supabase = createClient();
@@ -44,6 +54,18 @@ export default function SystemSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<SystemSettings>(defaultSettings);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [integrations, setIntegrations] = useState<Integration[]>([
+    { id: 'supabase', name: 'Supabase', description: 'Database & Authentication', connected: true, hasApiKey: false },
+    { id: 'stripe', name: 'Stripe', description: 'Payment Processing', connected: true, hasApiKey: true },
+    { id: 'sendgrid', name: 'SendGrid', description: 'Email Service', connected: false, hasApiKey: false },
+    { id: 's3', name: 'AWS S3', description: 'File Storage', connected: false, hasApiKey: false },
+    { id: 'analytics', name: 'Analytics', description: 'Usage Analytics', connected: false, hasApiKey: false },
+  ]);
+
+  // Update browser tab title when site_name changes
+  useEffect(() => {
+    document.title = settings.site_name || 'Freelanseha';
+  }, [settings.site_name]);
 
   useEffect(() => {
     checkAdminAndFetch();
@@ -106,13 +128,20 @@ export default function SystemSettingsPage() {
 
       setMessage({ type: 'success', text: 'System settings saved successfully' });
 
-
     } catch (error) {
       console.error('Error saving settings:', error);
       setMessage({ type: 'error', text: 'Failed to save settings' });
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleIntegrationToggle = (id: string) => {
+    setIntegrations(prev => prev.map(integration => 
+      integration.id === id 
+        ? { ...integration, connected: !integration.connected }
+        : integration
+    ));
   };
 
   if (loading) {
@@ -159,7 +188,7 @@ export default function SystemSettingsPage() {
       </div>
 
       {/* Warning */}
-      <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+      <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg shadow-sm">
         <p className="text-sm text-amber-800">
           <AlertTriangle className="w-4 h-4 inline mr-1" />
           These settings affect the entire platform. Please be careful when making changes.
@@ -177,9 +206,9 @@ export default function SystemSettingsPage() {
 
       <div className="space-y-6">
         {/* General Settings */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
+        <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Globe className="w-5 h-5" />
+            <Globe className="w-5 h-5 text-cyan-500" />
             General Settings
           </h2>
           
@@ -192,7 +221,7 @@ export default function SystemSettingsPage() {
                 type="text"
                 value={settings.site_name}
                 onChange={(e) => setSettings(prev => ({ ...prev, site_name: e.target.value }))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all"
               />
             </div>
 
@@ -204,7 +233,7 @@ export default function SystemSettingsPage() {
                 value={settings.site_description}
                 onChange={(e) => setSettings(prev => ({ ...prev, site_description: e.target.value }))}
                 rows={3}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all"
               />
             </div>
 
@@ -216,16 +245,16 @@ export default function SystemSettingsPage() {
                 type="email"
                 value={settings.support_email}
                 onChange={(e) => setSettings(prev => ({ ...prev, support_email: e.target.value }))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all"
               />
             </div>
           </div>
         </div>
 
         {/* User Management */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
+        <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Database className="w-5 h-5" />
+            <Database className="w-5 h-5 text-cyan-500" />
             User Management
           </h2>
           
@@ -235,6 +264,7 @@ export default function SystemSettingsPage() {
               description="Let new users create accounts"
               enabled={settings.allow_registrations}
               onToggle={() => setSettings(prev => ({ ...prev, allow_registrations: !prev.allow_registrations }))}
+              disabled={saving}
             />
             
             <ToggleSetting
@@ -242,14 +272,15 @@ export default function SystemSettingsPage() {
               description="Users must verify email before accessing"
               enabled={settings.require_email_verification}
               onToggle={() => setSettings(prev => ({ ...prev, require_email_verification: !prev.require_email_verification }))}
+              disabled={saving}
             />
           </div>
         </div>
 
         {/* System Options */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
+        <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Server className="w-5 h-5" />
+            <Server className="w-5 h-5 text-cyan-500" />
             System Options
           </h2>
           
@@ -259,6 +290,7 @@ export default function SystemSettingsPage() {
               description="Put the site in maintenance mode"
               enabled={settings.maintenance_mode}
               onToggle={() => setSettings(prev => ({ ...prev, maintenance_mode: !prev.maintenance_mode }))}
+              disabled={saving}
             />
             
             <ToggleSetting
@@ -266,14 +298,15 @@ export default function SystemSettingsPage() {
               description="Allow access to experimental features"
               enabled={settings.enable_beta_features}
               onToggle={() => setSettings(prev => ({ ...prev, enable_beta_features: !prev.enable_beta_features }))}
+              disabled={saving}
             />
           </div>
         </div>
 
         {/* Branding */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
+        <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Palette className="w-5 h-5" />
+            <Palette className="w-5 h-5 text-cyan-500" />
             Branding
           </h2>
           
@@ -282,30 +315,59 @@ export default function SystemSettingsPage() {
           </p>
         </div>
 
-        {/* Integrations */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
+        {/* Integrations - Design Only */}
+        <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Zap className="w-5 h-5" />
+            <Zap className="w-5 h-5 text-cyan-500" />
             Integrations
           </h2>
           
           <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div>
-                <p className="font-medium">Supabase</p>
-                <p className="text-sm text-gray-500">Database & Authentication</p>
+            {integrations.map((integration) => (
+              <div key={integration.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center border border-gray-200">
+                    <Zap className="w-5 h-5 text-gray-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">{integration.name}</p>
+                    <p className="text-sm text-gray-500">{integration.description}</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  {integration.connected && integration.hasApiKey && (
+                    <div className="relative">
+                      <Key className="w-4 h-4 text-gray-400" />
+                    </div>
+                  )}
+                  
+                  <span className={`px-3 py-1 text-xs font-medium rounded-full ${
+                    integration.connected 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {integration.connected ? 'Connected' : 'Not connected'}
+                  </span>
+                  
+                  <button
+                    onClick={() => handleIntegrationToggle(integration.id)}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                      integration.connected
+                        ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
+                        : 'bg-cyan-500 text-white hover:bg-cyan-600'
+                    }`}
+                  >
+                    {integration.connected ? 'Disconnect' : 'Connect'}
+                  </button>
+                </div>
               </div>
-              <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Connected</span>
-            </div>
-            
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div>
-                <p className="font-medium">Stripe</p>
-                <p className="text-sm text-gray-500">Payment Processing</p>
-              </div>
-              <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Connected</span>
-            </div>
+            ))}
           </div>
+          
+          <p className="text-xs text-gray-400 mt-4 text-center">
+            Integration settings are for display purposes only. API configuration requires server-side setup.
+          </p>
         </div>
 
         {/* Save Button */}
@@ -313,10 +375,10 @@ export default function SystemSettingsPage() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-6 py-2.5 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-6 py-2.5 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Save System Settings
+            {saving ? 'Saving...' : 'Save System Settings'}
           </button>
         </div>
       </div>
@@ -324,17 +386,19 @@ export default function SystemSettingsPage() {
   );
 }
 
-// Toggle Setting Component
+// Toggle Setting Component - Improved Design
 function ToggleSetting({ 
   title, 
   description, 
   enabled, 
-  onToggle 
+  onToggle,
+  disabled = false
 }: { 
   title: string;
   description: string;
   enabled: boolean;
   onToggle: () => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
@@ -345,13 +409,16 @@ function ToggleSetting({
       
       <button
         onClick={onToggle}
-        className={`relative w-12 h-6 rounded-full transition-colors ${
+        disabled={disabled}
+        className={`relative w-12 h-6 rounded-full transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 ${
           enabled ? 'bg-cyan-500' : 'bg-gray-300'
-        }`}
+        } ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-sm'}`}
       >
-        <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
-          enabled ? 'translate-x-7' : 'translate-x-1'
-        }`} />
+        <span 
+          className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all duration-200 ease-in-out ${
+            enabled ? 'translate-x-7' : 'translate-x-1'
+          }`} 
+        />
       </button>
     </div>
   );

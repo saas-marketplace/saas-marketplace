@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import { useSession } from '@/hooks/useSession';
 import { useAuth } from '@/components/providers/auth-provider';
 import {
   Search,
@@ -257,7 +256,10 @@ const NotificationItem = ({ notification, onClick }: { notification: Notificatio
 
 export default function Topbar() {
   const router = useRouter();
-  const { user, session, isLoading: profileLoading } = useSession();
+  const { user: authUser, loading: authLoading } = useAuth();
+  const user = authUser;
+  const session = null;
+  const profileLoading = authLoading;
   const previousUserRef = useRef(user);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -265,7 +267,7 @@ export default function Topbar() {
   useEffect(() => {
     // Check if we were logged in before and now we're not (sign out occurred)
     if (previousUserRef.current && !user && isLoggingOut) {
-      router.push('/auth/login');
+      window.location.href = '/auth/login';
     }
     // Update the ref for next comparison
     previousUserRef.current = user;
@@ -752,8 +754,8 @@ export default function Topbar() {
   localStorage.removeItem('supabase.auth.token');
   sessionStorage.clear();
 
-  // Use Next.js router for smooth redirect after signOut completes
-  router.push('/auth/login');
+  // Force a hard redirect to ensure clean state
+  window.location.href = '/auth/login';
 };
 
   const handleSearch = (e: React.FormEvent) => {

@@ -102,11 +102,12 @@ export default function LoginPage() {
       const redirectPath = getRedirectPath(status, role, returnUrl);
       
       toast({ title: "Login successful", description: `Welcome back! Redirecting...` });
-      router.push(redirectPath);
-      router.refresh();
+      
+      // Direct redirect - let Supabase handle the auth state naturally
+      window.location.assign(redirectPath);
     } else {
       toast({ title: "Login successful", description: "Welcome back!" });
-      router.push("/dashboard");
+      window.location.assign('/dashboard');
     }
 
     setLoading(false);
