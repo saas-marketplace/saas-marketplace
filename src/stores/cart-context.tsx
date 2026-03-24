@@ -195,7 +195,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event: any, session: any) => {
+      async (event: unknown, session: any) => {
         if (event === "SIGNED_IN" && session?.user) {
           await fetchCart();
         } else if (event === "SIGNED_OUT") {

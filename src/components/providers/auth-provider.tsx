@@ -166,7 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Listen for auth state changes
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: unknown, session: unknown) => {
       console.log('[AuthProvider] Auth state changed:', event);
 
             // Ignore noisy events that break flows
@@ -181,19 +181,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (event === 'SIGNED_IN' && session) {
+      if (event === 'SIGNED_IN' && session && typeof session === 'object' && 'user' in session) {
         // Avoid duplicate fetch
-        if (user?.id === session.user.id) return;
+        if (user?.id === (session as Session).user.id) return;
 
-        setSession(session);
-        const userData = await fetchUserData(session);
+        setSession(session as Session);
+        const userData = await fetchUserData(session as Session);
         setUser(userData);
         return;
       }
 
-      if (event === 'INITIAL_SESSION' && session) {
-        setSession(session);
-        const userData = await fetchUserData(session);
+      if (event === 'INITIAL_SESSION' && session && typeof session === 'object' && 'user' in session) {
+        setSession(session as Session);
+        const userData = await fetchUserData(session as Session);
         setUser(userData);
         setLoading(false);
       }

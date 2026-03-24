@@ -29,41 +29,49 @@ export function SuspendedProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
   const isCheckingRef = useRef(false);
   const fetchedRef = useRef(false);
+  const isSuspendedRef = useRef(false); // Track suspended state to prevent loops
+
+  // Track session ID to detect user changes
+  const lastSessionRef = useRef<string | null>(null);
 
   const checkStatus = useCallback(async () => {
     if (isCheckingRef.current) return;
+    // Don't check if already suspended - avoid unnecessary requests
+    if (isSuspendedRef.current) {
+      setIsLoading(false);
+      return;
+    }
     isCheckingRef.current = true;
     
     try {
-      // Get user directly from supabase
-      const { data, error } = await supabase.auth.getUser();
-      const user = data?.user;
+      // Use getSession which is more reliable
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (error) {
-        // Handle AbortError gracefully
-        if (error.name === 'AbortError') {
-          console.warn('[SuspendedContext] AbortError during getUser — ignoring');
-          isCheckingRef.current = false;
-          setIsLoading(false);
-          return;
-        }
-        throw error;
-      }
-      
-      if (!user) {
+      if (!session?.user) {
         setIsLoading(false);
         return;
       }
 
+      const userId = session.user.id;
+
+      // Reset suspension state if user changed
+      if (lastSessionRef.current !== userId) {
+        lastSessionRef.current = userId;
+        isSuspendedRef.current = false;
+        setIsSuspended(false);
+      }
+      
       // Check team_members for suspension status
       const { data: teamMember } = await supabase
         .from('team_members')
         .select('is_active, needs_access_restored')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .maybeSingle();
 
       if (teamMember) {
-        setIsSuspended(teamMember.is_active === false);
+        const isSuspended = teamMember.is_active === false;
+        setIsSuspended(isSuspended);
+        isSuspendedRef.current = isSuspended;
         
         if (teamMember.needs_access_restored) {
           setIsRestored(true);
@@ -71,15 +79,16 @@ export function SuspendedProvider({ children }: { children: React.ReactNode }) {
           await supabase
             .from('team_members')
             .update({ needs_access_restored: false })
-            .eq('user_id', user.id);
+            .eq('user_id', userId);
           // Hide after 5s
           setTimeout(() => setIsRestored(false), 5000);
         }
       } else {
         setIsSuspended(false);
+        isSuspendedRef.current = false;
       }
     } catch (error) {
-      console.error('Error checking suspension status:', error);
+      // Silently ignore errors - user is not suspended by default
     } finally {
       isCheckingRef.current = false;
       setIsLoading(false);
@@ -87,13 +96,19 @@ export function SuspendedProvider({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   useEffect(() => {
-    if (!fetchedRef.current) {
-      fetchedRef.current = true;
-      checkStatus(); // Initial check
-    }
+    // Reset on mount
+    fetchedRef.current = false;
+    isSuspendedRef.current = false;
+    lastSessionRef.current = null;
+    checkStatus();
+  }, []); // Run once on mount
 
+  useEffect(() => {
     // Event-driven: auth changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(async () => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event: unknown) => {
+      // Reset on any auth change
+      fetchedRef.current = false;
+      isSuspendedRef.current = false;
       await checkStatus();
     });
 
@@ -120,6 +135,10 @@ export function SuspendedProvider({ children }: { children: React.ReactNode }) {
 export function SuspendedContent({ children }: { children?: React.ReactNode }) {
   const { isSuspended, isRestored, isLoading } = useSuspended();
 
+  // NOTE: Do NOT redirect here - just show the message.
+  // The user stays on the dashboard and sees the suspension message.
+  // Redirects can cause loops when combined with auth state changes.
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -145,10 +164,10 @@ export function SuspendedContent({ children }: { children?: React.ReactNode }) {
       <div className='flex flex-col items-center justify-center h-[400px] bg-white p-8 mx-auto max-w-2xl'>
         <AlertTriangle className='w-16 h-16 text-red-400 mb-4 drop-shadow-lg' />
         <h2 className='text-2xl font-bold text-slate-900 mb-2 text-center'>
-          Access Denied
+          Account Suspended
         </h2>
         <p className='text-lg text-slate-600 mb-6 text-center max-w-md leading-relaxed'>
-          your account is suspended you cant access any section
+          Your account has been suspended by the administrator. Please contact support for more information.
         </p>
       </div>
     );

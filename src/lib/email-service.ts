@@ -103,13 +103,10 @@ function generateHtmlEmail({
                     <p style="margin: 0 0 8px 0; font-size: 12px; color: #065f46; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
                       Our Response
                     </p>
-                    <p style="margin: 0; font-size: 14px; color: #065f46; line-height: 1.6; word-wrap: break-word; white-space: pre-wrap;">
-                      ${safeResponse}
-                    </p>
+                    <p style="margin: 0; font-size: 14px; color: #065f46; line-height: 1.6; word-wrap: break-word; white-space: pre-wrap;">${safeResponse}</p>
                   </td>
                 </tr>
               </table>
-              
               <p style="margin: 0; font-size: 16px; color: #374151; line-height: 1.6;">
                 Best regards,<br>
                 <strong style="color: #111827;">${companyName}</strong>

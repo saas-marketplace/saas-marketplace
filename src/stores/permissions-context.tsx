@@ -197,12 +197,19 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
       return;
     }
     
-    // User exists from AuthProvider - fetch permissions once
-    if (!fetchedRef.current) {
-      fetchedRef.current = true;
-      fetchPermissions(user);
+    // User exists from AuthProvider - fetch permissions
+    // Reset fetchedRef to allow refetch when user changes
+    fetchedRef.current = false;
+    fetchPermissions(user);
+  }, [authUser?.id, authLoading, fetchPermissions]);
+
+  // Watch for auth user ID changes (logout/login) to force refetch
+  useEffect(() => {
+    if (!authLoading && authUser) {
+      fetchedRef.current = false;
+      fetchPermissions(authUser);
     }
-  }, [authUser, authLoading, fetchPermissions]);
+  }, [authUser?.id]);
 
   // Setup realtime subscription for team_members changes
   useEffect(() => {

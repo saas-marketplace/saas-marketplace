@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+
   // output: "export", // Removed for dynamic SSR support with Supabase
   images: {
     remotePatterns: [

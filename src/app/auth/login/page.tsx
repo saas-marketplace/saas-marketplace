@@ -51,14 +51,15 @@ async function getUserStatus(supabase: ReturnType<typeof createClient>, userId: 
   return { role, status };
 }
 
-// Function to determine redirect path based on role only (status handled by dashboard overlay)
+// Function to determine redirect path based on role and status
 function getRedirectPath(status: UserStatus, role: UserRole, returnUrl?: string | null): string {
   // If there's a return URL, respect it (unless login/signup)
   if (returnUrl && returnUrl !== "/auth/login" && returnUrl !== "/auth/signup") {
     return returnUrl;
   }
 
-  // Admin/super_admin always go to dashboard (suspended/removed handled by overlay)
+  // Admin/super_admin always go to dashboard - even if suspended
+  // The dashboard will show the suspension message
   if (role === "admin" || role === "super_admin") {
     return "/dashboard";
   }

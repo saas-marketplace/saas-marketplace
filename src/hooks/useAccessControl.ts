@@ -212,7 +212,7 @@ export function useAccessControl() {
     }
 
     // Event-driven updates
-    const { data: authListener } = supabase.auth.onAuthStateChange(async () => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event: unknown) => {
       await fetchPermissions();
     });
 
