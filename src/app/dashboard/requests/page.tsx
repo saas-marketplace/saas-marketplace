@@ -26,12 +26,13 @@ import {
   Folder,
   ChevronDown,
   Trash2,
-  X
+  
 } from "lucide-react";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { safeGetSession } from "@/lib/auth-lock-manager";
 import { FreelancerMiniCard } from "@/components/ui/freelancer-mini-card";
 import { MessageBubble } from "@/components/requests/MessageBubble";
 
@@ -248,7 +249,8 @@ export default function AdminRequestsPage() {
     if (sessionFetchedRef.current) return;
     sessionFetchedRef.current = true;
 
-    supabase.auth.getSession().then(({ data: { session } }: { data: { session: { access_token: string } | null } }) => {
+    // Use safeGetSession to avoid race conditions with concurrent auth calls
+    safeGetSession().then(({ session }) => {
       if (session) {
         sessionRef.current = { access_token: session.access_token };
       }
@@ -628,7 +630,7 @@ export default function AdminRequestsPage() {
       let token = sessionRef.current?.access_token;
       if (!token) {
         // One-time fallback fetch if the cache isn't warm yet
-        const { data: { session } } = await supabase.auth.getSession();
+        const { session } = await safeGetSession();
         if (!session) {
           console.warn("No active session, cannot fetch messages");
           setMessagesLoading(false);
@@ -830,7 +832,7 @@ export default function AdminRequestsPage() {
     // Use cached token; fall back to a one-time fetch only if cache is cold.
     let token = sessionRef.current?.access_token;
     if (!token) {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { session } = await safeGetSession();
       if (!session) {
         console.warn("No active session, cannot send message");
         return;

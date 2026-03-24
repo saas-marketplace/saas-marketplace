@@ -20,6 +20,7 @@ import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { safeGetSession } from "@/lib/auth-lock-manager";
 import { FreelancerMiniCard } from "@/components/ui/freelancer-mini-card";
 import { MessageBubble } from "@/components/requests/MessageBubble";
 
@@ -491,7 +492,7 @@ export default function UserRequestsPage() {
     const fetchMessages = async () => {
       if (!selectedRequest) return;
       // Verify user is authenticated before fetching
-      const { data: { session } } = await supabase.auth.getSession();
+      const { session } = await safeGetSession();
       if (!session) {
         console.warn("No active session, cannot fetch messages");
         setMessagesLoading(false);
@@ -599,7 +600,7 @@ export default function UserRequestsPage() {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     
     // Get session for authorization header
-    const { data: { session } } = await supabase.auth.getSession();
+    const { session } = await safeGetSession();
     if (!session) {
       console.warn("No active session, cannot send message");
       setSendingMessage(false);

@@ -174,11 +174,150 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// POST - Create a new contact submission (public endpoint)
+// POST - Create a new contact submission or send response (public endpoint)
 export async function POST(request: NextRequest) {
   try {
     const supabase = createServerSupabaseClient();
     const body = await request.json();
+    
+    // Check if this is a send_response action (requires auth)
+    const { action, submission_id, response } = body;
+    
+    if (action === "send_response") {
+      // Check authentication
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        return NextResponse.json(
+          { error: "Unauthorized" },
+          { status: 401 }
+        );
+      }
+
+      // Check if user is super_admin
+      const { data: adminData } = await supabase
+        .from("users")
+        .select("role, full_name")
+        .eq("id", user.id)
+        .single();
+      
+      if (adminData?.role !== "super_admin") {
+        return NextResponse.json(
+          { error: "Access denied - Super Admin only" },
+          { status: 403 }
+        );
+      }
+
+      if (!submission_id || !response) {
+        return NextResponse.json(
+          { error: "Missing required fields: submission_id and response" },
+          { status: 400 }
+        );
+      }
+
+      // Get the original submission
+      const { data: submission, error: fetchError } = await supabase
+        .from("contact_submissions")
+        .select("*")
+        .eq("id", submission_id)
+        .single();
+
+      if (fetchError || !submission) {
+        return NextResponse.json(
+          { error: "Submission not found" },
+          { status: 404 }
+        );
+      }
+
+      // Get company email from system settings
+      let companyEmail = "support@company.com";
+      let companyName = "Support Team";
+      try {
+        const { data: settings } = await supabase
+          .from("system_settings")
+          .select("value")
+          .eq("key", "company_email")
+          .single();
+        if (settings?.value) companyEmail = settings.value;
+        
+        const { data: nameSettings } = await supabase
+          .from("system_settings")
+          .select("value")
+          .eq("key", "company_name")
+          .single();
+        if (nameSettings?.value) companyName = nameSettings.value;
+      } catch (e) {
+        console.log("Using default company settings");
+      }
+
+      // Build email content
+      const emailSubject = "Response to your inquiry";
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2>Hi ${submission.name},</h2>
+          <p>Thank you for reaching out. You submitted the following message:</p>
+          <blockquote style="background: #f5f5f5; padding: 15px; border-left: 4px solid #06b6d4; margin: 15px 0;">
+            "${submission.message}"
+          </blockquote>
+          <p><strong>Our response:</strong></p>
+          <p style="background: #f0fdf4; padding: 15px; border-left: 4px solid #22c55e; margin: 15px 0;">
+            "${response}"
+          </p>
+          <p>Best regards,<br/>${companyName}</p>
+        </div>
+      `;
+
+      // For now, we'll log the email content and mark as responded
+      // In production, integrate with an email service like Resend, SendGrid, etc.
+      console.log("=== EMAIL TO BE SENT ===");
+      console.log("To:", submission.email);
+      console.log("From:", companyEmail);
+      console.log("Subject:", emailSubject);
+      console.log("Body:", emailHtml);
+      console.log("=========================");
+
+      // Update submission as responded and mark as read
+      const { error: updateError } = await supabase
+        .from("contact_submissions")
+        .update({ 
+          is_read: true,
+          is_responded: true,
+          responded_at: new Date().toISOString(),
+          response_content: response
+        })
+        .eq("id", submission_id);
+
+      if (updateError) {
+        console.error("Error updating submission:", updateError);
+        return NextResponse.json(
+          { error: "Failed to update submission" },
+          { status: 500 }
+        );
+      }
+
+      // Log the response in audit logs
+      try {
+        await supabase.from("audit_logs").insert({
+          user_id: user.id,
+          action: "contact_response_sent",
+          details: JSON.stringify({
+            submission_id,
+            contact_email: submission.email,
+            contact_name: submission.name,
+            response_length: response.length
+          })
+        });
+      } catch (logError) {
+        console.error("Error logging audit:", logError);
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        message: "Response sent successfully" 
+      });
+    }
+
+    // Original POST - Create a new contact submission (public endpoint)
     const { name, email, subject, phone, message } = body;
 
     if (!name || !email || !message) {

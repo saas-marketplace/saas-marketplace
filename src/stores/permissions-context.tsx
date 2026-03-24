@@ -1,191 +1,241 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode, useRef, useCallback, useMemo } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
 import { useAuth } from '@/components/providers/auth-provider';
-import { Permissions, PermissionSection, PermissionAction } from '@/types/permissions';
+import { createClient } from '@/lib/supabase/client';
+import type { PermissionSection, PermissionAction, SectionPermissions } from '@/types/permissions';
 
 interface PermissionsContextType {
+  isLoading: boolean;
   isSuperAdmin: boolean;
   isAdmin: boolean;
-  permissions: Permissions;
+  isRemoved: boolean;
+  isSuspended: boolean;
+  permissions: Record<PermissionSection, SectionPermissions>;
   accessibleSections: PermissionSection[];
   hasPermission: (section: PermissionSection, action: PermissionAction) => boolean;
   canAccessSection: (section: PermissionSection) => boolean;
   canCreate: (section: PermissionSection) => boolean;
   canUpdate: (section: PermissionSection) => boolean;
   canDelete: (section: PermissionSection) => boolean;
-  isLoading: boolean;
-  refreshPermissions: () => Promise<void>;
-  // NEW: Direct permission access for efficiency - no function calls needed
-  all: {
-    domains: PermissionAction[];
-    blogs: PermissionAction[];
-    freelancers: PermissionAction[];
-    products: PermissionAction[];
-    requests: PermissionAction[];
-    team: PermissionAction[];
-    dashboard: PermissionAction[];
-  };
+  all: Record<string, string[]>;
+  checkStatus: () => Promise<void>;
 }
 
 const PermissionsContext = createContext<PermissionsContextType | undefined>(undefined);
 
 export function PermissionsProvider({ children }: { children: ReactNode }) {
   // CRITICAL: Use centralized user from AuthProvider to prevent duplicate /auth/v1/user calls
-  // This eliminates the request spam caused by multiple components calling getUser()
   const { user: authUser, loading: authLoading } = useAuth();
-  
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [permissions, setPermissions] = useState<Permissions>({});
-  const [accessibleSections, setAccessibleSections] = useState<PermissionSection[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const fetchedRef = useRef(false);
   const supabase = createClient();
+  
+  const [state, setState] = useState<{
+    isLoading: boolean;
+    isSuperAdmin: boolean;
+    isAdmin: boolean;
+    isRemoved: boolean;
+    isSuspended: boolean;
+    permissions: Record<PermissionSection, SectionPermissions>;
+    accessibleSections: PermissionSection[];
+  }>({
+    isLoading: true,
+    isSuperAdmin: false,
+    isAdmin: false,
+    isRemoved: false,
+    isSuspended: false,
+    permissions: {} as Record<PermissionSection, SectionPermissions>,
+    accessibleSections: [],
+  });
 
-  // Fetch permissions using user from AuthProvider - NO duplicate auth calls
-  const fetchPermissions = useCallback(async () => {
-    const user = authUser;
-    
-    if (!user) {
-      setIsSuperAdmin(false);
-      setIsAdmin(false);
-      setPermissions({});
-      setAccessibleSections([]);
-      setIsLoading(false);
-      return;
-    }
+  const isFetchingRef = useRef(false);
+  const fetchedRef = useRef(false);
+  const realtimeChannelRef = useRef<any>(null);
+  const mountedRef = useRef(true);
+
+  const fetchPermissions = useCallback(async (user: any) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
 
     try {
-      const { data: userData } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single();
+      // Single parallel fetch: users.role + team_members
+      const [userResult, teamResult] = await Promise.all([
+        supabase.from('users').select('role').eq('id', user.id).maybeSingle(),
+        supabase.from('team_members').select('permissions, is_active, needs_access_restored').eq('user_id', user.id).maybeSingle(),
+      ]);
 
-      const userRole = userData?.role || 'user';
-      console.log('[PermissionsContext] User role:', userRole, 'User ID:', user.id);
+      const userRole = userResult.data?.role || 'user';
+      const teamMember = teamResult.data;
+
+      console.log('[PermissionsProvider] Role:', userRole, 'Team:', teamMember);
 
       if (userRole === 'super_admin') {
-        setIsSuperAdmin(true);
-        setIsAdmin(true);
-        const fullPerms: Permissions = {
-          dashboard: ['view'] as const,
-          domains: ['view', 'create', 'update', 'delete'] as const,
-          freelancers: ['view', 'create', 'update', 'delete'] as const,
-          products: ['view', 'create', 'update', 'delete'] as const,
-          blogs: ['view', 'create', 'update', 'delete'] as const,
-          requests: ['view', 'create', 'delete'] as const,
-          team: ['view', 'create', 'update', 'delete'] as const,
+        const fullPerms: Record<PermissionSection, SectionPermissions> = {
+          dashboard: ['view'],
+          domains: ['view', 'create', 'update', 'delete'],
+          freelancers: ['view', 'create', 'update', 'delete'],
+          products: ['view', 'create', 'update', 'delete'],
+          blogs: ['view', 'create', 'update', 'delete'],
+          requests: ['view', 'create', 'delete'],
+          team: ['view', 'create', 'update', 'delete'],
+          users: ['view', 'create', 'update', 'delete'],
+          contact_submissions: ['view', 'create', 'delete'],
         };
-        setPermissions(fullPerms);
-        setAccessibleSections(['dashboard', 'domains', 'freelancers', 'products', 'blogs', 'requests', 'team']);
-        console.log('[PermissionsContext] Super admin - full access granted');
-      } else if (userRole === 'admin') {
-        setIsAdmin(true);
-        const { data: teamMember, error } = await supabase
-          .from('team_members')
-          .select('permissions')
-          .eq('user_id', user.id)
-          .eq('is_active', true)
-          .maybeSingle();
-
-        console.log('[PermissionsContext] Team member:', teamMember, 'Error:', error);
-
-        let perms: Permissions;
-        if (teamMember?.permissions) {
-          perms = typeof teamMember.permissions === 'string' ? JSON.parse(teamMember.permissions) : teamMember.permissions;
-        } else {
-          perms = {
-            dashboard: ['view'] as const,
-            domains: ['view', 'create', 'update', 'delete'] as const,
-            freelancers: ['view', 'create', 'update', 'delete'] as const,
-            products: ['view', 'create', 'update', 'delete'] as const,
-            blogs: ['view', 'create', 'update', 'delete'] as const,
-            requests: ['view', 'create', 'delete'] as const,
-            team: ['view', 'create', 'update', 'delete'] as const,
-          };
+        if (mountedRef.current) {
+          setState({
+            isLoading: false,
+            isSuperAdmin: true,
+            isAdmin: true,
+            isRemoved: false,
+            isSuspended: false,
+            permissions: fullPerms,
+            accessibleSections: Object.keys(fullPerms) as PermissionSection[],
+          });
         }
-        setPermissions(perms);
-        const sections = (Object.keys(perms) as PermissionSection[]).filter(section =>
-          Array.isArray(perms[section]) && perms[section].includes('view')
+        return;
+      }
+
+      if (userRole !== 'admin') {
+        if (mountedRef.current) {
+          setState({
+            isLoading: false,
+            isSuperAdmin: false,
+            isAdmin: false,
+            isRemoved: false,
+            isSuspended: false,
+            permissions: {} as Record<PermissionSection, SectionPermissions>,
+            accessibleSections: [],
+          });
+        }
+        return;
+      }
+
+      // Admin: check team_member
+      const isRemovedState = !teamMember;
+      const isSuspendedState = teamMember && teamMember.is_active === false;
+      const needsRestore = teamMember?.needs_access_restored || false;
+
+      if (mountedRef.current) {
+        let permissionsData: Record<PermissionSection, SectionPermissions> = {
+          dashboard: ['view'],
+          domains: ['view', 'create', 'update', 'delete'],
+          freelancers: ['view', 'create', 'update', 'delete'],
+          products: ['view', 'create', 'update', 'delete'],
+          blogs: ['view', 'create', 'update', 'delete'],
+          requests: ['view', 'create', 'delete'],
+          team: ['view', 'create', 'update', 'delete'],
+          users: [],
+          contact_submissions: [],
+        };
+
+        if (teamMember?.permissions) {
+          const parsed = typeof teamMember.permissions === 'string' 
+            ? JSON.parse(teamMember.permissions) 
+            : teamMember.permissions;
+          permissionsData = { ...permissionsData, ...parsed };
+        }
+
+        const sections = (Object.keys(permissionsData) as PermissionSection[]).filter(
+          section => Array.isArray(permissionsData[section]) && permissionsData[section].includes('view')
         );
-        setAccessibleSections(sections);
-        console.log('[PermissionsContext] Admin permissions:', perms);
-      } else {
-        setIsSuperAdmin(false);
-        setIsAdmin(false);
-        setPermissions({});
-        setAccessibleSections([]);
+
+        setState({
+          isLoading: false,
+          isSuperAdmin: false,
+          isAdmin: true,
+          isRemoved: isRemovedState,
+          isSuspended: isSuspendedState,
+          permissions: permissionsData,
+          accessibleSections: sections,
+        });
+
+        // One-time restore clear
+        if (needsRestore && teamMember) {
+          await supabase.from('team_members').update({ needs_access_restored: false }).eq('user_id', user.id);
+        }
       }
     } catch (error) {
-      console.error('[PermissionsContext] Error:', error);
-      setIsSuperAdmin(false);
-      setIsAdmin(false);
-      setPermissions({});
-      setAccessibleSections([]);
+      console.error('[PermissionsProvider] Error:', error);
+      if (mountedRef.current) {
+        setState({
+          isLoading: false,
+          isSuperAdmin: false,
+          isAdmin: false,
+          isRemoved: false,
+          isSuspended: false,
+          permissions: {} as Record<PermissionSection, SectionPermissions>,
+          accessibleSections: [],
+        });
+      }
+    } finally {
+      isFetchingRef.current = false;
     }
-    setIsLoading(false);
-  }, [supabase, authUser]);
+  }, [supabase]);
 
   // Primary effect: Sync with AuthProvider user (NO duplicate auth calls)
   useEffect(() => {
+    mountedRef.current = true;
+    
     // Wait for auth to finish loading
     if (authLoading) {
-      setIsLoading(true);
+      setState(prev => ({ ...prev, isLoading: true }));
       return;
     }
     
-    // Fetch once when user is available
-    if (authUser && !fetchedRef.current) {
+    const user = authUser;
+    if (!user) {
+      if (mountedRef.current) {
+        setState({
+          isLoading: false,
+          isSuperAdmin: false,
+          isAdmin: false,
+          isRemoved: false,
+          isSuspended: false,
+          permissions: {} as Record<PermissionSection, SectionPermissions>,
+          accessibleSections: [],
+        });
+      }
+      return;
+    }
+    
+    // User exists from AuthProvider - fetch permissions once
+    if (!fetchedRef.current) {
       fetchedRef.current = true;
-      fetchPermissions();
-    } else if (!authUser) {
-      // No user - clear state
-      setIsSuperAdmin(false);
-      setIsAdmin(false);
-      setPermissions({});
-      setAccessibleSections([]);
-      setIsLoading(false);
-      fetchedRef.current = false;
+      fetchPermissions(user);
     }
   }, [authUser, authLoading, fetchPermissions]);
 
-  // Listen for auth state changes to refresh permissions when needed
+  // Setup realtime subscription for team_members changes
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string) => {
-      console.log('[PermissionsContext] Auth state changed:', event);
-      if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-        return;
-      }
-      if (event === 'SIGNED_IN') {
-        // AuthProvider already has the user, but we need to refetch permissions
-        fetchedRef.current = false;
-        fetchPermissions();
-      } else if (event === 'SIGNED_OUT') {
-        // Clear all state on logout
-        setIsSuperAdmin(false);
-        setIsAdmin(false);
-        setPermissions({});
-        setAccessibleSections([]);
-        setIsLoading(false);
-        fetchedRef.current = false;
-      }
-    });
+    if (!authUser?.id) return;
+    
+    const channel = supabase.channel('permissions_provider')
+      .on('postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'team_members', 
+          filter: `user_id=eq.${authUser.id}` 
+        },
+        () => fetchPermissions(authUser)
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
 
     return () => {
-      subscription.unsubscribe();
+      if (realtimeChannelRef.current && typeof realtimeChannelRef.current.unsubscribe === 'function') {
+        realtimeChannelRef.current.unsubscribe();
+        supabase.removeChannel(realtimeChannelRef.current);
+      }
     };
-  }, [supabase.auth, fetchPermissions]);
+  }, [authUser?.id, supabase, fetchPermissions]);
 
   const hasPermission = useCallback((section: PermissionSection, action: PermissionAction): boolean => {
-    if (isSuperAdmin) {
-      return true;
-    }
-    const sectionPerms = permissions[section] || [];
-    return Array.isArray(sectionPerms) && sectionPerms.includes(action);
-  }, [isSuperAdmin, permissions]);
+    if (state.isSuperAdmin) return true;
+    if (!state.isAdmin) return false;
+    const sectionPermissions = state.permissions[section];
+    return Array.isArray(sectionPermissions) && sectionPermissions.includes(action);
+  }, [state.isSuperAdmin, state.isAdmin, state.permissions]);
 
   const canAccessSection = useCallback((section: PermissionSection): boolean => {
     return hasPermission(section, 'view');
@@ -203,42 +253,41 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
     return hasPermission(section, 'delete');
   }, [hasPermission]);
 
-  const refreshPermissions = useCallback(async () => {
-    fetchedRef.current = false;
-    await fetchPermissions();
-  }, [fetchPermissions]);
+  const checkStatus = useCallback(async () => {
+    if (authUser) {
+      fetchedRef.current = false;
+      await fetchPermissions(authUser);
+    }
+  }, [authUser, fetchPermissions]);
 
-  // Combine auth loading with permissions loading
-  const combinedLoading = authLoading || isLoading;
+  // Combine auth loading state with permissions loading
+  const isLoading = authLoading || state.isLoading;
 
-  // NEW: Direct permission access - computed once, no function calls needed
-  const all = useMemo(() => ({
-    domains: permissions.domains || [],
-    blogs: permissions.blogs || [],
-    freelancers: permissions.freelancers || [],
-    products: permissions.products || [],
-    requests: permissions.requests || [],
-    team: permissions.team || [],
-    dashboard: permissions.dashboard || [],
-  }), [permissions]);
-
-  const value: PermissionsContextType = {
-    isSuperAdmin,
-    isAdmin,
-    permissions,
-    accessibleSections,
-    hasPermission,
-    canAccessSection,
-    canCreate,
-    canUpdate,
-    canDelete,
-    isLoading: combinedLoading,
-    refreshPermissions,
-    all, // NEW: Direct permission access
+  // Direct access to all permissions
+  const all = {
+    domains: state.permissions.domains || [],
+    blogs: state.permissions.blogs || [],
+    freelancers: state.permissions.freelancers || [],
+    products: state.permissions.products || [],
+    requests: state.permissions.requests || [],
+    team: state.permissions.team || [],
+    dashboard: state.permissions.dashboard || [],
+    users: state.permissions.users || [],
+    contact_submissions: state.permissions.contact_submissions || [],
   };
 
   return (
-    <PermissionsContext.Provider value={value}>
+    <PermissionsContext.Provider value={{
+      ...state,
+      isLoading,
+      hasPermission,
+      canAccessSection,
+      canCreate,
+      canUpdate,
+      canDelete,
+      all,
+      checkStatus,
+    }}>
       {children}
     </PermissionsContext.Provider>
   );

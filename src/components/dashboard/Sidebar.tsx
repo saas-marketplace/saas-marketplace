@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Folder, Users, Package, MessageSquare, UsersRound, FileText, Loader2, Settings, UserCog, Mail } from 'lucide-react';
-import { useUserPermissions } from '@/hooks/useUserPermissions';
+import { usePermissions } from '@/stores/permissions-context';
 import { PermissionSection } from '@/types/permissions';
 
 interface SidebarLink {
@@ -31,7 +31,7 @@ const allLinks: SidebarLink[] = [
 
 export default function Sidebar(): React.ReactElement {
   const pathname = usePathname();
-  const { accessibleSections, isSuperAdmin, isLoading: permsLoading } = useUserPermissions();
+  const { accessibleSections, isSuperAdmin, isLoading: permsLoading } = usePermissions();
 
   const filteredLinks = allLinks.filter(link => {
     // Always show dashboard link, permission checked in page

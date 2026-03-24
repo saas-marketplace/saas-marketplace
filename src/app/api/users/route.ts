@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
+// Force dynamic rendering - this route uses cookies for authentication
+export const dynamic = "force-dynamic";
+
 // GET - Fetch all users with role 'user' (excluding admin and super_admin)
 export async function GET(request: NextRequest) {
   try {

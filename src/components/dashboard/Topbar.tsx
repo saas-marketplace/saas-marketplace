@@ -258,6 +258,18 @@ const NotificationItem = ({ notification, onClick }: { notification: Notificatio
 export default function Topbar() {
   const router = useRouter();
   const { user, session, isLoading: profileLoading } = useSession();
+  const previousUserRef = useRef(user);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  // Handle logout redirect when user becomes null after sign out
+  useEffect(() => {
+    // Check if we were logged in before and now we're not (sign out occurred)
+    if (previousUserRef.current && !user && isLoggingOut) {
+      router.push('/auth/login');
+    }
+    // Update the ref for next comparison
+    previousUserRef.current = user;
+  }, [user, isLoggingOut, router]);
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -269,7 +281,6 @@ export default function Topbar() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [browserNotifEnabled, setBrowserNotifEnabled] = useState(false);
@@ -719,25 +730,31 @@ export default function Topbar() {
 
   const { signOut } = useAuth();
 
-  // ─── FAST LOGOUT: Fire and forget, redirect immediately ───
-  const handleLogout = async () => {
-    // 🔥 INSTANT FEEDBACK: Set logging out state immediately
-    setIsLoggingOut(true);
-    
-    // Clear UI state immediately (non-blocking)
-    setProfile(null);
-    setNotifications([]);
-    setNotificationCount(0);
-    setIsProfileOpen(false);
-    setIsNotificationsOpen(false);
+ const handleLogout = async () => {
+  if (isLoggingOut) return;
+  setIsLoggingOut(true);
 
-    // Wait for signOut to fully clear the Supabase session from storage
-    // before navigating away. Without this, the next page load can call
-    // getSession() before the token is gone and render the user as still logged in.
-    await signOut().catch(console.error);
+  // Instant UI reset
+  setProfile(null);
+  setNotifications([]);
+  setNotificationCount(0);
+  setIsProfileOpen(false);
+  setIsNotificationsOpen(false);
 
-    window.location.replace('/auth/login');
-  };
+  try {
+    // Use signOut from useAuth to properly trigger auth state changes
+    await signOut();
+  } catch (err) {
+    console.error(err);
+  }
+
+  // Clean only auth-related storage
+  localStorage.removeItem('supabase.auth.token');
+  sessionStorage.clear();
+
+  // Use Next.js router for smooth redirect after signOut completes
+  router.push('/auth/login');
+};
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

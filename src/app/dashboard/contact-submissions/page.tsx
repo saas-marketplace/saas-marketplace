@@ -14,13 +14,23 @@ import {
   Trash2,
   Eye,
   CheckCircle,
-  XCircle
+  XCircle,
+  Send,
+  Check
 } from "lucide-react";
-import { usePermissions } from "@/stores/permissions-context";
+import { usePermissions } from '@/stores/permissions-context';
 import { SectionAccessGuard } from "@/components/ui/section-access-guard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription, 
+  DialogFooter 
+} from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 
@@ -32,6 +42,8 @@ interface ContactSubmission {
   phone: string | null;
   message: string;
   is_read: boolean;
+  is_responded: boolean;
+  responded_at: string | null;
   created_at: string;
 }
 
@@ -45,6 +57,14 @@ export default function ContactSubmissionsPage() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [filterStatus, setFilterStatus] = useState<"all" | "read" | "unread">("all");
   const [updating, setUpdating] = useState<string | null>(null);
+  
+  // Modal state
+  const [respondModalOpen, setRespondModalOpen] = useState(false);
+  const [selectedSubmission, setSelectedSubmission] = useState<ContactSubmission | null>(null);
+  const [responseText, setResponseText] = useState("");
+  const [sendingResponse, setSendingResponse] = useState(false);
+  const [responseSuccess, setResponseSuccess] = useState(false);
+  
   const limit = 10;
 
   const supabase = createClient();
@@ -169,6 +189,61 @@ export default function ContactSubmissionsPage() {
       });
     } finally {
       setUpdating(null);
+    }
+  };
+
+  // Open respond modal
+  const openRespondModal = (submission: ContactSubmission) => {
+    setSelectedSubmission(submission);
+    setResponseText("");
+    setResponseSuccess(false);
+    setRespondModalOpen(true);
+  };
+
+  // Handle send response
+  const handleSendResponse = async () => {
+    if (!selectedSubmission || !responseText.trim()) return;
+    
+    setSendingResponse(true);
+    try {
+      const response = await fetch("/api/contact-submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          submission_id: selectedSubmission.id,
+          action: "send_response",
+          response: responseText.trim()
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setResponseSuccess(true);
+        toast({
+          title: "Response Sent",
+          description: `Email sent to ${selectedSubmission.email}`,
+        });
+        // Refresh the list after a short delay
+        setTimeout(() => {
+          fetchSubmissions();
+        }, 1500);
+      } else {
+        toast({
+          title: "Error",
+          description: data.error || "Failed to send response",
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      console.error("Error sending response:", err);
+      toast({
+        title: "Error",
+        description: "Something went wrong",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingResponse(false);
     }
   };
 
@@ -303,8 +378,13 @@ export default function ContactSubmissionsPage() {
                         <p className="truncate">{submission.message}</p>
                       </td>
                       <td className="px-4 py-3">
-                        {submission.is_read ? (
+                        {submission.is_responded ? (
                           <Badge variant="secondary" className="bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 w-fit">
+                            <Check className="w-3 h-3" />
+                            Responded
+                          </Badge>
+                        ) : submission.is_read ? (
+                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 w-fit">
                             <MailOpen className="w-3 h-3" />
                             Read
                           </Badge>
@@ -320,25 +400,26 @@ export default function ContactSubmissionsPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex gap-2 justify-end">
-                          {submission.is_read ? (
+                          {submission.is_responded ? (
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleUpdateStatus(submission.id, "read")}
+                              onClick={() => openRespondModal(submission)}
                               disabled={updating === submission.id}
-                              title="Mark as read"
+                              title="View response"
                             >
-                              <CheckCircle className="w-4 h-4" />
+                              <Eye className="w-4 h-4" />
                             </Button>
                           ) : (
                             <Button
-                              variant="outline"
+                              variant="default"
                               size="sm"
-                              onClick={() => handleUpdateStatus(submission.id, "unread")}
+                              onClick={() => openRespondModal(submission)}
                               disabled={updating === submission.id}
-                              title="Mark as unread"
+                              className="bg-cyan-600 hover:bg-cyan-700"
                             >
-                              <XCircle className="w-4 h-4" />
+                              <Send className="w-4 h-4 mr-1" />
+                              Respond
                             </Button>
                           )}
                           <Button
@@ -401,6 +482,106 @@ export default function ContactSubmissionsPage() {
           )}
         </div>
       </div>
+
+      {/* Respond Modal */}
+      <Dialog open={respondModalOpen} onOpenChange={setRespondModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Respond to Contact Submission</DialogTitle>
+            <DialogDescription>
+              Send a response to the contact inquiry
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedSubmission && (
+            <div className="space-y-4">
+              {/* Contact Info - Read Only */}
+              <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 space-y-3">
+                <h4 className="font-semibold text-sm text-slate-900 dark:text-white">Contact Information</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-slate-500">Name:</span>
+                    <p className="font-medium">{selectedSubmission.name}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Email:</span>
+                    <p className="font-medium">{selectedSubmission.email}</p>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-500 text-sm">Original Message:</span>
+                  <p className="mt-1 p-3 bg-white dark:bg-slate-900 rounded border text-sm">
+                    {selectedSubmission.message}
+                  </p>
+                </div>
+              </div>
+
+              {/* Response Form */}
+              {responseSuccess ? (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Check className="w-8 h-8 text-green-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Response Sent Successfully!</h3>
+                  <p className="text-slate-500 mb-4">
+                    Your response has been sent to {selectedSubmission.email}
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setRespondModalOpen(false);
+                      fetchSubmissions();
+                    }}
+                  >
+                    Close
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      Your Response
+                    </label>
+                    <textarea
+                      value={responseText}
+                      onChange={(e) => setResponseText(e.target.value)}
+                      placeholder="Type your response here..."
+                      rows={6}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent resize-none"
+                    />
+                  </div>
+
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setRespondModalOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleSendResponse}
+                      disabled={!responseText.trim() || sendingResponse}
+                      className="bg-cyan-600 hover:bg-cyan-700"
+                    >
+                      {sendingResponse ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 mr-2" />
+                          Send Response
+                        </>
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </SectionAccessGuard>
   );
 }

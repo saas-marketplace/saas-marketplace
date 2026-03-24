@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { Product } from "@/types";
 import { createClient } from "@/lib/supabase/client";
+import { safeGetSession } from "@/lib/auth-lock-manager";
 
 interface CartItem {
   product: Product;
@@ -97,7 +98,8 @@ const useUserCartStore = create<CartStore>()(
 
     addItem: async (product: Product) => {
       const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      // Use safeGetSession to prevent race conditions and lock timeout
+      const { session } = await safeGetSession();
       if (!session?.user) return;
 
       // Check if item exists
@@ -124,7 +126,8 @@ const useUserCartStore = create<CartStore>()(
 
     removeItem: async (productId: string) => {
       const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      // Use safeGetSession to prevent race conditions and lock timeout
+      const { session } = await safeGetSession();
       if (!session?.user) return;
 
       await supabase
@@ -136,7 +139,8 @@ const useUserCartStore = create<CartStore>()(
 
     updateQuantity: async (productId: string, quantity: number) => {
       const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      // Use safeGetSession to prevent race conditions and lock timeout
+      const { session } = await safeGetSession();
       if (!session?.user) return;
 
       if (quantity <= 0) {
@@ -156,7 +160,8 @@ const useUserCartStore = create<CartStore>()(
 
     clearCart: async () => {
       const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      // Use safeGetSession to prevent race conditions and lock timeout
+      const { session } = await safeGetSession();
       if (!session?.user) return;
 
       await supabase.from("cart").delete().eq("user_id", session.user.id);

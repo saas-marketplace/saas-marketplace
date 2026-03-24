@@ -1,8 +1,9 @@
 "use client";
 
 import { ReactNode } from 'react';
-import { useUserPermissions } from '@/hooks/useUserPermissions';
-import { AlertTriangle, Lock } from 'lucide-react';
+import { usePermissions } from '@/stores/permissions-context';
+import { Lock } from 'lucide-react';
+import type { PermissionSection } from '@/types/permissions';
 
 interface SectionAccessGuardProps {
   children: ReactNode;
@@ -17,7 +18,7 @@ export function SectionAccessGuard({
   action = 'view',
   fallback 
 }: SectionAccessGuardProps) {
-  const { hasPermission, isLoading, isSuperAdmin } = useUserPermissions();
+  const { permissions, isLoading, isSuperAdmin } = usePermissions();
 
   // Show loading state while permissions are being fetched
   if (isLoading) {
@@ -34,7 +35,8 @@ export function SectionAccessGuard({
   }
 
   // Check if user has permission for this section and action
-  const hasAccess = hasPermission(section as any, action);
+  const sectionPermissions = (permissions as Record<string, string[]>)[section] || [];
+  const hasAccess = sectionPermissions.includes(action);
 
   if (!hasAccess) {
     // Show custom fallback if provided

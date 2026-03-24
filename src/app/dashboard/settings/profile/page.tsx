@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/providers/auth-provider';
-import { beginPasswordChange, endPasswordChange } from '@/lib/auth-lock-manager';
 import { 
   User, 
   Mail, 
@@ -130,27 +129,46 @@ export default function ProfileSettingsPage() {
   // USER_UPDATED synchronously inside updateUser() — before the promise resolves —
   // so any sessionStorage flag set after the call is always too late for auth listeners.
   // A URL param survives a full page reload and is read here before any auth events fire.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('pw') === 'updated') {
-      // Clean the URL immediately so a manual refresh doesn't re-show the banner
-      window.history.replaceState({}, '', window.location.pathname);
-      setPasswordMessage({ type: 'success', text: 'Password updated successfully' });
-      setIsUpdatingPassword(false);
-    }
-  }, []);
+const isPasswordUpdatedRef = useRef(false);
 
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+
+  if (params.get('pw') === 'updated') {
+    isPasswordUpdatedRef.current = true;
+
+    window.history.replaceState({}, '', window.location.pathname);
+
+    setPasswordMessage({
+      type: 'success',
+      text: 'Password updated successfully'
+    });
+
+    setIsUpdatingPassword(false);
+
+    // ✅ RESET FLAG after first render cycle
+    setTimeout(() => {
+      isPasswordUpdatedRef.current = false;
+    }, 0);
+  }
+}, []);
   // Clear messages whenever the user switches sections.
   // Skip the initial mount so a success message set right before the first
   // render isn't immediately wiped by this effect.
-  useEffect(() => {
-    if (!hasMountedRef.current) {
-      hasMountedRef.current = true;
-      return;
-    }
-    setMessage(null);
+ useEffect(() => {
+  if (!hasMountedRef.current) {
+    hasMountedRef.current = true;
+    return;
+  }
+
+  setMessage(null);
+
+  // ✅ use ref instead of URL (URL is already cleaned)
+  if (!isPasswordUpdatedRef.current) {
     setPasswordMessage(null);
-  }, [activeSection]);
+  }
+
+}, [activeSection]);
 
   const fetchProfile = async () => {
     try {
@@ -289,71 +307,74 @@ export default function ProfileSettingsPage() {
     }
   };
 
-  // ─── Secure 2-step password change ────────────────────────────────────────
-  const handleChangePassword = useCallback(async () => {
-    if (isUpdatingPassword) return;
+ const handleChangePassword = useCallback(async () => {
+  if (isUpdatingPassword) return;
 
-    // ── Step 0: Client-side validation ──────────────────────────────────────
-    if (!currentPassword) {
-      setPasswordMessage({ type: 'error', text: 'Please enter your current password' });
-      return;
+  if (newPassword.length < 6) {
+    setPasswordMessage({ type: 'error', text: 'New password must be at least 6 characters' });
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    setPasswordMessage({ type: 'error', text: 'Passwords do not match' });
+    return;
+  }
+
+  setIsUpdatingPassword(true);
+  setPasswordMessage(null);
+
+  // Supabase fires USER_UPDATED as soon as the server confirms the password change —
+  // BEFORE updateUser()'s own promise resolves (the promise often hangs indefinitely
+  // waiting for an internal Web Lock that USER_UPDATED already stole).
+  // Solution: redirect inside the event listener instead of waiting for the promise.
+  let redirected = false;
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string) => {
+    if (event === 'USER_UPDATED' && !redirected) {
+      redirected = true;
+      subscription.unsubscribe();
+      clearTimeout(timeoutId);
+      window.location.replace(window.location.pathname + '?pw=updated');
     }
-    if (newPassword.length < 6) {
-      setPasswordMessage({ type: 'error', text: 'New password must be at least 6 characters' });
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPasswordMessage({ type: 'error', text: 'New passwords do not match' });
-      return;
-    }
-    if (currentPassword === newPassword) {
-      setPasswordMessage({ type: 'error', text: 'New password must be different from your current password' });
-      return;
-    }
+  });
 
-    setIsUpdatingPassword(true);
-    setPasswordMessage(null);
-
-    try {
-      // Tell useSession to skip the SIGNED_IN event that signInWithPassword fires.
-      // Without this, useSession acquires the Web Lock between the two steps,
-      // making updateUser wait 5 s and then fail with a 422.
-      beginPasswordChange();
-
-      // ── Step 1: Re-authenticate with current password ────────────────────
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: profile?.email ?? '',
-        password: currentPassword,
-      });
-
-      if (authError) {
-        endPasswordChange();
-        setPasswordMessage({ type: 'error', text: 'Current password is incorrect' });
-        setIsUpdatingPassword(false);
-        return;
-      }
-
-      // ── Step 2: Update to new password ───────────────────────────────────
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-
-      endPasswordChange(); // Lock is no longer needed — updateUser has resolved
-
-      if (updateError) throw updateError;
-
-      // ── Success ──────────────────────────────────────────────────────────
-      // Reload the page with a URL param so the success message can be shown
-      // on a clean mount — free from any Supabase auth event race conditions.
-      window.location.href = window.location.pathname + '?pw=updated';
-    } catch (error: any) {
-      endPasswordChange();
-      console.error('Error changing password:', error);
-      setPasswordMessage({ type: 'error', text: error.message || 'Failed to change password. Please try again.' });
+  // Safety net: if USER_UPDATED never fires within 10 s, surface an error.
+  const timeoutId = setTimeout(() => {
+    if (!redirected) {
+      subscription.unsubscribe();
+      setPasswordMessage({ type: 'error', text: 'Request timed out — please try again.' });
       setIsUpdatingPassword(false);
     }
-  }, [isUpdatingPassword, currentPassword, newPassword, confirmPassword, profile?.email, supabase]);
-  // ──────────────────────────────────────────────────────────────────────────
+  }, 10_000);
+
+  try {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+    // If the promise somehow resolves before the event (rare), clean up and redirect.
+    if (!redirected) {
+      redirected = true;
+      subscription.unsubscribe();
+      clearTimeout(timeoutId);
+
+      if (error) throw error;
+
+      window.location.replace(window.location.pathname + '?pw=updated');
+    }
+  } catch (error: any) {
+    // AbortError / Lock broken means USER_UPDATED already fired → already redirecting.
+    if (redirected) return;
+
+    redirected = true;
+    subscription.unsubscribe();
+    clearTimeout(timeoutId);
+
+    console.error('Error changing password:', error);
+    setPasswordMessage({
+      type: 'error',
+      text: error.message || 'Failed to update password',
+    });
+    setIsUpdatingPassword(false);
+  }
+}, [isUpdatingPassword, newPassword, confirmPassword, supabase]);
 
   const handleDeleteAccount = async () => {
     if (deleteConfirmText !== 'DELETE') {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { safeGetSession, safeGetUser, safeRefreshSession, clearAuthCache, isPasswordChangeInProgress } from '@/lib/auth-lock-manager';
+import { isPasswordChanging } from '@/components/providers/auth-provider';
 import type { Session, User } from '@supabase/supabase-js';
 import type { PermissionSection, PermissionAction, SectionPermissions } from '@/types/permissions';
 
@@ -76,8 +76,9 @@ export function useSession() {
     isFetchingRef.current = true;
 
     try {
-      // Use safeGetSession instead of direct supabase.auth.getSession()
-      const { session, error } = await safeGetSession();
+      // Get session directly from supabase
+      const { data, error } = await supabase.auth.getSession();
+      const session = data?.session;
       
       if (error) {
         // Handle AbortError gracefully
@@ -283,7 +284,6 @@ export function useSession() {
       console.log('[useSession] Auth state changed:', event);
 
       if (event === 'SIGNED_OUT') {
-        clearAuthCache();
         clearState();
         return;
       }
@@ -302,7 +302,7 @@ export function useSession() {
         // runs. If we re-fetch here we acquire the Web Lock, making updateUser
         // wait 5 s then receive a 422. The flag is cleared by the profile page
         // after updateUser resolves.
-        if (isPasswordChangeInProgress()) {
+        if (isPasswordChanging) {
           console.log('[useSession] SIGNED_IN during password change — skipping re-fetch');
           return;
         }

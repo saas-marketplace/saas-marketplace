@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { safeGetUser, authLockManager } from '@/lib/auth-lock-manager';
 import { PermissionSection, PermissionAction, SectionPermissions } from '@/types/permissions';
 
 interface AccessControlState {
@@ -35,8 +34,9 @@ export function useAccessControl() {
     isFetchingRef.current = true;
 
     try {
-      // Use safeGetUser instead of direct supabase.auth.getUser()
-      const { user, error } = await safeGetUser();
+      // Get user directly from supabase
+      const { data, error } = await supabase.auth.getUser();
+      const user = data?.user;
       
       if (error) {
         // Handle AbortError gracefully
@@ -216,17 +216,9 @@ export function useAccessControl() {
       await fetchPermissions();
     });
 
-    // Get current user for realtime filter - use cached value
-    const cached = authLockManager.getCachedUser();
-    const userId = cached?.id || '';
-    
-    const realtimeSub = supabase
-      .channel('access_control')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'team_members', filter: `user_id=eq.${userId}` },
-        () => fetchPermissions()
-      )
-      .subscribe();
+    // Realtime subscription - skip for now as the cached user is no longer available
+    // The auth state change listener above handles most updates
+    const realtimeSub = { unsubscribe: () => {} };
 
     return () => {
       isMounted.current = false;

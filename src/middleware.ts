@@ -81,7 +81,7 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // Try to get user - redirect to login if not authenticated
+  // Get user - redirect to login if not authenticated
   let user = null;
 
   try {
@@ -104,11 +104,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // ── Authenticated users ─────────────────────────────────────────────────
-  // NEVER redirect suspended users - let them access dashboard and show UI message
-  
-  // Get user's role and ban status from users table
-  // IMPORTANT: is_banned is the ONLY source of truth for blocking
-  // IP-based blocking is NOT used - it's unreliable (shared IPs, VPNs, etc.)
+  // Get user's role and ban status from users table (single query)
   let userRole = "user";
   let isBanned = false;
 
@@ -128,7 +124,6 @@ export async function middleware(request: NextRequest) {
   }
 
   // ── CHECK IF USER IS BANNED ──
-  // PRIMARY: Check is_banned flag (user_id based)
   if (isBanned) {
     // Force logout by clearing auth cookies
     response.cookies.set("sb-access-token", "", { maxAge: -1, path: "/" });
@@ -138,23 +133,25 @@ export async function middleware(request: NextRequest) {
     return redirectTo("/banned");
   }
 
-  // Check team_members for role_label override
-  try {
-    const { data: memberData } = await supabase
-      .from("team_members")
-      .select("role_label")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    
-    if (memberData?.role_label) {
-      if (memberData.role_label === "Super Admin") {
-        userRole = "super_admin";
-      } else if (memberData.role_label === "Admin") {
-        userRole = "admin";
+  // Check team_members for role_label override (only if needed)
+  if (userRole === "admin" || userRole === "super_admin") {
+    try {
+      const { data: memberData } = await supabase
+        .from("team_members")
+        .select("role_label")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      
+      if (memberData?.role_label) {
+        if (memberData.role_label === "Super Admin") {
+          userRole = "super_admin";
+        } else if (memberData.role_label === "Admin") {
+          userRole = "admin";
+        }
       }
+    } catch (error) {
+      // Continue with users table role
     }
-  } catch (error) {
-    // Continue with users table role
   }
 
   // Role-based routing

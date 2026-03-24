@@ -209,7 +209,8 @@ export default function ProductsPage() {
 
   async function handleImageUpload(file: File): Promise<string> {
     // Verify session before upload
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data } = await supabase.auth.getSession();
+    const session = data?.session;
     if (!session) {
       alert('Please log in to upload images');
       return '';

@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { safeGetSession } from "@/lib/auth-lock-manager";
 import { useEffect, useState, useCallback, useRef } from "react";
 import Image from "next/image";
 import { useAccessControl } from "@/hooks/useAccessControl";
@@ -242,7 +243,7 @@ export default function BlogPage() {
     setUploading(true);
     try {
       // Verify session before upload
-      const { data: { session } } = await supabase.auth.getSession();
+      const { session } = await safeGetSession();
       if (!session) {
         alert('Please log in to upload images');
         setUploading(false);

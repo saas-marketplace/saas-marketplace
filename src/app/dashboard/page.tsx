@@ -1,13 +1,11 @@
- "use client";
- 
- import { createClient } from '@/lib/supabase/client';
- import { useEffect, useState } from 'react';
- import { Users, Package, MessageSquare, UserPlus, AlertTriangle } from 'lucide-react';
- import Link from 'next/link';
- import { Button } from '@/components/ui/button';
- import { useAccessControl } from '@/hooks/useAccessControl';
- import { SectionAccessGuard } from '@/components/ui/section-access-guard';
+"use client";
 
+import { useEffect, useState, useMemo } from 'react';
+import { Users, Package, MessageSquare, UserPlus } from 'lucide-react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/components/providers/auth-provider';
+import { SectionAccessGuard } from '@/components/ui/section-access-guard';
 
 interface DashboardStats {
   freelancers: number;
@@ -17,6 +15,7 @@ interface DashboardStats {
 }
 
 export default function DashboardPage() {
+  const { user, loading: authLoading } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
     freelancers: 0,
     products: 0,
@@ -24,17 +23,20 @@ export default function DashboardPage() {
     teamMembers: 0
   });
   const [statsLoading, setStatsLoading] = useState(true);
-  const { isLoading: permsLoading, isSuperAdmin, isRemoved, isSuspended, canAccessSection, permissions } = useAccessControl();
 
+  // Fetch stats - only once on mount
   useEffect(() => {
-    if (!permsLoading) {
-      console.log('[DashboardPage] State:', { isSuperAdmin, isRemoved, isSuspended, permissions, canAccessSection });
-    }
-  }, [permsLoading, isSuperAdmin, isRemoved, isSuspended, permissions, canAccessSection]);
-
-  useEffect(() => {
+    if (authLoading) return;
+    
+    let fetched = false;
+    
     const fetchStats = async () => {
+      if (fetched) return;
+      fetched = true;
+      
+      const { createClient } = await import('@/lib/supabase/client');
       const supabase = createClient();
+      
       try {
         const [
           { count: freelancers },
@@ -47,6 +49,7 @@ export default function DashboardPage() {
           supabase.from('requests').select('*', { count: 'exact', head: true }),
           supabase.from('team_members').select('*', { count: 'exact', head: true })
         ]);
+        
         setStats({
           freelancers: freelancers || 0,
           products: products || 0,
@@ -59,23 +62,25 @@ export default function DashboardPage() {
         setStatsLoading(false);
       }
     };
+    
     fetchStats();
-  }, []);
+  }, [authLoading]);
 
-  if (permsLoading) {
+  // Memoize stat cards
+  const statCards = useMemo(() => [
+    { title: 'Total Freelancers', value: stats.freelancers, icon: Users, color: 'from-blue-500 to-blue-600' },
+    { title: 'Total Products', value: stats.products, icon: Package, color: 'from-purple-500 to-purple-600' },
+    { title: 'Client Requests', value: stats.clientRequests, icon: MessageSquare, color: 'from-green-500 to-green-600' },
+    { title: 'Team Members', value: stats.teamMembers, icon: UserPlus, color: 'from-orange-500 to-orange-600' }
+  ], [stats]);
+
+  if (authLoading) {
     return (
       <div className='flex items-center justify-center min-h-[400px]'>
         <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500'></div>
       </div>
     );
   }
-
-  const statCards = [
-    { title: 'Total Freelancers', value: stats.freelancers, icon: Users, color: 'from-blue-500 to-blue-600' },
-    { title: 'Total Products', value: stats.products, icon: Package, color: 'from-purple-500 to-purple-600' },
-    { title: 'Client Requests', value: stats.clientRequests, icon: MessageSquare, color: 'from-green-500 to-green-600' },
-    { title: 'Team Members', value: stats.teamMembers, icon: UserPlus, color: 'from-orange-500 to-orange-600' }
-  ];
 
   return (
     <SectionAccessGuard section="dashboard" action="view">
@@ -144,4 +149,3 @@ export default function DashboardPage() {
     </SectionAccessGuard>
   );
 }
-

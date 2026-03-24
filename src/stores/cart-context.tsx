@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { safeGetSession } from "@/lib/auth-lock-manager";
+import { safeGetSession } from "../lib/auth-lock-manager";
 import { Product } from "@/types";
 
 interface CartItem {
@@ -48,6 +48,27 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setIsAuthenticated(false);
       setLoading(false);
       return;
+    }
+
+    // Check user role - admins don't need cart functionality
+    try {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      
+      const userRole = userData?.role;
+      
+      // Skip cart for admin/super_admin to prevent lock conflicts
+      if (userRole === 'admin' || userRole === 'super_admin') {
+        setCartItems([]);
+        setIsAuthenticated(true);
+        setLoading(false);
+        return;
+      }
+    } catch (roleError) {
+      console.log('[CartContext] Could not check user role, proceeding with cart');
     }
 
     setIsAuthenticated(true);

@@ -1,6 +1,9 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
+// Force dynamic rendering - this route uses cookies for authentication
+export const dynamic = "force-dynamic";
+
 // Helper: check super admin safely
 async function isSuperAdmin(supabase: any, userId: string) {
   const { data: userRoleData, error } = await supabase
