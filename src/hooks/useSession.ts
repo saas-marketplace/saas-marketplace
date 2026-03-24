@@ -280,7 +280,7 @@ export function useSession() {
       )
       .subscribe();
 
-    authListenerRef.current = supabase.auth.onAuthStateChange(async (event: unknown, session: Session | null) => {
+    authListenerRef.current = supabase.auth.onAuthStateChange(async (event: string, session: Session | null) => {
       console.log('[useSession] Auth state changed:', event);
 
       if (event === 'SIGNED_OUT') {

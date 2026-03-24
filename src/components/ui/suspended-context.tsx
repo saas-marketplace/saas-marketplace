@@ -105,7 +105,7 @@ export function SuspendedProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Event-driven: auth changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event: unknown) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event: string) => {
       // Reset on any auth change
       fetchedRef.current = false;
       isSuspendedRef.current = false;

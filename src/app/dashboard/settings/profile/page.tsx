@@ -328,7 +328,7 @@ useEffect(() => {
   // waiting for an internal Web Lock that USER_UPDATED already stole).
   // Solution: redirect inside the event listener instead of waiting for the promise.
   let redirected = false;
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((event: unknown) => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string) => {
     if (event === 'USER_UPDATED' && !redirected) {
       redirected = true;
       subscription.unsubscribe();

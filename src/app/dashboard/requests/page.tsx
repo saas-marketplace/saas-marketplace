@@ -258,7 +258,7 @@ export default function AdminRequestsPage() {
 
     // Keep the cached token fresh whenever Supabase auto-refreshes it.
     // This fires at most once per refresh interval (~1 hour) — not on every render.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: unknown, session: { access_token: string } | null) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: { access_token: string } | null) => {
       sessionRef.current = session ? { access_token: session.access_token } : null;
     });
 
