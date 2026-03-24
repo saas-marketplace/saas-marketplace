@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { sendContactResponseEmail } from "@/lib/email-service";
 
 // GET - Fetch all contact submissions (Super Admin only)
 export async function GET(request: NextRequest) {
@@ -267,14 +268,25 @@ export async function POST(request: NextRequest) {
         </div>
       `;
 
-      // For now, we'll log the email content and mark as responded
-      // In production, integrate with an email service like Resend, SendGrid, etc.
-      console.log("=== EMAIL TO BE SENT ===");
-      console.log("To:", submission.email);
-      console.log("From:", companyEmail);
-      console.log("Subject:", emailSubject);
-      console.log("Body:", emailHtml);
-      console.log("=========================");
+      // Send actual email using the email service
+      const emailResult = await sendContactResponseEmail({
+        toEmail: submission.email,
+        contactName: submission.name,
+        originalMessage: submission.message,
+        adminResponse: response,
+        companyName,
+        companyEmail,
+      });
+
+      if (!emailResult.success) {
+        console.error("Error sending email:", emailResult.error);
+        return NextResponse.json(
+          { error: emailResult.error || "Failed to send email" },
+          { status: 500 }
+        );
+      }
+
+      console.log("Email sent successfully:", emailResult.messageId);
 
       // Update submission as responded and mark as read
       const { error: updateError } = await supabase
@@ -389,3 +401,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

@@ -485,8 +485,8 @@ export default function ContactSubmissionsPage() {
 
       {/* Respond Modal */}
       <Dialog open={respondModalOpen} onOpenChange={setRespondModalOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Respond to Contact Submission</DialogTitle>
             <DialogDescription>
               Send a response to the contact inquiry
@@ -494,9 +494,9 @@ export default function ContactSubmissionsPage() {
           </DialogHeader>
 
           {selectedSubmission && (
-            <div className="space-y-4">
+            <div className="space-y-4 overflow-y-auto flex-1 pr-2">
               {/* Contact Info - Read Only */}
-              <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 space-y-3">
+              <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 space-y-3 flex-shrink-0">
                 <h4 className="font-semibold text-sm text-slate-900 dark:text-white">Contact Information</h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
@@ -510,15 +510,15 @@ export default function ContactSubmissionsPage() {
                 </div>
                 <div>
                   <span className="text-slate-500 text-sm">Original Message:</span>
-                  <p className="mt-1 p-3 bg-white dark:bg-slate-900 rounded border text-sm">
+                  <div className="mt-1 p-3 bg-white dark:bg-slate-900 rounded border text-sm max-h-40 overflow-y-auto whitespace-pre-wrap">
                     {selectedSubmission.message}
-                  </p>
+                  </div>
                 </div>
               </div>
 
               {/* Response Form */}
               {responseSuccess ? (
-                <div className="text-center py-8">
+                <div className="text-center py-8 flex-shrink-0">
                   <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Check className="w-8 h-8 text-green-600" />
                   </div>
@@ -537,7 +537,7 @@ export default function ContactSubmissionsPage() {
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-4 flex-shrink-0">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                       Your Response
@@ -547,11 +547,11 @@ export default function ContactSubmissionsPage() {
                       onChange={(e) => setResponseText(e.target.value)}
                       placeholder="Type your response here..."
                       rows={6}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent resize-none"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent resize-none max-h-48 overflow-y-auto"
                     />
                   </div>
 
-                  <DialogFooter>
+                  <DialogFooter className="flex-shrink-0">
                     <Button
                       variant="outline"
                       onClick={() => setRespondModalOpen(false)}
