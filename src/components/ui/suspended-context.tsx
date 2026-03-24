@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { safeGetUser, authLockManager } from '@/lib/auth-lock-manager';
 import { AlertTriangle, RefreshCw, CheckCircle } from 'lucide-react';
 
 interface SuspendedContextType {
@@ -35,7 +36,19 @@ export function SuspendedProvider({ children }: { children: React.ReactNode }) {
     isCheckingRef.current = true;
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // Use safeGetUser instead of direct supabase.auth.getUser()
+      const { user, error } = await safeGetUser();
+      
+      if (error) {
+        // Handle AbortError gracefully
+        if (error.name === 'AbortError') {
+          console.warn('[SuspendedContext] AbortError during getUser — ignoring');
+          isCheckingRef.current = false;
+          setIsLoading(false);
+          return;
+        }
+        throw error;
+      }
       
       if (!user) {
         setIsLoading(false);
@@ -84,11 +97,14 @@ export function SuspendedProvider({ children }: { children: React.ReactNode }) {
       await checkStatus();
     });
 
-    // Realtime subscription on team_members for this user
+    // Realtime subscription on team_members for this user - use cached user
+    const cachedUser = authLockManager.getCachedUser();
+    const userId = cachedUser?.id || '';
+    
     const realtimeSub = supabase
       .channel('team_member_status')
       .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'team_members', filter: `user_id=eq.${supabase.auth.getUser().data?.user?.id}` },
+        { event: '*', schema: 'public', table: 'team_members', filter: `user_id=eq.${userId}` },
         () => checkStatus()
       )
       .subscribe();

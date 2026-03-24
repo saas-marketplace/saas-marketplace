@@ -75,14 +75,15 @@ export default function ContactPage() {
     }
 
     try {
-      const response = await fetch("/api/requests", {
+      const response = await fetch("/api/contact-submissions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          freelancer_id: null,
+          name: formData.name,
+          email: formData.email,
           subject: formData.subject,
+          phone: formData.phone,
           message: formData.message,
-          request_type: "admin",
         }),
       });
 
@@ -112,8 +113,8 @@ export default function ContactPage() {
         message: "",
       });
       
-      // Redirect to requests page
-      router.push("/requests");
+      // Redirect to home page after successful submission
+      router.push("/?contact=success");
     } catch (err) {
       toast({
         title: "Error",

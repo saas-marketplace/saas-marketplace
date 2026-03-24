@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { safeGetSession } from "@/lib/auth-lock-manager";
 import { Product } from "@/types";
 
 interface CartItem {
@@ -35,7 +36,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // Fetch cart from database - always filtered by current user
   const fetchCart = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    // Use safeGetSession instead of direct supabase.auth.getSession()
+    const { session, error } = await safeGetSession();
+    
+    if (error) {
+      console.error('[CartContext] getSession error:', error);
+    }
     
     if (!session?.user) {
       setCartItems([]);
@@ -67,7 +73,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // Add to cart - ONLY for authenticated users
   const addToCart = useCallback(async (product: Product) => {
-    const { data: { session } } = await supabase.auth.getSession();
+    // Use safeGetSession instead of direct supabase.auth.getSession()
+    const { session, error } = await safeGetSession();
+    
+    if (error) {
+      console.error('[CartContext] getSession error:', error);
+    }
     
     // Block guests - they cannot add items
     if (!session?.user) {
@@ -104,7 +115,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // Remove from cart
   const removeFromCart = useCallback(async (productId: string) => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { session, error } = await safeGetSession();
+    
+    if (error) {
+      console.error('[CartContext] getSession error:', error);
+    }
     
     if (!session?.user) return;
 
@@ -119,7 +134,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // Update quantity
   const updateQuantity = useCallback(async (productId: string, quantity: number) => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { session, error } = await safeGetSession();
+    
+    if (error) {
+      console.error('[CartContext] getSession error:', error);
+    }
     
     if (!session?.user) return;
 

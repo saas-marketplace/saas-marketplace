@@ -4,7 +4,7 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Folder, Users, Package, MessageSquare, UsersRound, FileText, Loader2, Settings } from 'lucide-react';
+import { LayoutDashboard, Folder, Users, Package, MessageSquare, UsersRound, FileText, Loader2, Settings, UserCog, Mail } from 'lucide-react';
 import { useUserPermissions } from '@/hooks/useUserPermissions';
 import { PermissionSection } from '@/types/permissions';
 
@@ -23,6 +23,9 @@ const allLinks: SidebarLink[] = [
   { href: '/dashboard/blog', label: 'Blog', icon: FileText, section: 'blogs' },
   { href: '/dashboard/requests', label: 'Client Requests', icon: MessageSquare, section: 'requests' },
   { href: '/dashboard/team', label: 'Team Members', icon: UsersRound, section: 'team' },
+  // Super Admin only sections
+  { href: '/dashboard/users', label: 'Users', icon: UserCog, section: 'users' },
+  { href: '/dashboard/contact-submissions', label: 'Contact Submissions', icon: Mail, section: 'contact_submissions' },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings, section: 'dashboard' },
 ];
 

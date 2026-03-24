@@ -177,7 +177,12 @@ export default function AdminRequestsPage() {
   const { isLoading: permsLoading, isSuperAdmin, permissions, canAccessSection, all } = usePermissions();
   const { isSuspended, isRestored } = useSuspended();
   const { getUserStatus: getUserStatusFromContext } = useUserStatus();
-  const { user } = useAuth();
+  const { user, loading: sessionLoading } = useAuth();
+
+  // Debug: log user and session loading state changes
+  useEffect(() => {
+    console.log('[Requests] Session loading:', sessionLoading, 'User:', user?.id);
+  }, [sessionLoading, user]);
 
   const isLoading = permsLoading || isSuspended;
 
@@ -290,8 +295,8 @@ export default function AdminRequestsPage() {
     setShowScrollButton(!isAtBottom);
   }, []);
 
-  // Access control check
-  if (!isLoading && !canAccessSection('requests')) {
+  // Access control check - wait for all loading states to complete
+  if (!isLoading && !sessionLoading && !canAccessSection('requests')) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh]">
         <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
@@ -313,8 +318,8 @@ export default function AdminRequestsPage() {
     // Guard: only run once per mount cycle AND only when user is ready
     if (fetchedRef.current) return;
     
-    // Wait for user to be ready before fetching
-    if (!user) {
+    // Wait for session to finish loading AND user to be ready before fetching
+    if (sessionLoading || !user) {
       return;
     }
     
@@ -454,7 +459,7 @@ export default function AdminRequestsPage() {
 
     // Reset guard on unmount so navigating away then back re-fetches correctly
     return () => { fetchedRef.current = false; };
-  }, [supabase, isSuspended, user]);
+  }, [supabase, isSuspended, user, sessionLoading]);
 
   // ── CACHE SYNC: keep localStorage in sync with state ──
   // This ensures any realtime updates are also cached

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { safeGetSession, safeGetUser, safeRefreshSession, clearAuthCache, isPasswordChangeInProgress } from '@/lib/auth-lock-manager';
 import type { Session, User } from '@supabase/supabase-js';
 import type { PermissionSection, PermissionAction, SectionPermissions } from '@/types/permissions';
 
@@ -12,6 +13,8 @@ interface UserPermissionsState {
   isRemoved: boolean;
   isSuspended: boolean;
   isRestored: boolean;
+  isBanned: boolean;
+  bannedIp: string | null;
   permissions: Record<PermissionSection, SectionPermissions>;
   accessibleSections: PermissionSection[];
   session: Session | null;
@@ -26,6 +29,8 @@ export function useSession() {
     isRemoved: false,
     isSuspended: false,
     isRestored: false,
+    isBanned: false,
+    bannedIp: null,
     permissions: {} as any,
     accessibleSections: [],
     session: null,
@@ -39,6 +44,8 @@ export function useSession() {
   const realtimeChannelRef = useRef<any>(null);
   const mountedRef = useRef(true);
   const authListenerRef = useRef<any>(null);
+  // Track current session token to prevent unnecessary re-renders
+  const currentTokenRef = useRef<string | null>(null);
 
   const clearState = useCallback(() => {
     if (mountedRef.current) {
@@ -49,6 +56,8 @@ export function useSession() {
         isRemoved: false,
         isSuspended: false,
         isRestored: false,
+        isBanned: false,
+        bannedIp: null,
         permissions: {} as Record<PermissionSection, SectionPermissions>,
         accessibleSections: [],
         session: null,
@@ -58,6 +67,7 @@ export function useSession() {
     sessionRef.current = false;
     isFetchingRef.current = false;
     fetchedRef.current = false;
+    currentTokenRef.current = null;
   }, []);
 
   const fetchPermissions = useCallback(async () => {
@@ -66,12 +76,31 @@ export function useSession() {
     isFetchingRef.current = true;
 
     try {
-      const { data } = await supabase.auth.getSession();
-      const session = data.session;
+      // Use safeGetSession instead of direct supabase.auth.getSession()
+      const { session, error } = await safeGetSession();
+      
+      if (error) {
+        // Handle AbortError gracefully
+        if (error.name === 'AbortError') {
+          console.warn('[useSession] AbortError during getSession — ignoring (likely a token refresh race)');
+          isFetchingRef.current = false;
+          sessionRef.current = false;
+          return;
+        }
+        throw error;
+      }
+
       const user = session?.user ?? null;
 
       if (mountedRef.current) {
-        setState(prev => ({ ...prev, session, user, isLoading: false }));
+        setState(prev => {
+          if (prev.session?.access_token === session?.access_token && prev.user?.id === user?.id) {
+            return prev;
+          }
+          // Update the token ref to track current session
+          currentTokenRef.current = session?.access_token ?? null;
+          return { ...prev, session, user, isLoading: false };
+        });
       }
 
       if (!user) {
@@ -79,7 +108,6 @@ export function useSession() {
         return;
       }
 
-      // Single parallel fetch: users.role + team_members
       const [userResult, teamResult] = await Promise.all([
         supabase.from('users').select('role').eq('id', user.id).maybeSingle(),
         supabase.from('team_members').select('permissions, is_active, needs_access_restored').eq('user_id', user.id).maybeSingle(),
@@ -99,6 +127,8 @@ export function useSession() {
           blogs: ['view', 'create', 'update', 'delete'],
           requests: ['view', 'create', 'delete'],
           team: ['view', 'create', 'update', 'delete'],
+          users: ['view', 'create', 'update', 'delete'],  // Users Management - Super Admin only
+          contact_submissions: ['view', 'create', 'delete'],  // Contact Submissions - Super Admin only
         };
         if (mountedRef.current) {
           setState({
@@ -108,6 +138,8 @@ export function useSession() {
             isRemoved: false,
             isSuspended: false,
             isRestored: false,
+            isBanned: false,
+            bannedIp: null,
             permissions: fullPerms,
             accessibleSections: Object.keys(fullPerms) as PermissionSection[],
             session,
@@ -126,6 +158,8 @@ export function useSession() {
             isRemoved: false,
             isSuspended: false,
             isRestored: false,
+            isBanned: false,
+            bannedIp: null,
             permissions: {} as Record<PermissionSection, SectionPermissions>,
             accessibleSections: [],
             session,
@@ -135,7 +169,6 @@ export function useSession() {
         return;
       }
 
-      // Admin: check team_member
       const isRemovedState = !teamMember;
       const isSuspendedState = teamMember && teamMember.is_active === false;
       const needsRestore = teamMember?.needs_access_restored || false;
@@ -149,6 +182,8 @@ export function useSession() {
           blogs: ['view', 'create', 'update', 'delete'],
           requests: ['view', 'create', 'delete'],
           team: ['view', 'create', 'update', 'delete'],
+          users: [],  // Not accessible to regular admins
+          contact_submissions: [],  // Not accessible to regular admins
         };
 
         if (teamMember?.permissions) {
@@ -169,20 +204,30 @@ export function useSession() {
           isRemoved: isRemovedState,
           isSuspended: isSuspendedState,
           isRestored: needsRestore,
+          isBanned: false,
+          bannedIp: null,
           permissions: permissionsData,
           accessibleSections: sections,
           session,
           user,
         });
 
-        // One-time restore clear
         if (needsRestore && teamMember) {
           await supabase.from('team_members').update({ needs_access_restored: false }).eq('user_id', user.id);
         }
       }
-    } catch (error) {
-      console.error('[useSession] Error:', error);
-      clearState();
+    } catch (error: any) {
+      // AbortError means a newer auth request took over — this is harmless after
+      // password update (Supabase token refresh). Don't clear the session for it.
+      if (error?.name === 'AbortError') {
+        console.warn('[useSession] AbortError during fetch — ignoring (likely a token refresh race)');
+        // Reset refs to allow retry
+        isFetchingRef.current = false;
+        sessionRef.current = false;
+      } else {
+        console.error('[useSession] Error:', error);
+        clearState();
+      }
     } finally {
       isFetchingRef.current = false;
     }
@@ -215,7 +260,6 @@ export function useSession() {
     await fetchPermissions();
   }, [fetchPermissions]);
 
-  // Setup: initial fetch + realtime + auth listener
   useEffect(() => {
     mountedRef.current = true;
     if (!fetchedRef.current) {
@@ -223,7 +267,6 @@ export function useSession() {
       fetchPermissions();
     }
 
-    // Single realtime channel for team_members
     realtimeChannelRef.current = supabase.channel('user_permissions')
       .on('postgres_changes',
         {
@@ -236,16 +279,41 @@ export function useSession() {
       )
       .subscribe();
 
-    // Auth listener (debounced)
-    authListenerRef.current = supabase.auth.onAuthStateChange(async (event: string) => {
+    authListenerRef.current = supabase.auth.onAuthStateChange(async (event: string, session: Session | null) => {
       console.log('[useSession] Auth state changed:', event);
+
       if (event === 'SIGNED_OUT') {
-        // Clear all state on logout
+        clearAuthCache();
         clearState();
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        // Refresh permissions on login or token refresh
-        await new Promise(resolve => setTimeout(resolve, 500));
-        sessionRef.current = false; // Reset ref on auth change
+        return;
+      }
+
+      // TOKEN_REFRESHED and USER_UPDATED both fire after updateUser({ password }).
+      // Permissions haven't changed — re-fetching causes the IndexedDB lock steal
+      // → AbortError → accidental logout. Skip both entirely.
+      if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        console.log('[useSession] ' + event + ' — skipping re-fetch, permissions unchanged');
+        return;
+      }
+
+      if (event === 'SIGNED_IN') {
+        // Skip re-fetch if a password change is in progress.
+        // signInWithPassword (step 1) fires SIGNED_IN before updateUser (step 2)
+        // runs. If we re-fetch here we acquire the Web Lock, making updateUser
+        // wait 5 s then receive a 422. The flag is cleared by the profile page
+        // after updateUser resolves.
+        if (isPasswordChangeInProgress()) {
+          console.log('[useSession] SIGNED_IN during password change — skipping re-fetch');
+          return;
+        }
+        // CRITICAL: Check if session actually changed before triggering re-render
+        // This prevents unnecessary re-renders that wipe component state after password update
+        if (currentTokenRef.current === session?.access_token) {
+          console.log('[useSession] SIGNED_IN but token unchanged — skipping re-render');
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 300));
+        sessionRef.current = false;
         fetchedRef.current = false;
         await fetchPermissions();
       }
@@ -253,12 +321,17 @@ export function useSession() {
 
     return () => {
       mountedRef.current = false;
+      // Do NOT call clearAuthCache() here. Clearing on unmount (including React
+      // Strict Mode's double-mount) resets the JS cache and forces every
+      // component to call supabase.auth.getSession() concurrently on re-mount,
+      // which floods the Supabase Web Lock and causes the 5s timeout + steal cascade.
+      // Cache is only cleared on an actual SIGNED_OUT event above.
       if (realtimeChannelRef.current) {
         realtimeChannelRef.current.unsubscribe();
         supabase.removeChannel(realtimeChannelRef.current);
       }
-      if (authListenerRef.current?.subscription) {
-        authListenerRef.current.subscription.unsubscribe();
+      if (authListenerRef.current?.data?.subscription) {
+        authListenerRef.current.data.subscription.unsubscribe();
       }
     };
   }, [fetchPermissions, supabase, clearState]);
@@ -273,4 +346,3 @@ export function useSession() {
     checkStatus,
   };
 }
-

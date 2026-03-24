@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/providers/auth-provider';
+import { beginPasswordChange, endPasswordChange } from '@/lib/auth-lock-manager';
 import { 
   User, 
   Mail, 
@@ -14,7 +15,9 @@ import {
   Loader2, 
   Save,
   AlertTriangle,
-  ArrowLeft
+  ArrowLeft,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -27,11 +30,60 @@ interface UserProfile {
   role: string;
 }
 
+// ─── Defined OUTSIDE the parent component so React never remounts it ──────────
+// If this were inside ProfileSettingsPage, every state change (keystroke, etc.)
+// would create a new component type → unmount → remount → lost focus.
+function PasswordField({
+  id,
+  label,
+  value,
+  onChange,
+  placeholder,
+  show,
+  onToggle,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  show: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-2">
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          id={id}
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+          placeholder={placeholder}
+          autoComplete="off"
+        />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+          tabIndex={-1}
+        >
+          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ProfileSettingsPage() {
   const router = useRouter();
-  const supabase = createClient();
   const { signOut } = useAuth();
+  const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasMountedRef = useRef(false);
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -43,12 +95,27 @@ export default function ProfileSettingsPage() {
   // Form states
   const [name, setName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
+
+  // Password states — three separate fields for secure 2-step flow
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  
-  // UI states
-  const [activeSection, setActiveSection] = useState<'profile' | 'password' | 'delete' | 'leave'>('profile');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  // Dedicated state for password feedback — isolated from the shared `message`
+  // so Supabase's post-updateUser session refresh can't wipe it mid-render.
+  const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // UI states — initialize to 'password' tab if we just reloaded after a successful password change
+  const [activeSection, setActiveSection] = useState<'profile' | 'password' | 'delete' | 'leave'>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('pw') === 'updated') return 'password';
+    }
+    return 'profile';
+  });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -57,6 +124,33 @@ export default function ProfileSettingsPage() {
   useEffect(() => {
     fetchProfile();
   }, []);
+
+  // On fresh mount after a password-change reload, surface the success message.
+  // Using a URL param (?pw=updated) is the only race-free approach: Supabase fires
+  // USER_UPDATED synchronously inside updateUser() — before the promise resolves —
+  // so any sessionStorage flag set after the call is always too late for auth listeners.
+  // A URL param survives a full page reload and is read here before any auth events fire.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('pw') === 'updated') {
+      // Clean the URL immediately so a manual refresh doesn't re-show the banner
+      window.history.replaceState({}, '', window.location.pathname);
+      setPasswordMessage({ type: 'success', text: 'Password updated successfully' });
+      setIsUpdatingPassword(false);
+    }
+  }, []);
+
+  // Clear messages whenever the user switches sections.
+  // Skip the initial mount so a success message set right before the first
+  // render isn't immediately wiped by this effect.
+  useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
+    setMessage(null);
+    setPasswordMessage(null);
+  }, [activeSection]);
 
   const fetchProfile = async () => {
     try {
@@ -67,47 +161,39 @@ export default function ProfileSettingsPage() {
         return;
       }
 
-      // Get user data from users table
+      if (!user.id) return;
+
       const { data: userData } = await supabase
         .from('users')
-        .select('id, email, full_name, avatar_url, role')
+        .select('id, email, role')
         .eq('id', user.id)
         .maybeSingle();
 
-      // Check if user is a team member
       const { data: memberData } = await supabase
         .from('team_members')
-        .select('id, user_id')
+        .select('id, user_id, display_name, avatar_url, role_label')
         .eq('user_id', user.id)
         .maybeSingle();
 
       let role = userData?.role || 'user';
 
-      // Check team_members for role_label override
-      const { data: teamMember } = await supabase
-        .from('team_members')
-        .select('role_label')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (teamMember?.role_label) {
-        if (teamMember.role_label === 'Super Admin') {
-          role = 'super_admin';
-        } else {
-          role = 'admin';
-        }
+      if (memberData?.role_label) {
+        role = memberData.role_label === 'Super Admin' ? 'super_admin' : 'admin';
       }
+
+      const displayName = memberData?.display_name || user.email?.split('@')[0] || '';
+      const resolvedAvatarUrl = memberData?.avatar_url || '';
 
       setProfile({
         id: user.id,
         email: user.email || '',
-        full_name: userData?.full_name || user.email?.split('@')[0] || '',
-        avatar_url: userData?.avatar_url || null,
-        role: role
+        full_name: displayName,
+        avatar_url: resolvedAvatarUrl || null,
+        role,
       });
       
-      setName(userData?.full_name || user.email?.split('@')[0] || '');
-      setAvatarUrl(userData?.avatar_url || '');
+      setName(displayName);
+      setAvatarUrl(resolvedAvatarUrl);
       setIsSuperAdmin(role === 'super_admin');
       setIsTeamMember(!!memberData);
     } catch (error) {
@@ -121,14 +207,12 @@ export default function ProfileSettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!validTypes.includes(file.type)) {
       setMessage({ type: 'error', text: 'Please select a JPEG, PNG, or WebP image' });
       return;
     }
 
-    // Validate file size (max 2MB)
     if (file.size > 2 * 1024 * 1024) {
       setMessage({ type: 'error', text: 'Image must be less than 2MB' });
       return;
@@ -139,9 +223,8 @@ export default function ProfileSettingsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Upload to Supabase Storage
       const fileName = `avatars/${user.id}-${Date.now()}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('team-avatars')
         .upload(fileName, file);
 
@@ -151,29 +234,22 @@ export default function ProfileSettingsPage() {
         return;
       }
 
-      // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('team-avatars')
         .getPublicUrl(fileName);
 
       setAvatarUrl(publicUrl);
 
-      // Also update team_members table if user is a team member
       if (isTeamMember) {
         const { error: teamError } = await supabase
           .from('team_members')
           .update({ avatar_url: publicUrl })
           .eq('user_id', user.id);
 
-        if (teamError) {
-          console.error('Error updating team_members avatar:', teamError);
-          // Don't throw - team_members update is optional
-        }
+        if (teamError) console.error('Error updating team_members avatar:', teamError);
       }
       
-      // Dispatch event to update Topbar
       window.dispatchEvent(new CustomEvent('profile-updated'));
-      
       setMessage({ type: 'success', text: 'Avatar updated successfully' });
     } catch (error) {
       console.error('Error uploading avatar:', error);
@@ -193,42 +269,17 @@ export default function ProfileSettingsPage() {
     setMessage(null);
 
     try {
-      // Update users table
-      const { error: userError } = await supabase
-        .from('users')
-        .update({
-          full_name: name.trim(),
-          avatar_url: avatarUrl || null
-        })
-        .eq('id', profile?.id);
-
-      if (userError) throw userError;
-
-      // Also update team_members table if user is a team member
       if (isTeamMember) {
         const { error: teamError } = await supabase
           .from('team_members')
-          .update({
-            display_name: name.trim(),
-            avatar_url: avatarUrl || null
-          })
+          .update({ display_name: name.trim(), avatar_url: avatarUrl || null })
           .eq('user_id', profile?.id);
 
-        if (teamError) {
-          console.error('Error updating team_members:', teamError);
-          // Don't throw - team_members update is optional
-        }
+        if (teamError) throw teamError;
       }
 
-      setProfile(prev => prev ? {
-        ...prev,
-        full_name: name.trim(),
-        avatar_url: avatarUrl || null
-      } : null);
-
-      // Dispatch event to update Topbar
+      setProfile(prev => prev ? { ...prev, full_name: name.trim(), avatar_url: avatarUrl || null } : null);
       window.dispatchEvent(new CustomEvent('profile-updated'));
-
       setMessage({ type: 'success', text: 'Profile updated successfully' });
     } catch (error) {
       console.error('Error saving profile:', error);
@@ -238,56 +289,71 @@ export default function ProfileSettingsPage() {
     }
   };
 
-  const handleChangePassword = async () => {
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setMessage({ type: 'error', text: 'Please fill in all password fields' });
+  // ─── Secure 2-step password change ────────────────────────────────────────
+  const handleChangePassword = useCallback(async () => {
+    if (isUpdatingPassword) return;
+
+    // ── Step 0: Client-side validation ──────────────────────────────────────
+    if (!currentPassword) {
+      setPasswordMessage({ type: 'error', text: 'Please enter your current password' });
       return;
     }
-
+    if (newPassword.length < 6) {
+      setPasswordMessage({ type: 'error', text: 'New password must be at least 6 characters' });
+      return;
+    }
     if (newPassword !== confirmPassword) {
-      setMessage({ type: 'error', text: 'New passwords do not match' });
+      setPasswordMessage({ type: 'error', text: 'New passwords do not match' });
+      return;
+    }
+    if (currentPassword === newPassword) {
+      setPasswordMessage({ type: 'error', text: 'New password must be different from your current password' });
       return;
     }
 
-    if (newPassword.length < 8) {
-      setMessage({ type: 'error', text: 'Password must be at least 8 characters' });
-      return;
-    }
-
-    setSaving(true);
-    setMessage(null);
+    setIsUpdatingPassword(true);
+    setPasswordMessage(null);
 
     try {
-      // Verify current password by attempting to sign in
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: profile?.email || '',
-        password: currentPassword
+      // Tell useSession to skip the SIGNED_IN event that signInWithPassword fires.
+      // Without this, useSession acquires the Web Lock between the two steps,
+      // making updateUser wait 5 s and then fail with a 422.
+      beginPasswordChange();
+
+      // ── Step 1: Re-authenticate with current password ────────────────────
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: profile?.email ?? '',
+        password: currentPassword,
       });
 
-      if (signInError) {
-        setMessage({ type: 'error', text: 'Current password is incorrect' });
-        setSaving(false);
+      if (authError) {
+        endPasswordChange();
+        setPasswordMessage({ type: 'error', text: 'Current password is incorrect' });
+        setIsUpdatingPassword(false);
         return;
       }
 
-      // Update password
+      // ── Step 2: Update to new password ───────────────────────────────────
       const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword
+        password: newPassword,
       });
+
+      endPasswordChange(); // Lock is no longer needed — updateUser has resolved
 
       if (updateError) throw updateError;
 
-      setMessage({ type: 'success', text: 'Password changed successfully' });
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
+      // ── Success ──────────────────────────────────────────────────────────
+      // Reload the page with a URL param so the success message can be shown
+      // on a clean mount — free from any Supabase auth event race conditions.
+      window.location.href = window.location.pathname + '?pw=updated';
     } catch (error: any) {
+      endPasswordChange();
       console.error('Error changing password:', error);
-      setMessage({ type: 'error', text: error.message || 'Failed to change password' });
-    } finally {
-      setSaving(false);
+      setPasswordMessage({ type: 'error', text: error.message || 'Failed to change password. Please try again.' });
+      setIsUpdatingPassword(false);
     }
-  };
+  }, [isUpdatingPassword, currentPassword, newPassword, confirmPassword, profile?.email, supabase]);
+  // ──────────────────────────────────────────────────────────────────────────
 
   const handleDeleteAccount = async () => {
     if (deleteConfirmText !== 'DELETE') {
@@ -295,7 +361,6 @@ export default function ProfileSettingsPage() {
       return;
     }
 
-    // Check if this is the last admin
     if (isSuperAdmin) {
       const { count } = await supabase
         .from('users')
@@ -303,18 +368,15 @@ export default function ProfileSettingsPage() {
         .eq('role', 'super_admin');
 
       if (count && count <= 1) {
-        setMessage({ type: 'error', text: 'Cannot delete your account - you are the last Super Admin' });
+        setMessage({ type: 'error', text: 'Cannot delete your account — you are the last Super Admin' });
         return;
       }
     }
 
     setSaving(true);
     try {
-      // Delete user data
       await supabase.from('users').delete().eq('id', profile?.id);
       await supabase.from('team_members').delete().eq('user_id', profile?.id);
-      
-      // Centralized logout
       await signOut();
     } catch (error) {
       console.error('Error deleting account:', error);
@@ -327,13 +389,7 @@ export default function ProfileSettingsPage() {
   const handleLeaveTeam = async () => {
     setSaving(true);
     try {
-      // Remove from team_members
-      await supabase
-        .from('team_members')
-        .delete()
-        .eq('user_id', profile?.id);
-
-      // Centralized logout
+      await supabase.from('team_members').delete().eq('user_id', profile?.id);
       await signOut();
     } catch (error) {
       console.error('Error leaving team:', error);
@@ -401,13 +457,15 @@ export default function ProfileSettingsPage() {
       {/* Message */}
       {message && (
         <div className={`mb-6 p-4 rounded-lg ${
-          message.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'
+          message.type === 'success'
+            ? 'bg-green-50 text-green-800 border border-green-200'
+            : 'bg-red-50 text-red-800 border border-red-200'
         }`}>
           {message.text}
         </div>
       )}
 
-      {/* Profile Section */}
+      {/* ── Profile Section ─────────────────────────────────────────────────── */}
       {activeSection === 'profile' && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h2 className="text-lg font-semibold mb-6">Profile Information</h2>
@@ -434,11 +492,7 @@ export default function ProfileSettingsPage() {
                 disabled={uploading}
                 className="absolute bottom-0 right-0 w-8 h-8 bg-cyan-500 text-white rounded-full flex items-center justify-center hover:bg-cyan-600 transition-colors disabled:opacity-50"
               >
-                {uploading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Camera className="w-4 h-4" />
-                )}
+                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
               </button>
               <input
                 ref={fileInputRef}
@@ -504,64 +558,83 @@ export default function ProfileSettingsPage() {
         </div>
       )}
 
-      {/* Password Section */}
+      {/* ── Password Section ─────────────────────────────────────────────────── */}
       {activeSection === 'password' && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-lg font-semibold mb-6">Change Password</h2>
-          
+          <h2 className="text-lg font-semibold mb-2">Change Password</h2>
+          <p className="text-sm text-gray-500 mb-6">
+            For security, we verify your current password before applying any changes.
+          </p>
+
+          {/* Password-specific feedback — own state so Supabase session refresh cannot wipe it */}
+          {passwordMessage && (
+            <div className={`mb-6 p-4 rounded-lg ${
+              passwordMessage.type === 'success'
+                ? 'bg-green-50 text-green-800 border border-green-200'
+                : 'bg-red-50 text-red-800 border border-red-200'
+            }`}>
+              {passwordMessage.text}
+            </div>
+          )}
+
           <div className="space-y-4 max-w-md">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Current Password
-              </label>
-              <input
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                placeholder="Enter current password"
-              />
-            </div>
+            {/* Current password — required for re-auth */}
+            <PasswordField
+              id="current-password"
+              label="Current Password"
+              value={currentPassword}
+              onChange={setCurrentPassword}
+              placeholder="Enter your current password"
+              show={showCurrentPassword}
+              onToggle={() => setShowCurrentPassword(p => !p)}
+            />
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                New Password
-              </label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                placeholder="Enter new password"
-              />
-            </div>
+            <hr className="border-gray-200" />
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Confirm New Password
-              </label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                placeholder="Confirm new password"
-              />
-            </div>
+            {/* New password */}
+            <PasswordField
+              id="new-password"
+              label="New Password"
+              value={newPassword}
+              onChange={setNewPassword}
+              placeholder="Enter new password (min. 6 characters)"
+              show={showNewPassword}
+              onToggle={() => setShowNewPassword(p => !p)}
+            />
+
+            {/* Confirm new password */}
+            <PasswordField
+              id="confirm-password"
+              label="Confirm New Password"
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+              placeholder="Re-enter new password"
+              show={showConfirmPassword}
+              onToggle={() => setShowConfirmPassword(p => !p)}
+            />
+
+            {/* Live match hint */}
+            {confirmPassword.length > 0 && (
+              <p className={`text-xs ${newPassword === confirmPassword ? 'text-green-600' : 'text-red-500'}`}>
+                {newPassword === confirmPassword ? '✓ Passwords match' : '✗ Passwords do not match'}
+              </p>
+            )}
           </div>
 
           <button
             onClick={handleChangePassword}
-            disabled={saving}
-            className="mt-6 flex items-center gap-2 px-6 py-2.5 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors disabled:opacity-50"
+            disabled={isUpdatingPassword}
+            className="mt-6 flex items-center gap-2 px-6 py-2.5 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-            Update Password
+            {isUpdatingPassword
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Updating…</>
+              : <><Lock className="w-4 h-4" /> Update Password</>
+            }
           </button>
         </div>
       )}
 
-      {/* Delete Account Section */}
+      {/* ── Delete Account Section ───────────────────────────────────────────── */}
       {activeSection === 'delete' && (
         <div className="bg-white border border-red-200 rounded-lg p-6">
           <div className="flex items-start gap-4">
@@ -585,7 +658,7 @@ export default function ProfileSettingsPage() {
               ) : (
                 <div className="mt-4 p-4 bg-red-50 rounded-lg border border-red-200">
                   <p className="text-sm text-red-800 mb-4">
-                    <strong>Warning:</strong> This action cannot be undone. To confirm, type DELETE below:
+                    <strong>Warning:</strong> This action cannot be undone. Type <strong>DELETE</strong> to confirm:
                   </p>
                   <input
                     type="text"
@@ -603,10 +676,7 @@ export default function ProfileSettingsPage() {
                       {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Delete My Account'}
                     </button>
                     <button
-                      onClick={() => {
-                        setShowDeleteConfirm(false);
-                        setDeleteConfirmText('');
-                      }}
+                      onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); }}
                       className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                     >
                       Cancel
@@ -619,7 +689,7 @@ export default function ProfileSettingsPage() {
         </div>
       )}
 
-      {/* Leave Team Section */}
+      {/* ── Leave Team Section ───────────────────────────────────────────────── */}
       {activeSection === 'leave' && (
         <div className="bg-white border border-amber-200 rounded-lg p-6">
           <div className="flex items-start gap-4">

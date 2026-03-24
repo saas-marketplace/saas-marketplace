@@ -2,6 +2,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
 // GET /api/notifications - Get user's notifications
+// Only super admins can access this endpoint - they see all notifications
 export async function GET(request: Request) {
   try {
     const supabase = createServerSupabaseClient();
@@ -11,36 +12,45 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // ✅ Get user settings safely
-    const { data: userSettings, error: settingsError } = await supabase
-      .from('user_settings')
-      .select('notification_settings')
-      .eq('user_id', user.id)
+    // Check if user is super admin
+    const { data: userData } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
       .maybeSingle();
 
-    if (settingsError) throw settingsError;
+    let isSuperAdmin = userData?.role === 'super_admin';
 
-    const notificationSettings = userSettings?.notification_settings || {};
+    // Check team_members for role_label override
+    if (!isSuperAdmin) {
+      const { data: memberData } = await supabase
+        .from('team_members')
+        .select('role_label')
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-    // ✅ Get notifications safely
+      if (memberData?.role_label === 'Super Admin') {
+        isSuperAdmin = true;
+      }
+    }
+
+    // Only super admins can access notifications
+    if (!isSuperAdmin) {
+      return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 });
+    }
+
+    // Get all notifications (no filtering for super admin)
     const { data: notifications, error } = await supabase
       .from('notifications')
       .select('*')
-      .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(100);
 
     if (error) throw error;
 
-    // ✅ Safe filtering (avoid undefined crash)
-    const filteredNotifications = (notifications || []).filter((notification: any) => {
-      const settingKey = `${notification.type}_alerts`;
-      return notificationSettings?.[settingKey] !== false;
-    });
-
     return NextResponse.json({
-      notifications: filteredNotifications,
-      unreadCount: filteredNotifications.filter((n: any) => !n.is_read).length
+      notifications: notifications || [],
+      unreadCount: (notifications || []).filter((n: any) => !n.is_read).length
     });
 
   } catch (error) {
@@ -53,7 +63,32 @@ export async function GET(request: Request) {
 }
 
 
-// POST /api/notifications - Create a notification
+// Helper function to check if user is super admin
+async function checkSuperAdmin(supabase: any, userId: string): Promise<boolean> {
+  const { data: userData } = await supabase
+    .from('users')
+    .select('role')
+    .eq('id', userId)
+    .maybeSingle();
+
+  let isSuperAdmin = userData?.role === 'super_admin';
+
+  if (!isSuperAdmin) {
+    const { data: memberData } = await supabase
+      .from('team_members')
+      .select('role_label')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (memberData?.role_label === 'Super Admin') {
+      isSuperAdmin = true;
+    }
+  }
+
+  return isSuperAdmin;
+}
+
+// POST /api/notifications - Create a notification (Super Admin only)
 export async function POST(request: Request) {
   try {
     const supabase = createServerSupabaseClient();
@@ -61,6 +96,12 @@ export async function POST(request: Request) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check if user is super admin
+    const isSuperAdmin = await checkSuperAdmin(supabase, user.id);
+    if (!isSuperAdmin) {
+      return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 });
     }
 
     // ✅ Safe JSON parsing
@@ -86,9 +127,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    // ✅ REMOVED: Role restriction - notifications work for ALL users
-    // Previously checked if user was admin, now any authenticated user can create notifications
 
     // ✅ Insert safely
     const { data: notification, error } = await supabase
@@ -117,7 +155,7 @@ export async function POST(request: Request) {
 }
 
 
-// PATCH /api/notifications - Mark notifications as read
+// PATCH /api/notifications - Mark notifications as read (Super Admin only)
 export async function PATCH(request: Request) {
   try {
     const supabase = createServerSupabaseClient();
@@ -125,6 +163,12 @@ export async function PATCH(request: Request) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check if user is super admin
+    const isSuperAdmin = await checkSuperAdmin(supabase, user.id);
+    if (!isSuperAdmin) {
+      return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 });
     }
 
     let body;
@@ -141,7 +185,6 @@ export async function PATCH(request: Request) {
       const { error } = await supabase
         .from('notifications')
         .update({ is_read: true })
-        .eq('user_id', user.id)
         .eq('is_read', false);
 
       if (error) throw error;
@@ -157,7 +200,6 @@ export async function PATCH(request: Request) {
       const { error } = await supabase
         .from('notifications')
         .update({ is_read: true })
-        .eq('user_id', user.id)
         .in('id', validIds);
 
       if (error) throw error;
@@ -175,7 +217,7 @@ export async function PATCH(request: Request) {
 }
 
 
-// DELETE /api/notifications - Delete notifications
+// DELETE /api/notifications - Delete notifications (Super Admin only)
 export async function DELETE(request: Request) {
   try {
     const supabase = createServerSupabaseClient();
@@ -183,6 +225,12 @@ export async function DELETE(request: Request) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check if user is super admin
+    const isSuperAdmin = await checkSuperAdmin(supabase, user.id);
+    if (!isSuperAdmin) {
+      return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -195,11 +243,11 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // ✅ Delete safely
+    // ✅ Delete all notifications (super admin can delete all)
     const { error } = await supabase
       .from('notifications')
       .delete()
-      .eq('user_id', user.id);
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all (trick since we can't do delete all directly)
 
     if (error) throw error;
 

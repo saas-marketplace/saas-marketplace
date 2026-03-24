@@ -731,11 +731,11 @@ export default function Topbar() {
     setIsProfileOpen(false);
     setIsNotificationsOpen(false);
 
-    // 🚀 IMMEDIATE REDIRECT - don't wait for Supabase signOut
-    // Fire signOut in background and redirect immediately
-    signOut().catch(console.error); // Fire and forget
-    
-    // Direct redirect without waiting - this is the key for "instant" feel
+    // Wait for signOut to fully clear the Supabase session from storage
+    // before navigating away. Without this, the next page load can call
+    // getSession() before the token is gone and render the user as still logged in.
+    await signOut().catch(console.error);
+
     window.location.replace('/auth/login');
   };
 
@@ -780,6 +780,9 @@ export default function Topbar() {
   const userInitials = getInitials(userName);
   const userEmail = profile?.email || '';
   const userAvatarUrl = profile?.avatar_url || null;
+  
+  // Check if user is super admin
+  const isSuperAdmin = profile?.role === 'super_admin' || profile?.role_label === 'Super Admin';
 
   return (
     <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 flex justify-between items-center shadow-sm relative z-50">
@@ -847,6 +850,8 @@ export default function Topbar() {
       <div className="flex items-center gap-2 md:gap-3">
         {/* Notification Button & Dropdown */}
         <div ref={notificationsRef} className="relative">
+          {/* Notifications Bell - Super Admin Only */}
+          {isSuperAdmin && (
           <button
             onClick={() => {
               setIsNotificationsOpen(!isNotificationsOpen);
@@ -863,6 +868,7 @@ export default function Topbar() {
               </span>
             )}
           </button>
+          )}
 
           {/* Notifications Dropdown - With Grouped Notifications & Unread Badges */}
           {isNotificationsOpen && (

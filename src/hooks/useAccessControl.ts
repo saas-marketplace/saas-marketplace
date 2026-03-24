@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { safeGetUser, authLockManager } from '@/lib/auth-lock-manager';
 import { PermissionSection, PermissionAction, SectionPermissions } from '@/types/permissions';
 
 interface AccessControlState {
@@ -34,7 +35,18 @@ export function useAccessControl() {
     isFetchingRef.current = true;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // Use safeGetUser instead of direct supabase.auth.getUser()
+      const { user, error } = await safeGetUser();
+      
+      if (error) {
+        // Handle AbortError gracefully
+        if (error.name === 'AbortError') {
+          console.warn('[AccessControl] AbortError during getUser — ignoring');
+          isFetchingRef.current = false;
+          return;
+        }
+        throw error;
+      }
 
       if (!user) {
         if (isMounted.current) {
@@ -70,6 +82,8 @@ export function useAccessControl() {
             blogs: ['view', 'create', 'update', 'delete'],
             requests: ['view', 'create', 'delete'],
             team: ['view', 'create', 'update', 'delete'],
+            users: ['view', 'create', 'update', 'delete'],
+            contact_submissions: ['view', 'create', 'delete'],
           };
           setState({
             isLoading: false,
@@ -131,6 +145,8 @@ export function useAccessControl() {
           blogs: ['view', 'create', 'update', 'delete'],
           requests: ['view', 'create', 'delete'],
           team: ['view', 'create', 'update', 'delete'],
+          users: [],
+          contact_submissions: [],
         };
         
         if (teamMember?.permissions) {
@@ -165,8 +181,14 @@ export function useAccessControl() {
           });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[AccessControl] Error:', error);
+      // Handle AbortError gracefully - don't clear state on lock errors
+      if (error?.name === 'AbortError') {
+        console.warn('[AccessControl] AbortError — likely a token refresh race');
+        isFetchingRef.current = false;
+        return;
+      }
       if (isMounted.current) {
         setState({
           isLoading: false,
@@ -194,11 +216,14 @@ export function useAccessControl() {
       await fetchPermissions();
     });
 
-    // Realtime subscription for team_members changes
+    // Get current user for realtime filter - use cached value
+    const cached = authLockManager.getCachedUser();
+    const userId = cached?.id || '';
+    
     const realtimeSub = supabase
       .channel('access_control')
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'team_members', filter: `user_id=eq.${supabase.auth.getUser().data?.user?.id || ''}` },
+        { event: '*', schema: 'public', table: 'team_members', filter: `user_id=eq.${userId}` },
         () => fetchPermissions()
       )
       .subscribe();
@@ -254,6 +279,8 @@ export function useAccessControl() {
     requests: state.permissions.requests || [],
     team: state.permissions.team || [],
     dashboard: state.permissions.dashboard || [],
+    users: state.permissions.users || [],
+    contact_submissions: state.permissions.contact_submissions || [],
   }), [state.permissions]);
 
   return {

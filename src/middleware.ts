@@ -94,21 +94,41 @@ export async function middleware(request: NextRequest) {
   // ── Authenticated users ─────────────────────────────────────────────────
   // NEVER redirect suspended users - let them access dashboard and show UI message
   
-  // Get user's role from users table
+  // Get user's role and ban status from users table
   let userRole = "user";
+  let isBanned = false;
+  let bannedIp: string | null = null;
 
   try {
     const { data } = await supabase
       .from("users")
-      .select("role")
+      .select("role, is_banned, banned_ip")
       .eq("id", user.id)
       .maybeSingle();
     
-    if (data?.role) {
-      userRole = data.role;
+    if (data) {
+      userRole = data.role || "user";
+      isBanned = data.is_banned || false;
+      bannedIp = data.banned_ip || null;
     }
   } catch (error) {
     // Continue with default role
+  }
+
+  // ── CHECK IF USER IS BANNED ──
+  // Get client IP
+  const clientIp = request.headers.get("x-forwarded-for") || 
+                    request.headers.get("x-real-ip") || 
+                    "unknown";
+
+  // Block if banned OR if IP matches banned IP
+  if (isBanned || (bannedIp && bannedIp !== "unknown" && bannedIp === clientIp)) {
+    // Force logout by clearing auth cookies
+    response.cookies.set("sb-access-token", "", { maxAge: -1, path: "/" });
+    response.cookies.set("sb-refresh-token", "", { maxAge: -1, path: "/" });
+    
+    // Redirect to access removed page
+    return redirectTo("/access-removed");
   }
 
   // Check team_members for role_label override
@@ -136,6 +156,10 @@ export async function middleware(request: NextRequest) {
     if (pathname === "/") {
       return redirectTo("/dashboard");
     }
+    // Prevent access to user management pages for non-super-admin
+    if ((pathname.startsWith("/dashboard/users") || pathname.startsWith("/dashboard/contact-submissions")) && userRole !== "super_admin") {
+      return redirectTo("/dashboard");
+    }
     return response;
   }
 
@@ -160,5 +184,6 @@ export const config = {
     "/verify-access",
     "/access-restored",
     "/access-removed",
+    "/api/:path*",
   ],
 };

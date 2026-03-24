@@ -156,7 +156,10 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string) => {
       console.log('[PermissionsContext] Auth state changed:', event);
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        return;
+      }
+      if (event === 'SIGNED_IN') {
         // AuthProvider already has the user, but we need to refetch permissions
         fetchedRef.current = false;
         fetchPermissions();

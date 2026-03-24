@@ -6,7 +6,6 @@ import {
   User, 
   Users, 
   Shield, 
-  Bell, 
   Settings as SettingsIcon, 
   Database,
   Loader2,
@@ -15,7 +14,7 @@ import {
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-type SettingsTab = 'profile' | 'team' | 'permissions' | 'notifications' | 'system' | 'utilities';
+type SettingsTab = 'profile' | 'team' | 'permissions' | 'system' | 'utilities';
 
 interface SettingsNavItem {
   id: SettingsTab;
@@ -47,13 +46,6 @@ const settingsNavItems: SettingsNavItem[] = [
     description: 'Configure permissions matrix for team members',
     icon: Shield,
     href: '/dashboard/settings/permissions'
-  },
-  { 
-    id: 'notifications', 
-    label: 'Notifications & Alerts', 
-    description: 'Control notification preferences and alerts',
-    icon: Bell,
-    href: '/dashboard/settings/notifications'
   },
   { 
     id: 'system', 

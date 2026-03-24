@@ -63,7 +63,9 @@ export type PermissionSection =
   | 'products' 
   | 'blogs' 
   | 'requests' 
-  | 'team';
+  | 'team'
+  | 'users'  // Users Management - Super Admin only
+  | 'contact_submissions';  // Contact Submissions - Super Admin only
 
 // Permission configuration for a single section
 export type SectionPermissions = PermissionAction[];
@@ -126,7 +128,18 @@ export const SECTIONS: SectionMeta[] = [
     icon: 'UsersRound', 
     description: 'Manage team members and permissions' 
   },
-  
+  { 
+    key: 'users', 
+    label: 'Users', 
+    icon: 'UserCog', 
+    description: 'Manage platform users (Super Admin only)' 
+  },
+  { 
+    key: 'contact_submissions', 
+    label: 'Contact Submissions', 
+    icon: 'Mail', 
+    description: 'View contact form submissions (Super Admin only)' 
+  },
 ];
 
 // Permission presets for quick assignment

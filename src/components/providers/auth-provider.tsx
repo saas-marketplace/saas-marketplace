@@ -30,6 +30,7 @@ const supabase = createBrowserClient(
 );
 
 import { useSession } from '@/hooks/useSession';
+import { clearAuthCache } from '@/lib/auth-lock-manager';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { user, session, isLoading: loading, checkStatus } = useSession();
@@ -43,6 +44,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // CRITICAL: Remove all channels first to stop any pending subscriptions
       // This prevents race conditions where other requests might revalidate the session
       supabase.removeAllChannels();
+      // Also clear the auth lock manager cache
+      clearAuthCache();
       console.log('[AuthProvider] All channels removed');
       
       // Now sign out

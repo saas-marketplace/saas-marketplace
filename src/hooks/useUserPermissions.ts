@@ -67,6 +67,8 @@ export function useUserPermissions() {
           blogs: ['view', 'create', 'update', 'delete'],
           requests: ['view', 'create', 'delete'],
           team: ['view', 'create', 'update', 'delete'],
+          users: ['view', 'create', 'update', 'delete'],
+          contact_submissions: ['view', 'create', 'delete'],
         };
         if (mountedRef.current) {
           setState({
@@ -115,6 +117,8 @@ export function useUserPermissions() {
           blogs: ['view', 'create', 'update', 'delete'],
           requests: ['view', 'create', 'delete'],
           team: ['view', 'create', 'update', 'delete'],
+          users: [],
+          contact_submissions: [],
         };
 
         if (teamMember?.permissions) {
@@ -268,6 +272,8 @@ export function useUserPermissions() {
     requests: state.permissions.requests || [],
     team: state.permissions.team || [],
     dashboard: state.permissions.dashboard || [],
+    users: state.permissions.users || [],
+    contact_submissions: state.permissions.contact_submissions || [],
   }), [state.permissions]);
 
   return {
