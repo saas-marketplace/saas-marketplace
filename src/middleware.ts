@@ -26,6 +26,31 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
+  // Get client IP for blocking
+  const clientIP = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() 
+    || request.headers.get("x-real-ip")
+    || request.ip
+    || "unknown";
+
+  // Check if IP is banned
+  try {
+    const { data: bannedIP } = await supabase
+      .from("banned_ips")
+      .select("ip_address")
+      .eq("ip_address", clientIP)
+      .maybeSingle();
+    
+    if (bannedIP) {
+      // Block the request completely
+      return NextResponse.json(
+        { error: "Access denied" },
+        { status: 403 }
+      );
+    }
+  } catch (error) {
+    // Continue on error - don't block legitimate users
+  }
+
   // Helper — carries staged cookies onto any redirect
   const redirectTo = (path: string) => {
     const res = NextResponse.redirect(new URL(path, request.url));
@@ -76,11 +101,6 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith("/marketplace/")
   );
 
-  // Public routes - allow without auth check
-  if (isPublicRoute || pathname.startsWith("/api/")) {
-    return response;
-  }
-
   // Get user - redirect to login if not authenticated
   let user = null;
 
@@ -92,6 +112,33 @@ export async function middleware(request: NextRequest) {
     if (!isPublicRoute && !pathname.startsWith("/api/")) {
       return redirectTo("/auth/login");
     }
+    return response;
+  }
+
+  // Check if user is banned - even for public routes
+  if (user) {
+    try {
+      const { data: userData } = await supabase
+        .from("users")
+        .select("is_banned")
+        .eq("id", user.id)
+        .maybeSingle();
+      
+      if (userData?.is_banned) {
+        // Force logout by clearing auth cookies
+        response.cookies.set("sb-access-token", "", { maxAge: -1, path: "/" });
+        response.cookies.set("sb-refresh-token", "", { maxAge: -1, path: "/" });
+        
+        // Redirect to banned page
+        return redirectTo("/banned");
+      }
+    } catch (error) {
+      // Continue - don't block on error
+    }
+  }
+
+  // Public routes - allow without auth check
+  if (isPublicRoute || pathname.startsWith("/api/")) {
     return response;
   }
 
@@ -121,16 +168,6 @@ export async function middleware(request: NextRequest) {
     }
   } catch (error) {
     // Continue with default role
-  }
-
-  // ── CHECK IF USER IS BANNED ──
-  if (isBanned) {
-    // Force logout by clearing auth cookies
-    response.cookies.set("sb-access-token", "", { maxAge: -1, path: "/" });
-    response.cookies.set("sb-refresh-token", "", { maxAge: -1, path: "/" });
-    
-    // Redirect to banned page
-    return redirectTo("/banned");
   }
 
   // Check team_members for role_label override (only if needed)
