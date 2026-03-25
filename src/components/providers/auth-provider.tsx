@@ -182,7 +182,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let isProcessing = false;
     
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: Session | null) => {
-      console.log('[AuthProvider] Auth state changed:', event);
+      // Only log non-noisy events to reduce console spam
+      if (event !== 'SIGNED_IN') {
+        console.log('[AuthProvider] Auth state changed:', event);
+      }
 
       // Ignore INITIAL_SESSION - it's already handled in the initialization effect above
       // Ignore noisy events that break flows

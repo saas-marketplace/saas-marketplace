@@ -1,56 +1,168 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { Badge } from "@/components/ui/badge";
 import { Linkedin, Twitter, Github } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
-const team = [
-  {
-    name: "Sarah Chen",
-    role: "Founder & CEO",
-    initials: "SC",
-    gradient: "from-purple-500 to-pink-500",
-    bio: "Visionary leader with 15+ years in tech",
-  },
-  {
-    name: "Marcus Webb",
-    role: "CTO",
-    initials: "MW",
-    gradient: "from-blue-500 to-cyan-500",
-    bio: "Engineering genius behind our platform",
-  },
-  {
-    name: "Priya Sharma",
-    role: "Head of Design",
-    initials: "PS",
-    gradient: "from-pink-500 to-orange-500",
-    bio: "Creating beautiful experiences daily",
-  },
-  {
-    name: "Alex Rivera",
-    role: "Head of Marketing",
-    initials: "AR",
-    gradient: "from-green-500 to-emerald-500",
-    bio: "Growth expert and brand strategist",
-  },
-  {
-    name: "David Kim",
-    role: "Head of Product",
-    initials: "DK",
-    gradient: "from-yellow-500 to-red-500",
-    bio: "Product visionary and user advocate",
-  },
-  {
-    name: "Emily Zhang",
-    role: "Lead Developer",
-    initials: "EZ",
-    gradient: "from-indigo-500 to-purple-500",
-    bio: "Full-stack wizard and code artist",
-  },
+export interface TeamMember {
+  name: string;
+  role: string;
+  avatar_url: string | null;
+  initials: string;
+}
+
+const gradients = [
+  "from-purple-500 to-pink-500",
+  "from-blue-500 to-cyan-500",
+  "from-pink-500 to-orange-500",
+  "from-green-500 to-emerald-500",
+  "from-yellow-500 to-red-500",
+  "from-indigo-500 to-purple-500",
 ];
 
+function getGradient(index: number): string {
+  return gradients[index % gradients.length];
+}
+
+// Helper function to get initials from name
+function getInitials(name: string): string {
+  if (!name) return 'TM';
+  const parts = name.trim().split(' ');
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return name.substring(0, 2).toUpperCase();
+}
+
 export function TeamSection() {
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchTeamMembers() {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('team_members')
+          .select('id, display_name, role_label, avatar_url')
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (error) {
+          console.error('Error fetching team members:', error);
+          setError(error.message);
+        } else {
+          console.log('Fetched team members:', data);
+          const transformed = ((data || []) as Array<{display_name?: string; role_label?: string; avatar_url?: string | null}>).map((member) => ({
+            name: member.display_name || 'Team Member',
+            role: member.role_label || 'Team Member',
+            avatar_url: member.avatar_url || null,
+            initials: getInitials(member.display_name || 'TM'),
+          }));
+          setTeamMembers(transformed);
+        }
+      } catch (err) {
+        console.error('Error fetching team members:', err);
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchTeamMembers();
+  }, []);
+
+  // Check if no team members (after loading is complete)
+  // Only show empty state if there's no error and no team members
+  const hasNoTeamMembers = teamMembers.length === 0 && !error;
+
+  // Show loading state while fetching
+  if (loading) {
+    return (
+      <section className="py-24 bg-muted/30">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            <div className="animate-pulse">
+              <div className="h-8 w-32 bg-muted rounded mx-auto mb-4"></div>
+              <div className="h-12 w-64 bg-muted rounded mx-auto mb-4"></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="p-6">
+                    <div className="w-28 h-28 rounded-full bg-muted mx-auto mb-4"></div>
+                    <div className="h-6 w-40 bg-muted rounded mx-auto mb-2"></div>
+                    <div className="h-4 w-32 bg-muted rounded mx-auto"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // Show error state if there was a problem fetching
+  if (error) {
+    return (
+      <section className="py-24 bg-muted/30">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <ScrollReveal className="text-center mb-16 m-f1">
+            <Badge variant="secondary" className="mb-4">
+              Our Team
+            </Badge>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
+              Meet the <span className="gradient-text">dreamers</span>
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              A passionate team of creators, engineers, and entrepreneurs
+              dedicated to building the future of digital commerce.
+            </p>
+          </ScrollReveal>
+          <div className="text-center py-12">
+            <p className="text-lg text-red-500">
+              Unable to load team members. Please try again later.
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Debug info: {error}
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // Show empty state when no team members in database
+  if (hasNoTeamMembers) {
+    return (
+      <section className="py-24 bg-muted/30">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <ScrollReveal className="text-center mb-16 m-f1">
+            <Badge variant="secondary" className="mb-4">
+              Our Team
+            </Badge>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
+              Meet the <span className="gradient-text">dreamers</span>
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              A passionate team of creators, engineers, and entrepreneurs
+              dedicated to building the future of digital commerce.
+            </p>
+          </ScrollReveal>
+          <div className="text-center py-12">
+            <p className="text-lg text-muted-foreground">
+              No team members available. Try to be part of our team.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // Use only real data from database
   return (
     <section className="py-24 bg-muted/30">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -68,22 +180,36 @@ export function TeamSection() {
         </ScrollReveal>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          {team.map((member, index) => (
-            <ScrollReveal key={member.name} delay={index * 0.1}>
+          {teamMembers.map((member, index) => (
+            <ScrollReveal key={member.name + index} delay={index * 0.1}>
               <motion.div
                 whileHover={{ y: -8 }}
-                className="glass-card rounded-2xl p-6 text-center group cursor-pointer"
+                className=" p-6 text-center group cursor-pointer"
               >
-                <motion.div
-                  whileHover={{ scale: 1.05, rotate: 5 }}
-                  className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${member.gradient} flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4`}
-                >
-                  {member.initials}
-                </motion.div>
-                <h3 className="text-lg font-semibold mb-1">{member.name}</h3>
-                <p className="text-sm text-primary font-medium mb-2">{member.role}</p>
-                <p className="text-sm text-muted-foreground mb-4">{member.bio}</p>
-                <div className="flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                {member.avatar_url ? (
+                  <motion.div
+                    whileHover={{ scale: 1.55, rotate: 5 }}
+                    className="w-28 h-28 rounded-full overflow-hidden mx-auto mb-4"
+                  >
+                    <img
+                      src={member.avatar_url}
+                      alt={member.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    whileHover={{ scale: 1.05, rotate: 5 }}
+                    className={`w-28 h-28 rounded-full bg-gradient-to-br ${getGradient(index)} flex items-center justify-center text-white text-3xl font-bold mx-auto mb-4`}
+                  >
+                    {member.initials}
+                  </motion.div>
+                )}
+                <h3 className="text-xl font-bold mb-2">{member.name}</h3>
+                <span className="inline-block px-3 py-1 text-sm bg-transparent border border-primary/30 rounded-full text-primary">
+                  {member.role}
+                </span>
+                <div className="flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity mt-4">
                   {[Twitter, Linkedin, Github].map((Icon, i) => (
                     <button
                       key={i}
