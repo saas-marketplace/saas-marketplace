@@ -1,52 +1,33 @@
 "use client";
 
+/**
+ * access-blocker.tsx
+ * ══════════════════
+ * Redirects banned users to /banned.
+ *
+ * ✅ No getSession() / users table query — reads isBanned from AuthProvider cache.
+ * ✅ Runs zero DB queries. The users row is already fetched once by useAuthUser.
+ */
+
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { safeGetSession } from "@/lib/auth-lock-manager";
+import { useAuth } from "@/components/providers/auth-provider";
 
-// AccessBlocker wraps children and handles access control on the client side
-// Checks for banned status and redirects immediately
 export function AccessBlocker({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const supabase = createClient();
+  const { user, loading } = useAuth();
 
   useEffect(() => {
-    // Skip check for banned page itself to prevent loops
-    if (pathname === "/banned" || pathname === "/access-restored") {
-      return;
+    // Skip check on exempt pages
+    if (pathname === "/banned" || pathname === "/access-restored") return;
+    // Wait for auth to resolve
+    if (loading) return;
+    // If the user is flagged as banned in the cached data — redirect
+    if (user?.isBanned) {
+      router.replace("/banned");
     }
-
-    const checkBanStatus = async () => {
-      try {
-        // Use safeGetSession to avoid lock conflicts
-        const { session } = await safeGetSession();
-        
-        if (!session?.user) {
-          return; // Not logged in, let other components handle auth
-        }
-
-        // Check if user is banned in database
-        const { data: userData } = await supabase
-          .from("users")
-          .select("is_banned")
-          .eq("id", session.user.id)
-          .maybeSingle();
-
-        if (userData?.is_banned) {
-          // Force logout
-          await supabase.auth.signOut();
-          // Redirect to banned page
-          router.replace("/banned");
-        }
-      } catch (error) {
-        console.error("Error checking ban status:", error);
-      }
-    };
-
-    checkBanStatus();
-  }, [pathname, router, supabase]);
+  }, [user, loading, pathname, router]);
 
   return <>{children}</>;
 }

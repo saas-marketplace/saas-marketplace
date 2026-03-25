@@ -6,7 +6,6 @@ import { useAccessControl } from '@/hooks/useAccessControl';
 import { TeamMember } from '@/types/index';
 import { Permissions, SECTIONS } from '@/types/permissions';
 import TeamMemberDialog from '@/components/dashboard/team/TeamMemberDialog';
-import TeamMemberDetails from '@/components/dashboard/team/TeamMemberDetails';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -507,12 +506,7 @@ export default function TeamPage() {
         onSuccess={fetchTeamMembers}
       />
 
-      {/* Team Member Details Popup */}
-      <TeamMemberDetails
-        member={selectedMember}
-        open={detailsOpen}
-        onOpenChange={setDetailsOpen}
-      />
+     
     </div>
   );
 }

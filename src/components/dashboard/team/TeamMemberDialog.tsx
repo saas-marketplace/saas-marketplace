@@ -139,14 +139,23 @@ export default function TeamMemberDialog({
     }
   };
 
+  // Sanitize filename to remove special characters that cause upload errors
+  const sanitizeFileName = (name: string): string => {
+    return name
+      .normalize('NFD') // Decompose characters (é → e + accent)
+      .replace(/[\u0300-\u036f]/g, '') // Remove accents
+      .replace(/[^a-zA-Z0-9]/g, ''); // Keep only alphanumeric
+  };
+
   // Upload avatar to Supabase storage
   const uploadAvatar = async (userId: string): Promise<string | null> => {
     if (!avatarFile) return null;
 
     setAvatarUploading(true);
     try {
-      const fileExt = avatarFile.name.split('.').pop();
-      const fileName = `${userId}-${Date.now()}.${fileExt}`;
+      const rawExt = avatarFile.name.split('.').pop() || 'jpg';
+      const safeExt = sanitizeFileName(rawExt);
+      const fileName = `${userId}-${Date.now()}.${safeExt}`;
       const filePath = `team-members/${fileName}`;
 
       const { data, error } = await supabase.storage

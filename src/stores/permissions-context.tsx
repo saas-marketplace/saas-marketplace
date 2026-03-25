@@ -1,9 +1,35 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
-import { useAuth } from '@/components/providers/auth-provider';
-import { createClient } from '@/lib/supabase/client';
-import type { PermissionSection, PermissionAction, SectionPermissions } from '@/types/permissions';
+/**
+ * permissions-context.tsx
+ * ════════════════════════
+ * Derives permission state from AuthProvider.
+ *
+ * ✅ Zero DB calls — all data comes from AuthProvider which uses useAuthUser/useTeamMember.
+ * ✅ No duplicate users/team_members queries.
+ * ✅ Realtime team_members subscription invalidates the module-level cache and triggers
+ *    a lightweight re-fetch via invalidateTeamMemberCache().
+ */
+
+import {
+  createContext,
+  useContext,
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+  ReactNode,
+} from "react";
+import { useAuth } from "@/components/providers/auth-provider";
+import { createClient } from "@/lib/supabase/client";
+import { invalidateTeamMemberCache } from "@/hooks/useAuthQuery";
+import type {
+  PermissionSection,
+  PermissionAction,
+  SectionPermissions,
+} from "@/types/permissions";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface PermissionsContextType {
   isLoading: boolean;
@@ -22,288 +48,147 @@ interface PermissionsContextType {
   checkStatus: () => Promise<void>;
 }
 
-const PermissionsContext = createContext<PermissionsContextType | undefined>(undefined);
+const PermissionsContext = createContext<PermissionsContextType | undefined>(
+  undefined
+);
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function PermissionsProvider({ children }: { children: ReactNode }) {
-  // CRITICAL: Use centralized user from AuthProvider to prevent duplicate /auth/v1/user calls
-  const { user: authUser, loading: authLoading } = useAuth();
+  // All data comes from AuthProvider — no DB calls here
+  const { user, loading } = useAuth();
+  const realtimeRef = useRef<any>(null);
   const supabase = createClient();
-  
-  const [state, setState] = useState<{
-    isLoading: boolean;
-    isSuperAdmin: boolean;
-    isAdmin: boolean;
-    isRemoved: boolean;
-    isSuspended: boolean;
-    permissions: Record<PermissionSection, SectionPermissions>;
-    accessibleSections: PermissionSection[];
-  }>({
-    isLoading: true,
-    isSuperAdmin: false,
-    isAdmin: false,
-    isRemoved: false,
-    isSuspended: false,
-    permissions: {} as Record<PermissionSection, SectionPermissions>,
-    accessibleSections: [],
-  });
 
-  const isFetchingRef = useRef(false);
-  const fetchedRef = useRef(false);
-  const realtimeChannelRef = useRef<any>(null);
-  const mountedRef = useRef(true);
-
-  const fetchPermissions = useCallback(async (user: any) => {
-    if (isFetchingRef.current) return;
-    isFetchingRef.current = true;
-
-    try {
-      // Single parallel fetch: users.role + team_members
-      const [userResult, teamResult] = await Promise.all([
-        supabase.from('users').select('role').eq('id', user.id).maybeSingle(),
-        supabase.from('team_members').select('permissions, is_active, needs_access_restored').eq('user_id', user.id).maybeSingle(),
-      ]);
-
-      const userRole = userResult.data?.role || 'user';
-      const teamMember = teamResult.data;
-
-      console.log('[PermissionsProvider] Role:', userRole, 'Team:', teamMember);
-
-      if (userRole === 'super_admin') {
-        const fullPerms: Record<PermissionSection, SectionPermissions> = {
-          dashboard: ['view'],
-          domains: ['view', 'create', 'update', 'delete'],
-          freelancers: ['view', 'create', 'update', 'delete'],
-          products: ['view', 'create', 'update', 'delete'],
-          blogs: ['view', 'create', 'update', 'delete'],
-          requests: ['view', 'create', 'delete'],
-          team: ['view', 'create', 'update', 'delete'],
-          users: ['view', 'create', 'update', 'delete'],
-          contact_submissions: ['view', 'create', 'delete'],
-        };
-        if (mountedRef.current) {
-          setState({
-            isLoading: false,
-            isSuperAdmin: true,
-            isAdmin: true,
-            isRemoved: false,
-            isSuspended: false,
-            permissions: fullPerms,
-            accessibleSections: Object.keys(fullPerms) as PermissionSection[],
-          });
-        }
-        return;
-      }
-
-      if (userRole !== 'admin') {
-        if (mountedRef.current) {
-          setState({
-            isLoading: false,
-            isSuperAdmin: false,
-            isAdmin: false,
-            isRemoved: false,
-            isSuspended: false,
-            permissions: {} as Record<PermissionSection, SectionPermissions>,
-            accessibleSections: [],
-          });
-        }
-        return;
-      }
-
-      // Admin: check team_member
-      const isRemovedState = !teamMember;
-      const isSuspendedState = teamMember && teamMember.is_active === false;
-      const needsRestore = teamMember?.needs_access_restored || false;
-
-      if (mountedRef.current) {
-        let permissionsData: Record<PermissionSection, SectionPermissions> = {
-          dashboard: ['view'],
-          domains: ['view', 'create', 'update', 'delete'],
-          freelancers: ['view', 'create', 'update', 'delete'],
-          products: ['view', 'create', 'update', 'delete'],
-          blogs: ['view', 'create', 'update', 'delete'],
-          requests: ['view', 'create', 'delete'],
-          team: ['view', 'create', 'update', 'delete'],
-          users: [],
-          contact_submissions: [],
-        };
-
-        if (teamMember?.permissions) {
-          const parsed = typeof teamMember.permissions === 'string' 
-            ? JSON.parse(teamMember.permissions) 
-            : teamMember.permissions;
-          permissionsData = { ...permissionsData, ...parsed };
-        }
-
-        const sections = (Object.keys(permissionsData) as PermissionSection[]).filter(
-          section => Array.isArray(permissionsData[section]) && permissionsData[section].includes('view')
-        );
-
-        setState({
-          isLoading: false,
-          isSuperAdmin: false,
-          isAdmin: true,
-          isRemoved: isRemovedState,
-          isSuspended: isSuspendedState,
-          permissions: permissionsData,
-          accessibleSections: sections,
-        });
-
-        // One-time restore clear
-        if (needsRestore && teamMember) {
-          await supabase.from('team_members').update({ needs_access_restored: false }).eq('user_id', user.id);
-        }
-      }
-    } catch (error) {
-      console.error('[PermissionsProvider] Error:', error);
-      if (mountedRef.current) {
-        setState({
-          isLoading: false,
-          isSuperAdmin: false,
-          isAdmin: false,
-          isRemoved: false,
-          isSuspended: false,
-          permissions: {} as Record<PermissionSection, SectionPermissions>,
-          accessibleSections: [],
-        });
-      }
-    } finally {
-      isFetchingRef.current = false;
-    }
-  }, [supabase]);
-
-  // Primary effect: Sync with AuthProvider user (NO duplicate auth calls)
+  // Set up realtime subscription for team_members changes.
+  // When a change arrives, we invalidate the module cache so the next render
+  // picks up fresh data. We do NOT call fetchPermissions() ourselves — that
+  // would re-introduce the duplicate query problem. Instead we rely on the
+  // auth state flow to propagate the update.
   useEffect(() => {
-    mountedRef.current = true;
-    
-    // Wait for auth to finish loading
-    if (authLoading) {
-      setState(prev => ({ ...prev, isLoading: true }));
-      return;
-    }
-    
-    const user = authUser;
-    if (!user) {
-      if (mountedRef.current) {
-        setState({
-          isLoading: false,
-          isSuperAdmin: false,
-          isAdmin: false,
-          isRemoved: false,
-          isSuspended: false,
-          permissions: {} as Record<PermissionSection, SectionPermissions>,
-          accessibleSections: [],
-        });
-      }
-      return;
-    }
-    
-    // User exists from AuthProvider - fetch permissions
-    // Reset fetchedRef to allow refetch when user changes
-    fetchedRef.current = false;
-    fetchPermissions(user);
-  }, [authUser?.id, authLoading, fetchPermissions]);
+    if (!user?.id || user.role === "user") return;
 
-  // Watch for auth user ID changes (logout/login) to force refetch
-  useEffect(() => {
-    if (!authLoading && authUser) {
-      fetchedRef.current = false;
-      fetchPermissions(authUser);
-    }
-  }, [authUser?.id]);
-
-  // Setup realtime subscription for team_members changes
-  useEffect(() => {
-    if (!authUser?.id) return;
-    
-    const channel = supabase.channel('permissions_provider')
-      .on('postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'team_members', 
-          filter: `user_id=eq.${authUser.id}` 
+    const channel = supabase
+      .channel(`permissions_realtime_${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "team_members",
+          filter: `user_id=eq.${user.id}`,
         },
-        () => fetchPermissions(authUser)
+        () => {
+          // Bust the team_members cache — AuthProvider will re-derive on
+          // the next render cycle triggered by the real-time event.
+          invalidateTeamMemberCache();
+        }
       )
       .subscribe();
 
-    realtimeChannelRef.current = channel;
+    realtimeRef.current = channel;
 
     return () => {
-      if (realtimeChannelRef.current && typeof realtimeChannelRef.current.unsubscribe === 'function') {
-        realtimeChannelRef.current.unsubscribe();
-        supabase.removeChannel(realtimeChannelRef.current);
+      if (realtimeRef.current) {
+        supabase.removeChannel(realtimeRef.current);
+        realtimeRef.current = null;
       }
     };
-  }, [authUser?.id, supabase, fetchPermissions]);
+  }, [user?.id, user?.role, supabase]);
 
-  const hasPermission = useCallback((section: PermissionSection, action: PermissionAction): boolean => {
-    if (state.isSuperAdmin) return true;
-    if (!state.isAdmin) return false;
-    const sectionPermissions = state.permissions[section];
-    return Array.isArray(sectionPermissions) && sectionPermissions.includes(action);
-  }, [state.isSuperAdmin, state.isAdmin, state.permissions]);
-
-  const canAccessSection = useCallback((section: PermissionSection): boolean => {
-    return hasPermission(section, 'view');
-  }, [hasPermission]);
-
-  const canCreate = useCallback((section: PermissionSection): boolean => {
-    return hasPermission(section, 'create');
-  }, [hasPermission]);
-
-  const canUpdate = useCallback((section: PermissionSection): boolean => {
-    return hasPermission(section, 'update');
-  }, [hasPermission]);
-
-  const canDelete = useCallback((section: PermissionSection): boolean => {
-    return hasPermission(section, 'delete');
-  }, [hasPermission]);
-
-  const checkStatus = useCallback(async () => {
-    if (authUser) {
-      fetchedRef.current = false;
-      await fetchPermissions(authUser);
+  // Derive everything from user — zero extra queries
+  const derived = useMemo(() => {
+    if (!user || loading) {
+      return {
+        isSuperAdmin: false,
+        isAdmin: false,
+        isRemoved: false,
+        isSuspended: false,
+        permissions: {} as Record<PermissionSection, SectionPermissions>,
+        accessibleSections: [] as PermissionSection[],
+        all: {} as Record<string, string[]>,
+      };
     }
-  }, [authUser, fetchPermissions]);
 
-  // Combine auth loading state with permissions loading
-  const isLoading = authLoading || state.isLoading;
+    const isSuperAdmin = user.role === "super_admin";
+    const isAdmin = user.role === "admin" || isSuperAdmin;
+    const perms = user.permissions as Record<PermissionSection, SectionPermissions>;
 
-  // Direct access to all permissions
-  const all = {
-    domains: state.permissions.domains || [],
-    blogs: state.permissions.blogs || [],
-    freelancers: state.permissions.freelancers || [],
-    products: state.permissions.products || [],
-    requests: state.permissions.requests || [],
-    team: state.permissions.team || [],
-    dashboard: state.permissions.dashboard || [],
-    users: state.permissions.users || [],
-    contact_submissions: state.permissions.contact_submissions || [],
-  };
+    const accessibleSections = (
+      Object.keys(perms) as PermissionSection[]
+    ).filter(
+      (s) => Array.isArray(perms[s]) && (perms[s] as string[]).includes("view")
+    );
 
-  return (
-    <PermissionsContext.Provider value={{
-      ...state,
-      isLoading,
+    return {
+      isSuperAdmin,
+      isAdmin,
+      isRemoved: user.isRemoved,
+      isSuspended: user.isSuspended,
+      permissions: perms,
+      accessibleSections,
+      all: perms as Record<string, string[]>,
+    };
+  }, [user, loading]);
+
+  const hasPermission = useCallback(
+    (section: PermissionSection, action: PermissionAction): boolean => {
+      if (derived.isSuperAdmin) return true;
+      if (!derived.isAdmin) return false;
+      const sp = derived.permissions[section];
+      return Array.isArray(sp) && (sp as string[]).includes(action);
+    },
+    [derived.isSuperAdmin, derived.isAdmin, derived.permissions]
+  );
+
+  const canAccessSection = useCallback(
+    (section: PermissionSection) => hasPermission(section, "view"),
+    [hasPermission]
+  );
+  const canCreate = useCallback(
+    (section: PermissionSection) => hasPermission(section, "create"),
+    [hasPermission]
+  );
+  const canUpdate = useCallback(
+    (section: PermissionSection) => hasPermission(section, "update"),
+    [hasPermission]
+  );
+  const canDelete = useCallback(
+    (section: PermissionSection) => hasPermission(section, "delete"),
+    [hasPermission]
+  );
+
+  // checkStatus is a no-op placeholder kept for backward compat.
+  // Callers that previously used it to force a re-fetch should instead
+  // call invalidateTeamMemberCache() + invalidateAuthCache() from useAuthQuery.
+  const checkStatus = useCallback(async () => {
+    invalidateTeamMemberCache();
+    // The next render cycle will pick up fresh data automatically.
+  }, []);
+
+  const value = useMemo<PermissionsContextType>(
+    () => ({
+      isLoading: loading,
+      ...derived,
       hasPermission,
       canAccessSection,
       canCreate,
       canUpdate,
       canDelete,
-      all,
       checkStatus,
-    }}>
+    }),
+    [loading, derived, hasPermission, canAccessSection, canCreate, canUpdate, canDelete, checkStatus]
+  );
+
+  return (
+    <PermissionsContext.Provider value={value}>
       {children}
     </PermissionsContext.Provider>
   );
 }
 
 export function usePermissions() {
-  const context = useContext(PermissionsContext);
-  if (context === undefined) {
-    throw new Error('usePermissions must be used within a PermissionsProvider');
-  }
-  return context;
+  const ctx = useContext(PermissionsContext);
+  if (!ctx) throw new Error("usePermissions must be used within PermissionsProvider");
+  return ctx;
 }

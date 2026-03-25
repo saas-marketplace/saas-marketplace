@@ -236,6 +236,14 @@ export default function BlogPage() {
     fetchBlogs();
   }
 
+  // Sanitize filename to remove special characters that cause upload errors
+  const sanitizeFileName = (name: string): string => {
+    return name
+      .normalize('NFD') // Decompose characters (é → e + accent)
+      .replace(/[\u0300-\u036f]/g, '') // Remove accents
+      .replace(/[^a-zA-Z0-9.\-]/g, '_'); // Replace invalid chars with underscores
+  };
+
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -250,7 +258,8 @@ export default function BlogPage() {
         return;
       }
 
-      const fileName = `${Date.now()}-${file.name.replace(/\s+/g, '-')}`;
+      const sanitizedName = sanitizeFileName(file.name);
+      const fileName = `${Date.now()}-${sanitizedName}`;
       
       const { data, error } = await supabase.storage
         .from('blogs')

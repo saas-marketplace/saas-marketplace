@@ -61,64 +61,8 @@ export function TeamSection() {
     fetchTeamMembers();
   }, []);
 
-  // Check if no team members (after loading is complete)
-  // Only show empty state if there's no error and no team members
-  const hasNoTeamMembers = teamMembers.length === 0 && !error;
-
-  // Show loading state while fetching
-  if (loading) {
-    return (
-      <section className="py-24 bg-muted/30">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <div className="animate-pulse">
-              <div className="h-8 w-32 bg-muted rounded mx-auto mb-4"></div>
-              <div className="h-12 w-64 bg-muted rounded mx-auto mb-4"></div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="p-6">
-                    <div className="w-28 h-28 rounded-full bg-muted mx-auto mb-4"></div>
-                    <div className="h-6 w-40 bg-muted rounded mx-auto mb-2"></div>
-                    <div className="h-4 w-32 bg-muted rounded mx-auto"></div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  // Show error state if there was a problem fetching
-  if (error) {
-    return (
-      <section className="py-24 bg-muted/30">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <ScrollReveal className="text-center mb-16 m-f1">
-            <Badge variant="secondary" className="mb-4">
-              Our Team
-            </Badge>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
-              Meet the <span className="gradient-text">dreamers</span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              A passionate team of creators, engineers, and entrepreneurs
-              dedicated to building the future of digital commerce.
-            </p>
-          </ScrollReveal>
-          <div className="text-center py-12">
-            <p className="text-lg text-red-500">
-              Unable to load team members. Please try again later.
-            </p>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
   // Show empty state when no team members in database
-  if (hasNoTeamMembers) {
+  if (teamMembers.length === 0) {
     return (
       <section className="py-24 bg-muted/30">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">

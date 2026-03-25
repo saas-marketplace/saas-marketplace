@@ -1,8 +1,25 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
+/**
+ * cart-context.tsx
+ * ════════════════
+ * Cart state for the marketplace.
+ *
+ * ✅ No getSession() / users table query — reads role from AuthProvider.
+ * ✅ Skips cart entirely for admin / super_admin (same behavior, zero queries).
+ */
+
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+  ReactNode,
+} from "react";
 import { createClient } from "@/lib/supabase/client";
-import { safeGetSession } from "../lib/auth-lock-manager";
+import { useAuth } from "@/components/providers/auth-provider";
 import { Product } from "@/types";
 
 interface CartItem {
@@ -24,194 +41,145 @@ interface CartContextType {
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
+const supabase = createClient();
 
-export function CartProvider({ children }: { children: React.ReactNode }) {
+export function CartProvider({ children }: { children: ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const supabase = createClient();
+  const fetchedRef = useRef(false);
 
-  // Calculate count from cart items
+  // ✅ Get user from AuthProvider — no extra getSession/users calls
+  const { authData, loading: authLoading } = useAuth();
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Fetch cart from database - always filtered by current user
-  const fetchCart = useCallback(async () => {
-    // Use safeGetSession instead of direct supabase.auth.getSession()
-    const { session, error } = await safeGetSession();
-    
-    if (error) {
-      console.error('[CartContext] getSession error:', error);
+  const fetchCart = useCallback(async (userId: string) => {
+    setLoading(true);
+    const { data } = await supabase
+      .from("cart")
+      .select("*, products(*)")
+      .eq("user_id", userId);
+
+    if (data) {
+      setCartItems(
+        data.map((item: any) => ({
+          id: item.id,
+          product_id: item.product_id,
+          quantity: item.quantity,
+          product: item.products as Product,
+        }))
+      );
     }
-    
-    if (!session?.user) {
+    setLoading(false);
+  }, []);
+
+  // React to auth changes from the shared provider
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (!authData) {
       setCartItems([]);
       setIsAuthenticated(false);
+      setLoading(false);
+      fetchedRef.current = false;
+      return;
+    }
+
+    setIsAuthenticated(true);
+
+    // ✅ Skip cart for admins — role already known from cache, no extra query
+    if (authData.role === "admin" || authData.role === "super_admin") {
+      setCartItems([]);
       setLoading(false);
       return;
     }
 
-    // Check user role - admins don't need cart functionality
-    try {
-      const { data: userData } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', session.user.id)
-        .maybeSingle();
-      
-      const userRole = userData?.role;
-      
-      // Skip cart for admin/super_admin to prevent lock conflicts
-      if (userRole === 'admin' || userRole === 'super_admin') {
-        setCartItems([]);
-        setIsAuthenticated(true);
-        setLoading(false);
-        return;
+    // Regular user — load cart once
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      fetchCart(authData.id);
+    }
+  }, [authData, authLoading, fetchCart]);
+
+  // Real-time auth listener for SIGNED_IN / SIGNED_OUT events
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event:string) => {
+        if (event === "SIGNED_OUT") {
+          setCartItems([]);
+          setIsAuthenticated(false);
+          fetchedRef.current = false;
+        }
+        // SIGNED_IN is handled by the authData effect above
       }
-    } catch (roleError) {
-      console.log('[CartContext] Could not check user role, proceeding with cart');
-    }
+    );
+    return () => subscription.unsubscribe();
+  }, []);
 
-    setIsAuthenticated(true);
-    setLoading(true);
-    
-    // Always filter by user_id - security requirement
-    const { data } = await supabase
-      .from("cart")
-      .select("*, products(*)")
-      .eq("user_id", session.user.id);
+  const addToCart = useCallback(
+    async (product: Product) => {
+      if (!authData?.id) return;
 
-    if (data) {
-      const items = data.map((item: any) => ({
-        id: item.id,
-        product_id: item.product_id,
-        quantity: item.quantity,
-        product: item.products as Product,
-      }));
-      setCartItems(items);
-    }
-    setLoading(false);
-  }, [supabase]);
-
-  // Add to cart - ONLY for authenticated users
-  const addToCart = useCallback(async (product: Product) => {
-    // Use safeGetSession instead of direct supabase.auth.getSession()
-    const { session, error } = await safeGetSession();
-    
-    if (error) {
-      console.error('[CartContext] getSession error:', error);
-    }
-    
-    // Block guests - they cannot add items
-    if (!session?.user) {
-      console.warn("Guest attempted to add to cart - blocked for privacy");
-      return;
-    }
-
-    // Check if item already exists in cart
-    const { data: existing } = await supabase
-      .from("cart")
-      .select("*")
-      .eq("user_id", session.user.id)
-      .eq("product_id", product.id)
-      .single();
-
-    if (existing) {
-      // Update quantity
-      await supabase
+      const { data: existing } = await supabase
         .from("cart")
-        .update({ quantity: existing.quantity + 1 })
-        .eq("id", existing.id);
-    } else {
-      // Insert new item with user_id
-      await supabase.from("cart").insert({
-        user_id: session.user.id,
-        product_id: product.id,
-        quantity: 1,
-      });
-    }
+        .select("*")
+        .eq("user_id", authData.id)
+        .eq("product_id", product.id)
+        .single();
 
-    // Fetch fresh data after action
-    await fetchCart();
-  }, [supabase, fetchCart]);
+      if (existing) {
+        await supabase
+          .from("cart")
+          .update({ quantity: existing.quantity + 1 })
+          .eq("id", existing.id);
+      } else {
+        await supabase.from("cart").insert({
+          user_id: authData.id,
+          product_id: product.id,
+          quantity: 1,
+        });
+      }
 
-  // Remove from cart
-  const removeFromCart = useCallback(async (productId: string) => {
-    const { session, error } = await safeGetSession();
-    
-    if (error) {
-      console.error('[CartContext] getSession error:', error);
-    }
-    
-    if (!session?.user) return;
+      await fetchCart(authData.id);
+    },
+    [authData, fetchCart]
+  );
 
-    await supabase
-      .from("cart")
-      .delete()
-      .eq("user_id", session.user.id)
-      .eq("product_id", productId);
-
-    await fetchCart();
-  }, [supabase, fetchCart]);
-
-  // Update quantity
-  const updateQuantity = useCallback(async (productId: string, quantity: number) => {
-    const { session, error } = await safeGetSession();
-    
-    if (error) {
-      console.error('[CartContext] getSession error:', error);
-    }
-    
-    if (!session?.user) return;
-
-    if (quantity <= 0) {
+  const removeFromCart = useCallback(
+    async (productId: string) => {
+      if (!authData?.id) return;
       await supabase
         .from("cart")
         .delete()
-        .eq("user_id", session.user.id)
+        .eq("user_id", authData.id)
         .eq("product_id", productId);
-    } else {
-      await supabase
-        .from("cart")
-        .update({ quantity })
-        .eq("user_id", session.user.id)
-        .eq("product_id", productId);
-    }
+      await fetchCart(authData.id);
+    },
+    [authData, fetchCart]
+  );
 
-    await fetchCart();
-  }, [supabase, fetchCart]);
-
-  // Clear cart - just clears local state, keeps database
-  const clearCart = useCallback(() => {
-    setCartItems([]);
-  }, []);
-
-  // Initial load and auth listener
-  const fetchedRef = useRef(false);
-  
-  useEffect(() => {
-    if (!fetchedRef.current) {
-      fetchedRef.current = true;
-      fetchCart();
-    }
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event: any, session: any) => {
-        if (event === "SIGNED_IN" && session?.user) {
-          await fetchCart();
-        } else if (event === "SIGNED_OUT") {
-          // Clear cart on logout - privacy requirement
-          setCartItems([]);
-          setIsAuthenticated(false);
-        }
+  const updateQuantity = useCallback(
+    async (productId: string, quantity: number) => {
+      if (!authData?.id) return;
+      if (quantity <= 0) {
+        await supabase
+          .from("cart")
+          .delete()
+          .eq("user_id", authData.id)
+          .eq("product_id", productId);
+      } else {
+        await supabase
+          .from("cart")
+          .update({ quantity })
+          .eq("user_id", authData.id)
+          .eq("product_id", productId);
       }
-    );
+      await fetchCart(authData.id);
+    },
+    [authData, fetchCart]
+  );
 
-    return () => {
-      if (subscription && typeof subscription.unsubscribe === 'function') {
-        subscription.unsubscribe();
-      }
-    };
-  }, [fetchCart, supabase]);
+  const clearCart = useCallback(() => setCartItems([]), []);
 
   return (
     <CartContext.Provider
@@ -232,9 +200,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useCart() {
-  const context = useContext(CartContext);
-  if (!context) {
-    throw new Error("useCart must be used within CartProvider");
-  }
-  return context;
+  const ctx = useContext(CartContext);
+  if (!ctx) throw new Error("useCart must be used within CartProvider");
+  return ctx;
 }

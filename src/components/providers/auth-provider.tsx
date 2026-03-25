@@ -1,42 +1,77 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
-import { createBrowserClient } from "@supabase/ssr";
-import type { Session, User } from "@supabase/supabase-js";
+/**
+ * auth-provider.tsx
+ * ═════════════════
+ * Thin wrapper around useAuthUser() + useTeamMember().
+ *
+ * ✅ Zero direct DB calls — all data flows from the cached hooks.
+ * ✅ users table → 1 query total (via useAuthUser module cache).
+ * ✅ team_members → 0 queries for role==="user", 1 query for admins.
+ * ✅ No duplicate getSession / getUser calls on mount.
+ */
+
+import {
+  createContext,
+  useContext,
+  useCallback,
+  useMemo,
+  ReactNode,
+} from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  useAuthUser,
+  useTeamMember,
+  clearAuthQueryCache,
+  type AuthUserData,
+  type UserRole,
+} from "@/hooks/useAuthQuery";
+import type { PermissionSection, SectionPermissions } from "@/types/permissions";
 
-// Global flag to prevent auth events during password change
-// Set to true before signInWithPassword, false after updateUser resolves
+// ─── Re-exports for backward compatibility ────────────────────────────────────
+export type { UserRole };
+
+// Global flag consumed by useSession to skip re-fetches during password change
 export let isPasswordChanging = false;
-
-// Setter functions to allow modification from other modules
 export function setPasswordChanging(value: boolean) {
   isPasswordChanging = value;
 }
 
-// Shared lock mechanism to prevent concurrent auth requests causing "Lock broken" errors
+// Kept for files that import these but they're no-ops now — lock contention
+// is prevented at the module level in useAuthQuery.ts
 let _authLock = false;
-
 export function acquireAuthLock(): boolean {
   if (_authLock) return false;
   _authLock = true;
   return true;
 }
-
 export function releaseAuthLock() {
   _authLock = false;
 }
 
-// Types
-export type UserRole = "user" | "admin" | "super_admin";
+// ─── Permission constants ─────────────────────────────────────────────────────
 
-interface UserMetadata {
-  email: string;
-  full_name?: string;
-  avatar_url?: string;
-}
+const DEFAULT_ADMIN_PERMISSIONS: Record<string, string[]> = {
+  dashboard: ["view"],
+  domains: ["view", "create", "update", "delete"],
+  freelancers: ["view", "create", "update", "delete"],
+  products: ["view", "create", "update", "delete"],
+  blogs: ["view", "create", "update", "delete"],
+  requests: ["view", "create", "delete"],
+  team: ["view", "create", "update", "delete"],
+  users: [],
+  contact_submissions: [],
+};
 
-interface AuthUser {
+const DEFAULT_SUPER_ADMIN_PERMISSIONS: Record<string, string[]> = {
+  ...DEFAULT_ADMIN_PERMISSIONS,
+  users: ["view", "create", "update", "delete"],
+  contact_submissions: ["view", "create", "delete"],
+};
+
+// ─── AuthUser shape exposed through context ───────────────────────────────────
+
+interface AuthContextUser {
   id: string;
   email: string;
   role: UserRole;
@@ -46,239 +81,111 @@ interface AuthUser {
   permissions: Record<string, string[]>;
 }
 
+// ─── Context ──────────────────────────────────────────────────────────────────
+
 interface AuthContextType {
-  user: AuthUser | null;
-  session: Session | null;
+  user: AuthContextUser | null;
+  /** Raw AuthUserData (includes session) for components that need the session token */
+  authData: AuthUserData | null;
   loading: boolean;
   signOut: () => Promise<void>;
-  supabase: ReturnType<typeof createBrowserClient>;
   refreshSession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// ✅ FIX: Use the singleton client from lib/supabase/client.ts
-// Previously this called createBrowserClient() directly, creating a second
-// Supabase instance that raced for the Web Lock with useSession and CartContext,
-// causing the "Lock was not released within 5000ms" / AbortError cascade.
+// Singleton supabase client
 const supabase = createClient();
 
-// Default permissions for each role
-const DEFAULT_ADMIN_PERMISSIONS: Record<string, string[]> = {
-  dashboard: ['view'],
-  domains: ['view', 'create', 'update', 'delete'],
-  freelancers: ['view', 'create', 'update', 'delete'],
-  products: ['view', 'create', 'update', 'delete'],
-  blogs: ['view', 'create', 'update', 'delete'],
-  requests: ['view', 'create', 'delete'],
-  team: ['view', 'create', 'update', 'delete'],
-  users: [],
-  contact_submissions: [],
-};
+// ─── Provider ─────────────────────────────────────────────────────────────────
 
-const DEFAULT_SUPER_ADMIN_PERMISSIONS: Record<string, string[]> = {
-  ...DEFAULT_ADMIN_PERMISSIONS,
-  users: ['view', 'create', 'update', 'delete'],
-  contact_submissions: ['view', 'create', 'delete'],
-};
+export function AuthProvider({ children }: { children: ReactNode }) {
+  // ① One call to users table — cached at module level
+  const { data: authData, isLoading: authLoading } = useAuthUser();
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
+  // ② team_members — only fires for admin/super_admin, never for role==="user"
+  const { data: teamMember, isLoading: teamLoading } = useTeamMember(authData);
 
-  // Fetch user data from database
-  const fetchUserData = useCallback(async (session: Session): Promise<AuthUser | null> => {
-    try {
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('role, is_banned')
-        .eq('id', session.user.id)
-        .maybeSingle();
+  // ③ Build the AuthContextUser from cached data — no extra DB calls
+  const user = useMemo<AuthContextUser | null>(() => {
+    if (!authData) return null;
+    if (authData.is_banned) return null;
 
-      if (userError) {
-        console.error('[AuthProvider] Error fetching user data:', userError);
-        return null;
-      }
+    const { role } = authData;
 
-      const userRole = (userData?.role as UserRole) || 'user';
-      const isBanned = userData?.is_banned || false;
+    if (role === "super_admin") {
+      return {
+        id: authData.id,
+        email: authData.email,
+        role,
+        isBanned: false,
+        isRemoved: false,
+        isSuspended: false,
+        permissions: DEFAULT_SUPER_ADMIN_PERMISSIONS,
+      };
+    }
 
-      // If banned, return null
-      if (isBanned) {
-        return null;
-      }
+    if (role === "admin") {
+      const isRemoved = teamMember === null && !teamLoading;
+      const isSuspended = teamMember?.is_active === false;
 
-      // Get team member data for admins
-      let isRemoved = false;
-      let isSuspended = false;
-      let permissions: Record<string, string[]> = {};
-
-      if (userRole === 'admin' || userRole === 'super_admin') {
-        const { data: teamMember, error: teamError } = await supabase
-          .from('team_members')
-          .select('permissions, is_active')
-          .eq('user_id', session.user.id)
-          .maybeSingle();
-
-        if (!teamError && teamMember) {
-          isRemoved = false;
-          isSuspended = teamMember.is_active === false;
-          
-          if (teamMember.permissions) {
-            permissions = typeof teamMember.permissions === 'string'
-              ? JSON.parse(teamMember.permissions)
-              : teamMember.permissions;
-          }
-        } else if (userRole === 'admin') {
-          // Admin without team_member record is removed
-          isRemoved = true;
-        }
-      }
+      const permissions = teamMember?.permissions
+        ? { ...DEFAULT_ADMIN_PERMISSIONS, ...teamMember.permissions }
+        : DEFAULT_ADMIN_PERMISSIONS;
 
       return {
-        id: session.user.id,
-        email: session.user.email || '',
-        role: userRole,
-        isBanned,
+        id: authData.id,
+        email: authData.email,
+        role,
+        isBanned: false,
         isRemoved,
         isSuspended,
-        permissions: userRole === 'super_admin' 
-          ? DEFAULT_SUPER_ADMIN_PERMISSIONS 
-          : { ...DEFAULT_ADMIN_PERMISSIONS, ...permissions },
+        permissions,
       };
-    } catch (error) {
-      console.error('[AuthProvider] Error in fetchUserData:', error);
-      return null;
     }
-  }, []);
 
-  // Initialize auth state - runs only once
-  useEffect(() => {
-    if (initialized) return;
-    setInitialized(true);
-
-    const initAuth = async () => {
-      try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        
-        if (currentSession) {
-          setSession(currentSession);
-          const userData = await fetchUserData(currentSession);
-          setUser(userData);
-        }
-      } catch (error) {
-        console.error('[AuthProvider] Error initializing auth:', error);
-      } finally {
-        setLoading(false);
-      }
+    // role === "user" — no team_members lookup, ever
+    return {
+      id: authData.id,
+      email: authData.email,
+      role: "user",
+      isBanned: false,
+      isRemoved: false,
+      isSuspended: false,
+      permissions: {},
     };
+  }, [authData, teamMember, teamLoading]);
 
-    initAuth();
-  }, [initialized, fetchUserData]);
+  const loading = authLoading || (authData?.role !== "user" && teamLoading);
 
-  // Listen for auth state changes (excluding INITIAL_SESSION as it's handled above)
-  useEffect(() => {
-    let isProcessing = false;
-    
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: Session | null) => {
-      // Only log non-noisy events to reduce console spam
-      if (event !== 'SIGNED_IN') {
-        console.log('[AuthProvider] Auth state changed:', event);
-      }
-
-      // Ignore INITIAL_SESSION - it's already handled in the initialization effect above
-      // Ignore noisy events that break flows
-      if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') {
-        return;
-      }
-
-      // Prevent concurrent processing
-      if (isProcessing) {
-        console.log('[AuthProvider] Already processing, skipping event:', event);
-        return;
-      }
-      
-      isProcessing = true;
-
-      try {
-        if (event === 'SIGNED_OUT') {
-          setSession(null);
-          setUser(null);
-          setLoading(false);
-          return;
-        }
-
-        if (event === 'SIGNED_IN' && session) {
-          // Avoid duplicate fetch
-          if (user?.id === session.user.id) return;
-
-          setSession(session);
-          const userData = await fetchUserData(session);
-          setUser(userData);
-          return;
-        }
-      } finally {
-        isProcessing = false;
-        releaseAuthLock();
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [fetchUserData, user?.id]);
-
-  // Sign out function
   const signOut = useCallback(async () => {
-    try {
-      await supabase.auth.signOut();
-      setSession(null);
-      setUser(null);
-    } catch (error) {
-      console.error('[AuthProvider] Error signing out:', error);
-    }
+    clearAuthQueryCache();
+    await supabase.auth.signOut();
   }, []);
 
-  // Refresh session
   const refreshSession = useCallback(async () => {
-    try {
-      const { data: { session: newSession } } = await supabase.auth.getSession();
-      if (newSession) {
-        setSession(newSession);
-        const userData = await fetchUserData(newSession);
-        setUser(userData);
-      }
-    } catch (error) {
-      console.error('[AuthProvider] Error refreshing session:', error);
-    }
-  }, [fetchUserData]);
+    // Bust the cache so next useAuthUser render re-fetches
+    clearAuthQueryCache();
+    // useAuthUser's auth listener will pick up SIGNED_IN and reload
+    await supabase.auth.getSession();
+  }, []);
 
-  // Memoize context value
-  const value = useMemo(() => ({
-    user,
-    session,
-    loading,
-    signOut,
-    supabase,
-    refreshSession,
-  }), [user, session, loading, signOut, refreshSession]);
-
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo<AuthContextType>(
+    () => ({ user, authData, loading, signOut, refreshSession }),
+    [user, authData, loading, signOut, refreshSession]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
+
+// ─── Hooks ────────────────────────────────────────────────────────────────────
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used within AuthProvider");
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
 }
 
-// Convenience hooks
 export function useUser() {
   const { user, loading } = useAuth();
   return { user, loading };
@@ -290,12 +197,9 @@ export function useSignOut() {
 
 export function useHasRole(requiredRoles: UserRole[]) {
   const { user, loading } = useAuth();
-  return { 
-    isAuthorized: user ? requiredRoles.includes(user.role) : false, 
-    isLoading: loading, 
-    role: user?.role || null 
+  return {
+    isAuthorized: user ? requiredRoles.includes(user.role) : false,
+    isLoading: loading,
+    role: user?.role ?? null,
   };
 }
-
-// usePermissions is now exported from @/stores/permissions-context
-// This avoids duplicate auth calls - permissions-context uses AuthProvider internally

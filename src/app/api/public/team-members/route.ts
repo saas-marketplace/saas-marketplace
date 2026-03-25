@@ -8,10 +8,10 @@ export const dynamic = 'force-dynamic';
 // No authentication required - returns only public team member info
 export async function GET() {
   try {
-    // Use regular Supabase client - no cookies needed for public data
+    // Use service role key to bypass RLS for public API
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
 
     // Fetch all team members directly from team_members table

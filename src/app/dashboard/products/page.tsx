@@ -207,6 +207,14 @@ export default function ProductsPage() {
     setIsDialogOpen(true);
   }
 
+  // Sanitize filename to remove special characters that cause upload errors
+  const sanitizeFileName = (name: string): string => {
+    return name
+      .normalize('NFD') // Decompose characters (é → e + accent)
+      .replace(/[\u0300-\u036f]/g, '') // Remove accents
+      .replace(/[^a-zA-Z0-9.\-]/g, '_'); // Replace invalid chars with underscores
+  };
+
   async function handleImageUpload(file: File): Promise<string> {
     // Verify session before upload
     const { data } = await supabase.auth.getSession();
@@ -216,7 +224,8 @@ export default function ProductsPage() {
       return '';
     }
 
-    const fileName = `products/${Date.now()}-${file.name}`;
+    const sanitizedName = sanitizeFileName(file.name);
+    const fileName = `products/${Date.now()}-${sanitizedName}`;
     
     try {
       const { data, error } = await supabase.storage
