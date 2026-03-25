@@ -14,9 +14,7 @@ export async function GET() {
       process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
 
-    // Fetch all team members directly from team_members table
-    console.log('Fetching team members from Supabase...');
-    console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+
     
     const { data, error } = await supabase
       .from('team_members')
@@ -30,8 +28,7 @@ export async function GET() {
       .order('created_at', { ascending: false })
       .limit(20);
 
-    console.log('Supabase response - data:', data);
-    console.log('Supabase response - error:', error);
+   
 
     if (error) {
       console.error('Error fetching public team members:', error);

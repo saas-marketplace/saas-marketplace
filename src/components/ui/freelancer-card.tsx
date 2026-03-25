@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { MapPin, Star, Briefcase } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -28,9 +29,21 @@ export default function FreelancerCard({ freelancer }: FreelancerCardProps) {
         {/* Top Section */}
         <div>
           <div className="flex items-start gap-3">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
-              {freelancer.display_name?.charAt(0).toUpperCase() || "F"}
-            </div>
+            {freelancer.avatar_url ? (
+              <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border-2 border-purple-100">
+                <Image 
+                  src={freelancer.avatar_url} 
+                  alt={freelancer.display_name}
+                  width={48}
+                  height={48}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
+                {freelancer.display_name?.charAt(0).toUpperCase() || "F"}
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <h3 className="text-base font-semibold truncate text-[#0A0A0A] dark:text-white">
                 {freelancer.display_name}

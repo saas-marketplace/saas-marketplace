@@ -51,7 +51,7 @@ export function TeamSection() {
         const data: TeamMember[] = await res.json();
         setTeamMembers(data);
       } catch (err) {
-        console.error("Error fetching team members:", err);
+        console.log("Error fetching team members:", err);
         setError(err instanceof Error ? err.message : "Unknown error");
       } finally {
         setLoading(false);

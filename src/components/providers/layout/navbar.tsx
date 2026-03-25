@@ -163,19 +163,25 @@ function NavbarContent() {
                       <p className="text-sm font-medium">{user.email}</p>
                     </div>
                     <DropdownMenuSeparator />
-                    {userRole === 'admin' ? (
+                    {userRole === 'admin' || userRole === 'super_admin' ? (
                       <>
                         <DropdownMenuItem asChild>
                           <Link href="/dashboard">Dashboard</Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
-                          <Link href="/dashboard/requests">Requests</Link>
+                          <Link href="/settings/profile">Profile</Link>
                         </DropdownMenuItem>
                       </>
                     ) : (
+                      <>
+                      <DropdownMenuItem asChild>
+                        <Link href="/profile">Profile</Link>
+                      </DropdownMenuItem>
+                      
                       <DropdownMenuItem asChild>
                         <Link href="/requests">My Requests</Link>
                       </DropdownMenuItem>
+                      </>
                     )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => { signOut(); setMenuOpen(false); }}>
@@ -306,34 +312,48 @@ function NavbarContent() {
                     Sign In
                   </Link>
                 )}
-
-                {/* User Dashboard Link - Only show if logged in */}
-                {!loading && user && (
-                  <>
-                    <Link
-                      href={userRole === 'admin' ? '/dashboard' : '/requests'}
-                      onClick={() => setMenuOpen(false)}
-                      className="block px-6 py-4 text-gray-600 dark:text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                    >
-                      {userRole === 'admin' ? 'Dashboard' : 'My Requests'}
-                    </Link>
-                    {userRole === 'admin' && (
-                      <Link
-                        href="/dashboard/requests"
-                        onClick={() => setMenuOpen(false)}
-                        className="block px-6 py-4 text-gray-600 dark:text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                      >
-                        Requests
-                      </Link>
-                    )}
-                    <button
-                      onClick={() => { signOut(); setMenuOpen(false); }}
-                      className="block px-6 py-4 text-gray-600 dark:text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left w-full"
-                    >
-                      Sign Out
-                    </button>
-                  </>
+          {/* User Dashboard Link - Only show if logged in */}
+          {!loading && user && (
+              <>
+                {(userRole === 'admin' || userRole === 'super_admin') && (
+                  <Link
+                    href="/dashboard"
+                    onClick={() => setMenuOpen(false)}
+                    className="block px-6 py-4 text-gray-600 dark:text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                  >
+                    Dashboard
+                  </Link>
                 )}
+
+          {/* Non-admin users can have their normal links here */}
+          {!(userRole === 'admin' || userRole === 'super_admin') && (
+            <>
+              <Link
+                href="/profile"
+                onClick={() => setMenuOpen(false)}
+                className="block px-6 py-4 text-gray-600 dark:text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+              >
+                Profile
+              </Link>
+              <Link
+                href="/requests"
+                onClick={() => setMenuOpen(false)}
+                className="block px-6 py-4 text-gray-600 dark:text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+              >
+                My Requests
+              </Link>
+            </>
+          )}
+
+          <button
+            onClick={() => { signOut(); setMenuOpen(false); }}
+            className="block px-6 py-4 text-gray-600 dark:text-gray-300 hover:text-cyan-500 dark:hover:text-cyan-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left w-full"
+          >
+            Sign Out
+          </button>
+        </>
+      )}
+               
               </div>
             </motion.div>
           )}

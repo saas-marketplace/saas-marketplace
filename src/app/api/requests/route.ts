@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
           rating, 
           review_count, 
           completed_projects,
+          avatar_url,
           domains(name)
         `)
         .eq('id', freelancer_id)
@@ -72,7 +73,8 @@ export async function POST(request: NextRequest) {
           description: freelancer.description,
           rating: freelancer.rating || 0,
           reviews_count: freelancer.review_count || 0,
-          projects_count: freelancer.completed_projects || 0
+          projects_count: freelancer.completed_projects || 0,
+          avatar_url: freelancer.avatar_url || null
         };
       }
     }
@@ -214,7 +216,7 @@ export async function GET(request: NextRequest) {
       .select(`
         *,
         user:users(id, email, full_name),
-        freelancer:freelancers(id, display_name, title, domain_id, skills, experience_level, description, rating, review_count, completed_projects, domains(name))
+        freelancer:freelancers(id, display_name, title, domain_id, skills, experience_level, description, rating, review_count, completed_projects, avatar_url, domains(name))
       `)
       .order("created_at", { ascending: false });
 

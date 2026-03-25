@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -320,12 +321,24 @@ export default function FreelancerProfilePage() {
             )}
 
             <div className="flex flex-col sm:flex-row items-start gap-6">
-              <div className="w-24 h-24 rounded-2xl gradient-bg flex items-center justify-center text-white text-3xl font-bold flex-shrink-0">
-                {freelancer.display_name
-                  .split(" ")
-                  .map((n: string) => n[0])
-                  .join("")}
-              </div>
+              {freelancer.avatar_url ? (
+                <div className="w-24 h-24 rounded-2xl overflow-hidden flex-shrink-0 border-2 border-purple-200">
+                  <Image 
+                    src={freelancer.avatar_url} 
+                    alt={freelancer.display_name}
+                    width={96}
+                    height={96}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-24 h-24 rounded-2xl gradient-bg flex items-center justify-center text-white text-3xl font-bold flex-shrink-0">
+                  {freelancer.display_name
+                    .split(" ")
+                    .map((n: string) => n[0])
+                    .join("")}
+                </div>
+              )}
 
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">

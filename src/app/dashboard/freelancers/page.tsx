@@ -2,6 +2,7 @@
 
 import { supabase } from "@/lib/supabase/client";
 import { useEffect, useState, useCallback, useRef } from "react";
+import Image from "next/image";
 // Centralized permissions - loads once at app level
 import { usePermissions } from "@/stores/permissions-context";
 import { useSuspended } from "@/components/ui/suspended-context";
@@ -25,6 +26,8 @@ import {
   Folder,
   MapPin,
   AlertTriangle,
+  Upload,
+  X,
 } from "lucide-react";
 
 interface Domain {
@@ -59,9 +62,12 @@ export default function FreelancersPage() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingFreelancer, setEditingFreelancer] = useState<Freelancer | null>(null);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null); // For filtering
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string>("");
 
   // Guard to prevent duplicate fetches in React StrictMode
   const fetchDataRef = useRef(false);
@@ -157,6 +163,10 @@ export default function FreelancersPage() {
       experience_level: "",
     });
     setEditingFreelancer(null);
+    setAvatarPreview("");
+    if (avatarInputRef.current) {
+      avatarInputRef.current.value = "";
+    }
   }
 
   function openAddDialog() {
@@ -179,7 +189,57 @@ export default function FreelancersPage() {
       completed_projects: freelancer.completed_projects,
       experience_level: freelancer.experience_level || "",
     });
+    setAvatarPreview(freelancer.avatar_url || "");
     setIsDialogOpen(true);
+  }
+
+  // Sanitize filename to remove special characters that cause upload errors
+  const sanitizeFileName = (name: string): string => {
+    return name
+      .normalize('NFD') // Decompose characters (é → e + accent)
+      .replace(/[\u0300-\u036f]/g, '') // Remove accents
+      .replace(/[^a-zA-Z0-9.\-]/g, '_'); // Replace invalid chars with underscores
+  };
+
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const sanitizedName = sanitizeFileName(file.name);
+      const fileName = `freelancers/${Date.now()}-${sanitizedName}`;
+      
+      const { data, error } = await supabase.storage
+        .from('freelancers')
+        .upload(fileName, file);
+
+      if (error) {
+        console.error('Upload error:', error);
+        throw new Error(error.message);
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from('freelancers')
+        .getPublicUrl(fileName);
+
+      const imageUrl = publicUrlData.publicUrl;
+      setAvatarPreview(imageUrl);
+      setFormData({ ...formData, avatar_url: imageUrl });
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      alert('Failed to upload avatar');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function removeAvatar() {
+    setAvatarPreview("");
+    setFormData({ ...formData, avatar_url: "" });
+    if (avatarInputRef.current) {
+      avatarInputRef.current.value = "";
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -311,6 +371,50 @@ export default function FreelancersPage() {
                         }
                       />
                     </div>
+                  </div>
+
+                  {/* Avatar Upload */}
+                  <div>
+                    <label className="text-sm font-medium text-slate-200">Avatar</label>
+                    {avatarPreview ? (
+                      <div className="relative mt-2 w-20 h-20">
+                        <Image 
+                          src={avatarPreview} 
+                          alt="Avatar Preview" 
+                          width={80}
+                          height={80}
+                          className="w-20 h-20 rounded-full object-cover border-2 border-purple-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={removeAvatar}
+                          className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-2">
+                        <input
+                          ref={avatarInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleAvatarUpload}
+                          className="hidden"
+                          id="freelancer-avatar-upload"
+                        />
+                        <label
+                          htmlFor="freelancer-avatar-upload"
+                          className="flex items-center justify-center w-20 h-20 border-2 border-dashed border-slate-600 rounded-full cursor-pointer hover:border-cyan-400 transition-colors"
+                        >
+                          {uploading ? (
+                            <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
+                          ) : (
+                            <Upload className="w-6 h-6 text-slate-400" />
+                          )}
+                        </label>
+                      </div>
+                    )}
                   </div>
 
                   {/* Description */}

@@ -58,6 +58,7 @@ interface Request {
     rating?: number | null;
     reviews_count?: number | null;
     projects_count?: number | null;
+    avatar_url?: string | null;
   } | null;
   subject_type?: string | null;
   users?: {

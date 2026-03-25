@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -133,12 +134,24 @@ export default function DomainFreelancersPage() {
 
                   {/* Header */}
                   <div className="flex items-start gap-3 mb-3">
-                    <div className="w-12 h-12 rounded-2xl gradient-bg flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
-                      {freelancer.display_name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")}
-                    </div>
+                    {freelancer.avatar_url ? (
+                      <div className="w-12 h-12 rounded-2xl overflow-hidden flex-shrink-0 border-2 border-purple-100">
+                        <Image 
+                          src={freelancer.avatar_url} 
+                          alt={freelancer.display_name}
+                          width={48}
+                          height={48}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 rounded-2xl gradient-bg flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
+                        {freelancer.display_name
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")}
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold truncate">

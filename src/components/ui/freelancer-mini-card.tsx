@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { Star, Briefcase, User, Globe, Sparkles, Folder, X, Maximize2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,7 @@ interface FreelancerData {
   rating?: number | null;
   reviews_count?: number | null;
   projects_count?: number | null;
+  avatar_url?: string | null;
 }
 
 interface FreelancerMiniCardProps {
@@ -40,9 +42,9 @@ export function FreelancerMiniCard({ freelancer, compact = false, onViewProfile,
     description, 
     rating = 0, 
     reviews_count = 0, 
-    projects_count = 0 
+    projects_count = 0,
+    avatar_url 
   } = freelancer;
-
   // Resolve domain name — never show a raw UUID.
   // page.tsx injects the name into freelancer_data.domain before passing it here,
   // but we also check fallbackDomain (freelancer_domain column) as a safety net.
@@ -96,9 +98,21 @@ export function FreelancerMiniCard({ freelancer, compact = false, onViewProfile,
         <div className={`mx-6 my-2 p-3 sm:p-4 ${cardBaseClass}`}>
           {/* Header: Avatar + Name + Title */}
           <div className="flex items-start gap-3 mb-2 sm:mb-3">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center shrink-0">
-              <User className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-            </div>
+            {avatar_url ? (
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full overflow-hidden flex-shrink-0 border border-purple-200">
+                <Image 
+                  src={avatar_url} 
+                  alt={name}
+                  width={40}
+                  height={40}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center shrink-0">
+                <User className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <p className={`font-semibold text-sm ${textBaseClass} truncate`}>{name}</p>
               {title && (
@@ -180,9 +194,21 @@ export function FreelancerMiniCard({ freelancer, compact = false, onViewProfile,
 
               {/* Full card content */}
               <div className="flex items-start gap-4 mb-4">
-                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center shrink-0 shadow-lg">
-                  <User className="w-7 h-7 text-white" />
-                </div>
+                {avatar_url ? (
+                  <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 border-2 border-purple-200">
+                    <Image 
+                      src={avatar_url} 
+                      alt={name}
+                      width={56}
+                      height={56}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center shrink-0 shadow-lg">
+                    <User className="w-7 h-7 text-white" />
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className={`font-bold text-lg ${textBaseClass}`}>{name}</h3>
@@ -305,9 +331,21 @@ export function FreelancerMiniCard({ freelancer, compact = false, onViewProfile,
         </button>
 
         <div className="flex items-start gap-4 mb-4">
-          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center shrink-0 shadow-lg">
-            <User className="w-7 h-7 text-white" />
-          </div>
+          {avatar_url ? (
+            <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 border-2 border-purple-200 shadow-lg">
+              <Image 
+                src={avatar_url} 
+                alt={name}
+                width={56}
+                height={56}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          ) : (
+            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center shrink-0 shadow-lg">
+              <User className="w-7 h-7 text-white" />
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className={`font-bold text-lg ${textBaseClass}`}>{name}</h3>
@@ -410,9 +448,21 @@ export function FreelancerMiniCard({ freelancer, compact = false, onViewProfile,
               <X className="w-5 h-5" />
             </button>
             <div className="flex items-start gap-4 mb-4">
-              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center shrink-0 shadow-lg">
-                <User className="w-7 h-7 text-white" />
-              </div>
+              {avatar_url ? (
+                <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 border-2 border-purple-200 shadow-lg">
+                  <Image 
+                    src={avatar_url} 
+                    alt={name}
+                    width={56}
+                    height={56}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#249fd3] to-cyan-400 flex items-center justify-center shrink-0 shadow-lg">
+                  <User className="w-7 h-7 text-white" />
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className={`font-bold text-lg ${textBaseClass}`}>{name}</h3>
