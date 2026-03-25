@@ -5,7 +5,12 @@ import { motion } from "framer-motion";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { Badge } from "@/components/ui/badge";
 import { Linkedin, Twitter, Github } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+
+// ✅ FIX: Removed createClient import — no longer querying Supabase directly from
+// the browser. The team_members RLS policy only allows authenticated admins, so
+// anonymous visitors received an error on every page load. We now call the public
+// API route (/api/public/team-members) which runs server-side with the service
+// role key and bypasses RLS safely.
 
 export interface TeamMember {
   name: string;
@@ -27,16 +32,6 @@ function getGradient(index: number): string {
   return gradients[index % gradients.length];
 }
 
-// Helper function to get initials from name
-function getInitials(name: string): string {
-  if (!name) return 'TM';
-  const parts = name.trim().split(' ');
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return name.substring(0, 2).toUpperCase();
-}
-
 export function TeamSection() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,29 +40,19 @@ export function TeamSection() {
   useEffect(() => {
     async function fetchTeamMembers() {
       try {
-        const supabase = createClient();
-        const { data, error } = await supabase
-          .from('team_members')
-          .select('id, display_name, role_label, avatar_url')
-          .order('created_at', { ascending: false })
-          .limit(20);
-
-        if (error) {
-          console.error('Error fetching team members:', error);
-          setError(error.message);
-        } else {
-          console.log('Fetched team members:', data);
-          const transformed = ((data || []) as Array<{display_name?: string; role_label?: string; avatar_url?: string | null}>).map((member) => ({
-            name: member.display_name || 'Team Member',
-            role: member.role_label || 'Team Member',
-            avatar_url: member.avatar_url || null,
-            initials: getInitials(member.display_name || 'TM'),
-          }));
-          setTeamMembers(transformed);
+        // ✅ FIX: Fetch from the public API route instead of Supabase directly.
+        // This avoids the RLS "permission denied" error for unauthenticated visitors
+        // and also avoids adding another concurrent getSession() call on page load
+        // (which contributed to the Web Lock contention / AbortError cascade).
+        const res = await fetch("/api/public/team-members");
+        if (!res.ok) {
+          throw new Error(`Request failed with status ${res.status}`);
         }
+        const data: TeamMember[] = await res.json();
+        setTeamMembers(data);
       } catch (err) {
-        console.error('Error fetching team members:', err);
-        setError(err instanceof Error ? err.message : 'Unknown error');
+        console.error("Error fetching team members:", err);
+        setError(err instanceof Error ? err.message : "Unknown error");
       } finally {
         setLoading(false);
       }
@@ -125,9 +110,6 @@ export function TeamSection() {
           <div className="text-center py-12">
             <p className="text-lg text-red-500">
               Unable to load team members. Please try again later.
-            </p>
-            <p className="text-sm text-muted-foreground mt-2">
-              Debug info: {error}
             </p>
           </div>
         </div>

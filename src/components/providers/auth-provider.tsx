@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import type { Session, User } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/client";
 
 // Global flag to prevent auth events during password change
 // Set to true before signInWithPassword, false after updateUser resolves
@@ -56,11 +57,11 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Create Supabase client once outside component
-const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// ✅ FIX: Use the singleton client from lib/supabase/client.ts
+// Previously this called createBrowserClient() directly, creating a second
+// Supabase instance that raced for the Web Lock with useSession and CartContext,
+// causing the "Lock was not released within 5000ms" / AbortError cascade.
+const supabase = createClient();
 
 // Default permissions for each role
 const DEFAULT_ADMIN_PERMISSIONS: Record<string, string[]> = {

@@ -35,20 +35,40 @@ export function BlogSection() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchBlogs() {
+    let cancelled = false;
+
+    // ✅ FIX: Added retry logic. On first load the singleton Supabase client could
+    // be in a temporarily broken state if the auth lock contention (now fixed in
+    // auth-provider.tsx) interrupted its internal initialisation. A single silent
+    // retry after 800 ms recovers without requiring a hard reload.
+    async function fetchBlogs(attempt = 0) {
       const { data, error } = await supabase
         .from("blogs")
         .select("*")
         .order("created_at", { ascending: false })
         .limit(6);
 
-      if (!error && data) {
-        setBlogs(data);
+      if (cancelled) return;
+
+      if (error) {
+        if (attempt < 2) {
+          setTimeout(() => fetchBlogs(attempt + 1), 800);
+          return;
+        }
+        // All retries exhausted — show empty state rather than a broken spinner
+        setLoading(false);
+        return;
       }
+
+      if (data) setBlogs(data);
       setLoading(false);
     }
 
     fetchBlogs();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (loading) {
