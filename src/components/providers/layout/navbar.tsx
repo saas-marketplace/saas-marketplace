@@ -44,7 +44,7 @@ function NavbarContent() {
   const { theme, setTheme } = useTheme();
   const { cartCount } = useCart();
   const { user, loading, signOut } = useAuth();
-  const userRole = user ? 'admin' : null; // Simplified - full role from useSession in provider
+  const userRole = user?.role || 'user'; // Get actual role from auth provider
 
   // Prevent hydration mismatch
   useEffect(() => {
