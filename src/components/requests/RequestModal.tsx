@@ -57,7 +57,7 @@ export function RequestModal({
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError || !user) {
-        router.push("/auth/login?redirect=" + encodeURIComponent(window.location.pathname));
+        router.push("/auth/login?returnUrl=/requests");
         return;
       }
 

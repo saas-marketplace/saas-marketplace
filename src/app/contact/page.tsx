@@ -69,7 +69,7 @@ export default function ContactPage() {
 
     // Guest protection - redirect to login
     if (!user) {
-      router.push("/auth/login?redirect=/contact");
+      router.push("/auth/login?returnUrl=/contact");
       setSubmitting(false);
       return;
     }

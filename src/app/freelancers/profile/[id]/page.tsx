@@ -219,7 +219,7 @@ export default function FreelancerProfilePage() {
     
     // Guest protection - redirect to login
     if (!user) {
-      router.push("/auth/login?redirect=" + encodeURIComponent(window.location.pathname));
+      router.push("/auth/login?returnUrl=" + encodeURIComponent("/requests"));
       return;
     }
 
