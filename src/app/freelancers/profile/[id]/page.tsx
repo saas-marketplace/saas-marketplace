@@ -253,7 +253,9 @@ export default function FreelancerProfilePage() {
       });
       setContactForm({ subject_type: "project", custom_subject: "", message: "" });
       setContactOpen(false);
-      router.push("/requests");
+      // Redirect to /requests and auto-open the new request chat
+      const requestId = data?.request?.id || data?.id;
+      router.push(requestId ? `/requests?requestId=${requestId}` : "/requests");
     } catch (err) {
       toast({
         title: "Error",

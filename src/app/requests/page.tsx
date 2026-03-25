@@ -1,6 +1,10 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useRef, useCallback } from "react";
+import { Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { 
   MessageSquare, 
@@ -95,6 +99,20 @@ function TypingBubble({ mobile = false }: { mobile?: boolean }) {
 }
 
 export default function UserRequestsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
+      </div>
+    }>
+      <UserRequestsContent />
+    </Suspense>
+  );
+}
+
+function UserRequestsContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -151,58 +169,75 @@ export default function UserRequestsPage() {
   useEffect(() => {
     const fetchRequests = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user) {
-        setCurrentUserId(user.id);
-        
-        const { data } = await supabase
-          .from("requests")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
 
-        if (data) {
-          const { data: allDomains } = await supabase.from('domains').select('id, name');
-          const domainNameMap = new Map<string, string>();
-          (allDomains || []).forEach((d: any) => domainNameMap.set(d.id, d.name));
+      // ── Auth guard: unauthenticated → /auth/login, never "/" ──
+      if (!user) {
+        router.push("/auth/login");
+        setLoading(false);
+        return;
+      }
 
-          const isUUID = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-          const injectDomain = (r: any) => {
-            if (!r.freelancer_data) return r;
-            const fd = r.freelancer_data;
-            const existing = typeof fd.domain === 'string' && fd.domain.trim() !== '' && !isUUID(fd.domain)
-              ? fd.domain : null;
-            const fromCol = typeof r.freelancer_domain === 'string' && r.freelancer_domain.trim() !== '' && !isUUID(r.freelancer_domain)
-              ? r.freelancer_domain : null;
-            const fromMap = typeof fd.domain_id === 'string' ? (domainNameMap.get(fd.domain_id) ?? null) : null;
-            const domainName = existing || fromCol || fromMap || null;
-            return { ...r, freelancer_data: { ...fd, domain: domainName }, freelancer_domain: domainName ?? r.freelancer_domain };
-          };
+      setCurrentUserId(user.id);
 
-          const { data: lastMessages } = await supabase
-            .from('request_messages')
-            .select('request_id, message, created_at')
-            .order('created_at', { ascending: true });
-          
-          const lastMsgMap = new Map<string, string>();
-          (lastMessages || []).forEach((m: any) => {
-            lastMsgMap.set(m.request_id, m.message);
-          });
-          
-          const requestsWithLastMsg = (data as any[])
-            .map((r: any) => injectDomain(r))
-            .map((r: any) => ({
-              ...r,
-              last_message: lastMsgMap.get(r.id) || ''
-            }));
-          setRequests(requestsWithLastMsg);
+      const { data } = await supabase
+        .from("requests")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (data) {
+        const { data: allDomains } = await supabase.from('domains').select('id, name');
+        const domainNameMap = new Map<string, string>();
+        (allDomains || []).forEach((d: any) => domainNameMap.set(d.id, d.name));
+
+        const isUUID = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+        const injectDomain = (r: any) => {
+          if (!r.freelancer_data) return r;
+          const fd = r.freelancer_data;
+          const existing = typeof fd.domain === 'string' && fd.domain.trim() !== '' && !isUUID(fd.domain)
+            ? fd.domain : null;
+          const fromCol = typeof r.freelancer_domain === 'string' && r.freelancer_domain.trim() !== '' && !isUUID(r.freelancer_domain)
+            ? r.freelancer_domain : null;
+          const fromMap = typeof fd.domain_id === 'string' ? (domainNameMap.get(fd.domain_id) ?? null) : null;
+          const domainName = existing || fromCol || fromMap || null;
+          return { ...r, freelancer_data: { ...fd, domain: domainName }, freelancer_domain: domainName ?? r.freelancer_domain };
+        };
+
+        const { data: lastMessages } = await supabase
+          .from('request_messages')
+          .select('request_id, message, created_at')
+          .order('created_at', { ascending: true });
+
+        const lastMsgMap = new Map<string, string>();
+        (lastMessages || []).forEach((m: any) => {
+          lastMsgMap.set(m.request_id, m.message);
+        });
+
+        const requestsWithLastMsg = (data as any[])
+          .map((r: any) => injectDomain(r))
+          .map((r: any) => ({
+            ...r,
+            last_message: lastMsgMap.get(r.id) || ''
+          }));
+
+        setRequests(requestsWithLastMsg);
+
+        // ── Auto-open request from URL param: /requests?requestId=xxx ──
+        const targetId = searchParams.get("requestId");
+        if (targetId) {
+          const target = requestsWithLastMsg.find((r: any) => r.id === targetId);
+          if (target) {
+            setSelectedRequest(target);
+            setIsMobileChatOpen(true);
+          }
         }
       }
+
       setLoading(false);
     };
 
     fetchRequests();
-  }, [supabase]);
+  }, [supabase, router, searchParams]);
 
   // ── PRESENCE: fetch admin ID and initial status ──
   useEffect(() => {
@@ -692,6 +727,17 @@ export default function UserRequestsPage() {
   const handleViewFreelancer = (freelancerId: string) => {
     window.open(`/freelancers/profile/${freelancerId}`, '_blank');
   };
+
+  // ── Auth / loading guard — prevents flash before redirect ──
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
+      </div>
+    );
+  }
+
+  if (!currentUserId) return null;
 
   // ==================== CHAT VIEW ====================
   if (selectedRequest) {

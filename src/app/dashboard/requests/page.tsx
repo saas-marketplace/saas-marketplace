@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 // Centralized permissions - loads once at app level
 import { usePermissions } from "@/stores/permissions-context";
@@ -241,6 +242,22 @@ export default function AdminRequestsPage() {
   const PRESENCE_THROTTLE_MS = 30_000; // 30 seconds
 
   const supabase = createClient();
+  const searchParams = useSearchParams();
+
+  // Handle requestId from URL params (when clicking notification link)
+  useEffect(() => {
+    const requestId = searchParams.get('requestId');
+    if (requestId && requests.length > 0) {
+      const request = requests.find(r => r.id === requestId);
+      if (request) {
+        setSelectedRequest(request);
+        // Open mobile chat if on mobile
+        if (window.innerWidth < 768) {
+          setIsMobileChatOpen(true);
+        }
+      }
+    }
+  }, [searchParams, requests]);
 
   // ── FETCH SESSION ONCE ──
   // Everything downstream reads sessionRef.current — no component ever calls

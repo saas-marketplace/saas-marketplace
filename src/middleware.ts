@@ -27,10 +27,11 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Get client IP for blocking
-  const clientIP = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() 
-    || request.headers.get("x-real-ip")
-    || request.ip
-    || "unknown";
+  const clientIP =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    request.ip ||
+    "unknown";
 
   // Check if IP is banned
   try {
@@ -39,13 +40,9 @@ export async function middleware(request: NextRequest) {
       .select("ip_address")
       .eq("ip_address", clientIP)
       .maybeSingle();
-    
+
     if (bannedIP) {
-      // Block the request completely
-      return NextResponse.json(
-        { error: "Access denied" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
   } catch (error) {
     // Continue on error - don't block legitimate users
@@ -55,67 +52,70 @@ export async function middleware(request: NextRequest) {
   const redirectTo = (path: string) => {
     const res = NextResponse.redirect(new URL(path, request.url));
     response.cookies.getAll().forEach((c) => res.cookies.set(c));
-    // Ensure no caching of auth-protected pages
-    res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.headers.set(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, proxy-revalidate"
+    );
     res.headers.set("Pragma", "no-cache");
     res.headers.set("Expires", "0");
     return res;
   };
 
-  // Add cache control headers to prevent caching of auth checks
-  response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  // Add cache control headers
+  response.headers.set(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, proxy-revalidate"
+  );
   response.headers.set("Pragma", "no-cache");
   response.headers.set("Expires", "0");
 
   // Public routes that don't require authentication
   const publicRoutes = [
-    "/", 
-    "/auth/login", 
-    "/auth/signup", 
-    "/about", 
-    "/pricing", 
-    "/contact", 
-    "/cookies", 
-    "/docs", 
-    "/enterprise", 
-    "/gdpr", 
-    "/help", 
-    "/privacy", 
-    "/terms", 
-    "/blog", 
-    "/careers", 
-    "/community", 
-    "/testimonials", 
-    "/freelancers", 
+    "/",
+    "/auth/login",
+    "/auth/signup",
+    "/about",
+    "/pricing",
+    "/contact",
+    "/cookies",
+    "/docs",
+    "/enterprise",
+    "/gdpr",
+    "/help",
+    "/privacy",
+    "/terms",
+    "/blog",
+    "/careers",
+    "/community",
+    "/testimonials",
+    "/freelancers",
     "/marketplace",
     "/banned",
     "/access-removed",
-    "/access-restored"
+    "/access-restored",
   ];
 
   const isPublicRoute = publicRoutes.some(
-    route =>
+    (route) =>
       pathname === route ||
       pathname.startsWith("/blog/") ||
       pathname.startsWith("/freelancers/") ||
       pathname.startsWith("/marketplace/")
   );
 
-  // Get user - redirect to login if not authenticated
+  // Get user
   let user = null;
-
   try {
     const { data } = await supabase.auth.getUser();
     user = data?.user;
   } catch (error) {
-    // On error, redirect to login for protected routes
     if (!isPublicRoute && !pathname.startsWith("/api/")) {
       return redirectTo("/auth/login");
     }
     return response;
   }
 
-  // Check if user is banned - even for public routes
+  // Check if user is banned — even on public routes
   if (user) {
     try {
       const { data: userData } = await supabase
@@ -123,37 +123,41 @@ export async function middleware(request: NextRequest) {
         .select("is_banned")
         .eq("id", user.id)
         .maybeSingle();
-      
+
       if (userData?.is_banned) {
-        // Force logout by clearing auth cookies
         response.cookies.set("sb-access-token", "", { maxAge: -1, path: "/" });
-        response.cookies.set("sb-refresh-token", "", { maxAge: -1, path: "/" });
-        
-        // Redirect to banned page
+        response.cookies.set("sb-refresh-token", "", {
+          maxAge: -1,
+          path: "/",
+        });
         return redirectTo("/banned");
       }
     } catch (error) {
-      // Continue - don't block on error
+      // Continue — don't block on error
     }
   }
 
-  // Public routes - allow without auth check
+  // Public routes or API — allow without further auth checks
   if (isPublicRoute || pathname.startsWith("/api/")) {
     return response;
   }
 
-  // No user - redirect to login for protected routes
-  if (!user) {
-    if (!isPublicRoute && !pathname.startsWith("/api/")) {
+  // ── /requests is accessible to ALL authenticated users ──
+  // No redirect to "/" — unauthenticated users go to /auth/login (handled below).
+  if (pathname.startsWith("/requests")) {
+    if (!user) {
       return redirectTo("/auth/login");
     }
     return response;
   }
 
+  // No user — redirect to login for remaining protected routes
+  if (!user) {
+    return redirectTo("/auth/login");
+  }
+
   // ── Authenticated users ─────────────────────────────────────────────────
-  // Get user's role and ban status from users table (single query)
   let userRole = "user";
-  let isBanned = false;
 
   try {
     const { data } = await supabase
@@ -161,16 +165,15 @@ export async function middleware(request: NextRequest) {
       .select("role, is_banned")
       .eq("id", user.id)
       .maybeSingle();
-    
+
     if (data) {
       userRole = data.role || "user";
-      isBanned = data.is_banned || false;
     }
   } catch (error) {
     // Continue with default role
   }
 
-  // Check team_members for role_label override (only if needed)
+  // Check team_members for role_label override (admins only)
   if (userRole === "admin" || userRole === "super_admin") {
     try {
       const { data: memberData } = await supabase
@@ -178,7 +181,7 @@ export async function middleware(request: NextRequest) {
         .select("role_label")
         .eq("user_id", user.id)
         .maybeSingle();
-      
+
       if (memberData?.role_label) {
         if (memberData.role_label === "Super Admin") {
           userRole = "super_admin";
@@ -191,28 +194,33 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Role-based routing
-  // super_admin and admin go to dashboard
+  // ── Role-based routing ──
   if (userRole === "super_admin" || userRole === "admin") {
+    // Redirect admins landing on "/" to dashboard
     if (pathname === "/") {
       return redirectTo("/dashboard");
     }
-    // Prevent access to user management pages for non-super-admin
-    if ((pathname.startsWith("/dashboard/users") || pathname.startsWith("/dashboard/contact-submissions")) && userRole !== "super_admin") {
+    // Protect user-management pages from non-super-admins
+    if (
+      (pathname.startsWith("/dashboard/users") ||
+        pathname.startsWith("/dashboard/contact-submissions")) &&
+      userRole !== "super_admin"
+    ) {
       return redirectTo("/dashboard");
     }
     return response;
   }
 
-  // Regular users stay on home page
+  // Regular users:
+  // ✅ Allow /requests — never redirect to "/"
+  // ❌ Block /dashboard — redirect to /auth/login (not "/")
   if (userRole === "user") {
-    if (pathname.startsWith("/dashboard") || pathname.startsWith("/requests")) {
-      return redirectTo("/");
+    if (pathname.startsWith("/dashboard")) {
+      return redirectTo("/auth/login");
     }
     return response;
   }
 
-  // Default: allow navigation
   return response;
 }
 

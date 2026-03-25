@@ -158,13 +158,13 @@ export async function POST(request: NextRequest) {
         .in("role", ["admin", "super_admin"]);
       
       if (admins && admins.length > 0) {
-        // Create notification for each admin
+        // Create notification for each admin with requestId in the link
         const notifications = admins.map(admin => ({
           user_id: admin.id,
           type: "request",
           title: "New Request",
           message: `${fullName} has sent a request to hire a freelancer`,
-          link: `/dashboard/requests/${newRequest.id}`
+          link: `/dashboard/requests?requestId=${newRequest.id}`
         }));
         
         await supabase.from("notifications").insert(notifications);

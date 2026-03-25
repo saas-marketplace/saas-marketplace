@@ -113,8 +113,8 @@ export default function ContactPage() {
         message: "",
       });
       
-      // Redirect to home page after successful submission
-      router.push("/?contact=success");
+      // Redirect to requests page after successful submission
+      router.push("/requests");
     } catch (err) {
       toast({
         title: "Error",

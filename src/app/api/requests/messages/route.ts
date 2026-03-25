@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
               type: "message",
               title: "New Message",
               message: `${senderName} sent a message about "${requestTitle}"`,
-              link: `/dashboard/requests/${request_id}`,
+              link: `/dashboard/requests?requestId=${request_id}`,
             }))
           );
         }

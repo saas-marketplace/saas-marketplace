@@ -288,6 +288,16 @@ export default function Topbar() {
   const [browserNotifEnabled, setBrowserNotifEnabled] = useState(false);
   const notificationsLoadedRef = useRef(false);
 
+  // Request browser notification permission on mount
+  useEffect(() => {
+    const requestPermission = async () => {
+      const granted = await requestBrowserNotificationPermission();
+      setBrowserNotifEnabled(granted);
+      console.log('[Browser Notifications] Permission granted:', granted);
+    };
+    requestPermission();
+  }, []);
+
   const profileRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
@@ -586,6 +596,14 @@ export default function Topbar() {
     }
   };
 
+  // Show browser notification for a notification
+  const notifyBrowser = useCallback((notification: Notification) => {
+    if (browserNotifEnabled) {
+      showBrowserNotification(notification);
+      console.log('[Browser Notifications] Showing notification:', notification.title);
+    }
+  }, [browserNotifEnabled]);
+
   useEffect(() => {
     // Only fetch when user is available
     if (!user) return;
@@ -666,8 +684,8 @@ export default function Topbar() {
               });
               setNotificationCount(prev => prev + 1);
               
-              // Show browser native notification
-              showBrowserNotification(newNotification);
+              // Show browser native notification for new notifications
+              notifyBrowser(newNotification);
               
               console.log('[Notifications] New notification received:', newNotification.type, newNotification.id);
             }
