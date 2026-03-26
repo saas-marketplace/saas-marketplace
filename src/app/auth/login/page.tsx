@@ -103,6 +103,16 @@ export default function LoginPage() {
       
       toast({ title: "Login successful", description: `Welcome back! Redirecting...` });
       
+      // ✅ Log audit event for user login
+      const { logAudit, AuditActions, AuditSections } = await import("@/lib/services/audit");
+      await logAudit({
+        action: AuditActions.USER_LOGIN,
+        section: AuditSections.AUTH,
+        details: `User logged in: ${email}`,
+        user_id: data.user.id,
+        user_email: email,
+      });
+      
       // Direct redirect - let Supabase handle the auth state naturally
       window.location.assign(redirectPath);
     } else {

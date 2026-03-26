@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { logAudit, AuditActions, AuditSections } from "@/lib/services/audit";
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic';

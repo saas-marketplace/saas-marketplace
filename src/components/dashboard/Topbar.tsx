@@ -360,6 +360,23 @@ export default function Topbar() {
     setLocalProfile(null);
     setNotifications([]); setNotificationCount(0);
     setIsProfileOpen(false); setIsNotificationsOpen(false);
+    
+    // ✅ Log audit event for user logout before signing out
+    const { logAudit, AuditActions, AuditSections } = await import("@/lib/services/audit");
+    // Type assertion for authData since TypeScript may not infer the type correctly
+    const authUserData = authData as { id?: string; email?: string } | null;
+    const userId = user?.id || authUserData?.id;
+    const userEmail = user?.email || authUserData?.email || "";
+    if (userId) {
+      await logAudit({
+        action: AuditActions.USER_LOGOUT,
+        section: AuditSections.AUTH,
+        details: `User logged out: ${userEmail}`,
+        user_id: userId,
+        user_email: userEmail,
+      });
+    }
+    
     try { signOut(); } catch {}
     localStorage.removeItem("supabase.auth.token");
     sessionStorage.clear();

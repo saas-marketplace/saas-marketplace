@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { logAudit, AuditActions, AuditSections } from '@/lib/services/audit';
 
 // GET - Fetch all team members
 export async function GET() {
@@ -149,14 +150,23 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
+    // ✅ Log audit event for creating team member
+    await logAudit({
+      action: AuditActions.CREATE_TEAM_MEMBER,
+      section: AuditSections.TEAM_MEMBERS,
+      details: `Created team member: ${display_name}`,
+      user_id: user.id,
+      user_email: user.email || "unknown",
+    });
+
     // ✅ Create notification for super_admin when team member is added
     try {
       // Get admin's full name for dynamic message
-      const { data: adminData } = await supabase
+      const { data: adminData } = user?.id ? await supabase
         .from("users")
         .select("full_name")
         .eq("id", user.id)
-        .single();
+        .single() : { data: null };
       
       const adminName = adminData?.full_name || "Admin";
       
@@ -291,14 +301,21 @@ export async function PUT(request: NextRequest) {
 
     if (error) throw error;
 
+    // ✅ Log audit event for updating team member
+    await logAudit({
+      action: AuditActions.UPDATE_TEAM_MEMBER,
+      section: AuditSections.TEAM_MEMBERS,
+      details: `Updated team member: ${display_name || id}`,
+      user_id: user.id,
+      user_email: user.email,
+    });
+
     return NextResponse.json(data);
   } catch (error) {
     console.error('Error updating team member:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
-
-// DELETE - Remove a team member
 export async function DELETE(request: NextRequest) {
   // Create response first to capture cookies
   const response = NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -348,10 +365,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Missing team member ID' }, { status: 400 });
     }
 
-    // First get the team member to find the user_id
+    // First get the team member to find the user_id and display_name
     const { data: member } = await supabase
       .from('team_members')
-      .select('user_id')
+      .select('user_id, display_name')
       .eq('id', id)
       .single();
 
@@ -372,14 +389,28 @@ export async function DELETE(request: NextRequest) {
 
     if (error) throw error;
 
+    // ✅ Log audit event for deleting team member
+    await logAudit({
+      action: AuditActions.DELETE_TEAM_MEMBER,
+      section: AuditSections.TEAM_MEMBERS,
+      details: `Deleted team member: ${member?.display_name || id}`,
+      user_id: user.id,
+      user_email: user.email,
+    });
+
+    return NextResponse.json({ success: true });
+
+    if (error) throw error;
+
     // ✅ Create notification for super_admin when team member is removed
     try {
       // Get admin's full name for dynamic message
-      const { data: adminData } = await supabase
+      const userId = user?.id;
+      const { data: adminData } = userId ? await supabase
         .from("users")
         .select("full_name")
-        .eq("id", user.id)
-        .single();
+        .eq("id", userId)
+        .single() : { data: null };
       
       const adminName = adminData?.full_name || "Admin";
       
@@ -389,18 +420,19 @@ export async function DELETE(request: NextRequest) {
         .select("id")
         .eq("role", "super_admin");
       
-      if (superAdmins && superAdmins.length > 0) {
-        // Create notification for each super_admin
-        const notifications = superAdmins.map(admin => ({
-          user_id: admin.id,
-          type: "team",
-          title: "Team Activity",
-          message: `${adminName} removed a team member`,
-          link: `/dashboard/team`
-        }));
-        
-        await supabase.from("notifications").insert(notifications);
-      }
+      const adminCount = superAdmins?.length ?? 0;
+      if (adminCount === 0) return;
+      
+      // Create notification for each super_admin
+      const notifications = superAdmins!.map(admin => ({
+        user_id: admin.id,
+        type: "team",
+        title: "Team Activity",
+        message: `${adminName} removed a team member`,
+        link: `/dashboard/team`
+      }));
+      
+      await supabase.from("notifications").insert(notifications);
     } catch (notifError) {
       // Don't fail the request if notification fails
       console.error("Error creating team notification:", notifError);

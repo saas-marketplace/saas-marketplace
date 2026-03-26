@@ -8,6 +8,7 @@ import { useSuspended } from "@/components/ui/suspended-context";
 import { useUserStatus } from "@/stores/user-status-context";
 import { useAuth } from "@/components/providers/auth-provider";
 import { SectionAccessGuard } from "@/components/ui/section-access-guard";
+import { logAudit, AuditActions, AuditSections } from "@/lib/services/audit";
 import { 
   MessageSquare, 
   Clock, 
@@ -945,6 +946,15 @@ export default function AdminRequestsPage() {
           .update({ status: "received" })
           .eq("id", request.id)
           .eq("status", "pending");
+        
+        // ✅ Log audit event for updating request status
+        await logAudit({
+          action: AuditActions.UPDATE_REQUEST,
+          section: AuditSections.REQUESTS,
+          details: `Updated request status: ${request.title || request.id} (pending -> received)`,
+          user_id: user?.id || '',
+          user_email: user?.email || '',
+        });
         
         setRequests(prev =>
           prev.map(r =>

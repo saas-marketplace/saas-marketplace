@@ -5,6 +5,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 // Centralized permissions - loads once at app level
 import { usePermissions } from '@/stores/permissions-context';
 import { useSuspended } from '@/components/ui/suspended-context';
+import { useAuth } from '@/components/providers/auth-provider';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +31,7 @@ import {
   ShoppingCart,
   Tag
 } from 'lucide-react';
+import { logAudit, AuditActions, AuditSections } from '@/lib/services/audit';
 
 interface Product {
   id: number;
@@ -308,12 +310,30 @@ export default function ProductsPage() {
           .eq('id', editingProduct.id);
 
         if (error) throw error;
+
+        // ✅ Log audit event for updating product
+        await logAudit({
+          action: AuditActions.UPDATE_PRODUCT,
+          section: AuditSections.PRODUCTS,
+          details: `Updated product: ${productData.title}`,
+          user_id: user?.id || '',
+          user_email: user?.email || '',
+        });
       } else {
         const { error } = await supabase
           .from('products')
           .insert([productData]);
 
         if (error) throw error;
+
+        // ✅ Log audit event for creating product
+        await logAudit({
+          action: AuditActions.CREATE_PRODUCT,
+          section: AuditSections.PRODUCTS,
+          details: `Created product: ${productData.title}`,
+          user_id: user?.id || '',
+          user_email: user?.email || '',
+        });
       }
 
       await fetchProducts();
@@ -338,6 +358,15 @@ export default function ProductsPage() {
         .eq('id', id);
 
       if (error) throw error;
+
+      // ✅ Log audit event for deleting product
+      await logAudit({
+        action: AuditActions.DELETE_PRODUCT,
+        section: AuditSections.PRODUCTS,
+        details: `Deleted product: ${id}`,
+        user_id: user?.id || '',
+        user_email: user?.email || '',
+      });
       
       await fetchProducts();
     } catch (error) {
