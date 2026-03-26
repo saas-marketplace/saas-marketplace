@@ -306,23 +306,6 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
-
-      // Log the response in audit logs
-      try {
-        await supabase.from("audit_logs").insert({
-          user_id: user.id,
-          action: "contact_response_sent",
-          details: JSON.stringify({
-            submission_id,
-            contact_email: submission.email,
-            contact_name: submission.name,
-            response_length: response.length
-          })
-        });
-      } catch (logError) {
-        console.error("Error logging audit:", logError);
-      }
-
       return NextResponse.json({ 
         success: true, 
         message: "Response sent successfully" 

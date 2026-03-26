@@ -29,6 +29,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { logAudit, AuditActions, AuditSections } from '@/lib/services/audit';
 
 const supabase = createClient();
 
@@ -52,6 +53,7 @@ export default function BlogPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBlog, setEditingBlog] = useState<Blog | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [user, setUser] = useState<any>(null);
 
   const [formData, setFormData] = useState({
     title: "",
@@ -96,6 +98,15 @@ export default function BlogPage() {
   useEffect(() => {
     fetchBlogs();
   }, [fetchBlogs]);
+
+  // Fetch current user on mount
+  useEffect(() => {
+    async function fetchUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    }
+    fetchUser();
+  }, [supabase]);
 
   // Now safe to do early returns - all hooks have been called
   if (isLoading) {
@@ -205,12 +216,34 @@ export default function BlogPage() {
       };
 
       if (editingBlog) {
-        await supabase
+        const { error } = await supabase
           .from("blogs")
           .update(blogData)
           .eq("id", editingBlog.id);
+
+        if (error) throw error;
+
+        // ✅ Log audit event for updating blog
+        await logAudit({
+          action: AuditActions.UPDATE_BLOG,
+          section: AuditSections.BLOG,
+          details: `Updated blog: ${blogData.title}`,
+          user_id: user?.id || '',
+          user_email: user?.email || '',
+        });
       } else {
-        await supabase.from("blogs").insert([blogData]);
+        const { error } = await supabase.from("blogs").insert([blogData]);
+
+        if (error) throw error;
+
+        // ✅ Log audit event for creating blog
+        await logAudit({
+          action: AuditActions.CREATE_BLOG,
+          section: AuditSections.BLOG,
+          details: `Created blog: ${blogData.title}`,
+          user_id: user?.id || '',
+          user_email: user?.email || '',
+        });
       }
 
       await fetchBlogs();
@@ -232,8 +265,25 @@ export default function BlogPage() {
       return;
     }
     
-    await supabase.from("blogs").delete().eq("id", id);
-    fetchBlogs();
+    try {
+      const { error } = await supabase.from("blogs").delete().eq("id", id);
+      
+      if (error) throw error;
+
+      // ✅ Log audit event for deleting blog
+      await logAudit({
+        action: AuditActions.DELETE_BLOG,
+        section: AuditSections.BLOG,
+        details: `Deleted blog: ${id}`,
+        user_id: user?.id || '',
+        user_email: user?.email || '',
+      });
+      
+      fetchBlogs();
+    } catch (error) {
+      console.error("Error deleting blog:", error);
+      alert("Failed to delete blog. Please try again.");
+    }
   }
 
   // Sanitize filename to remove special characters that cause upload errors

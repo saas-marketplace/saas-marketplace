@@ -37,6 +37,7 @@ import {
   Loader2,
   AlertTriangle
 } from 'lucide-react';
+import { logAudit, AuditActions, AuditSections } from '@/lib/services/audit';
 
 export default function TeamPage() {
   // Get all access control state FIRST
@@ -53,6 +54,7 @@ export default function TeamPage() {
   // Details popup state
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
+  const [user, setUser] = useState<any>(null);
 
   // Handle row click - open details popup
   const handleRowClick = (member: TeamMember) => {
@@ -164,6 +166,15 @@ export default function TeamPage() {
     }
   }, [currentUserRole]);
 
+  // Fetch current user on mount
+  useEffect(() => {
+    async function fetchUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    }
+    fetchUser();
+  }, [supabase]);
+
   // ALL hooks must be called before any early returns
   // Handle loading state FIRST - always let hooks run
   if (isLoading) {
@@ -200,6 +211,15 @@ export default function TeamPage() {
         .eq('id', member.id);
 
       if (error) throw error;
+
+      // ✅ Log audit event for deleting team member
+      await logAudit({
+        action: AuditActions.DELETE_TEAM_MEMBER,
+        section: AuditSections.TEAM_MEMBERS,
+        details: `Deleted team member: ${member.display_name}`,
+        user_id: user?.id || '',
+        user_email: user?.email || '',
+      });
 
       toast({
         title: 'Success',

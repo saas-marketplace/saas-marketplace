@@ -27,6 +27,7 @@ import {
 import { Avatar, AvatarFallback, LetterAvatar } from '@/components/ui/avatar';
 import { Loader2, Plus, User, Upload, X } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { logAudit, AuditActions, AuditSections } from '@/lib/services/audit';
 
 interface UserOption {
   id: string;
@@ -296,6 +297,15 @@ export default function TeamMemberDialog({
 
         if (error) throw error;
 
+        // ✅ Log audit event for updating team member
+        await logAudit({
+          action: AuditActions.UPDATE_TEAM_MEMBER,
+          section: AuditSections.TEAM_MEMBERS,
+          details: `Updated team member: ${displayName}`,
+          user_id: currentUser?.id || '',
+          user_email: currentUser?.email || '',
+        });
+
         toast({
           title: 'Success',
           description: 'Team member updated successfully',
@@ -325,6 +335,15 @@ export default function TeamMemberDialog({
           });
 
         if (error) throw error;
+
+        // ✅ Log audit event for creating team member
+        await logAudit({
+          action: AuditActions.ADD_TEAM_MEMBER,
+          section: AuditSections.TEAM_MEMBERS,
+          details: `Created team member: ${displayName}`,
+          user_id: currentUser?.id || '',
+          user_email: currentUser?.email || '',
+        });
 
         toast({
           title: 'Success',

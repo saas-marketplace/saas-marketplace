@@ -29,6 +29,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { logAudit, AuditActions, AuditSections } from '@/lib/services/audit';
 
 interface Domain {
   id: string;
@@ -68,6 +69,7 @@ export default function FreelancersPage() {
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null); // For filtering
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarPreview, setAvatarPreview] = useState<string>("");
+  const [user, setUser] = useState<any>(null);
 
   // Guard to prevent duplicate fetches in React StrictMode
   const fetchDataRef = useRef(false);
@@ -136,6 +138,15 @@ export default function FreelancersPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Fetch current user on mount
+  useEffect(() => {
+    async function fetchUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    }
+    fetchUser();
+  }, [supabase]);
 
   // Now safe to do early returns - all hooks have been called
   if (isLoading) {
@@ -277,12 +288,34 @@ export default function FreelancersPage() {
       };
 
       if (editingFreelancer) {
-        await supabase
+        const { error } = await supabase
           .from("freelancers")
           .update(freelancerData)
           .eq("id", editingFreelancer.id);
+
+        if (error) throw error;
+
+        // ✅ Log audit event for updating freelancer
+        await logAudit({
+          action: AuditActions.UPDATE_FREELANCER,
+          section: AuditSections.FREELANCERS,
+          details: `Updated freelancer: ${freelancerData.display_name}`,
+          user_id: user?.id || '',
+          user_email: user?.email || '',
+        });
       } else {
-        await supabase.from("freelancers").insert([freelancerData]);
+        const { error } = await supabase.from("freelancers").insert([freelancerData]);
+
+        if (error) throw error;
+
+        // ✅ Log audit event for creating freelancer
+        await logAudit({
+          action: AuditActions.CREATE_FREELANCER,
+          section: AuditSections.FREELANCERS,
+          details: `Created freelancer: ${freelancerData.display_name}`,
+          user_id: user?.id || '',
+          user_email: user?.email || '',
+        });
       }
 
       await fetchData();
@@ -304,8 +337,25 @@ export default function FreelancersPage() {
       return;
     }
     
-    await supabase.from("freelancers").delete().eq("id", id);
-    fetchData();
+    try {
+      const { error } = await supabase.from("freelancers").delete().eq("id", id);
+      
+      if (error) throw error;
+
+      // ✅ Log audit event for deleting freelancer
+      await logAudit({
+        action: AuditActions.DELETE_FREELANCER,
+        section: AuditSections.FREELANCERS,
+        details: `Deleted freelancer: ${id}`,
+        user_id: user?.id || '',
+        user_email: user?.email || '',
+      });
+      
+      fetchData();
+    } catch (error) {
+      console.error("Error deleting freelancer:", error);
+      alert("Failed to delete freelancer. Please try again.");
+    }
   }
 
   // Get initials for avatar

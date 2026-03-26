@@ -50,19 +50,29 @@ export async function logAudit({
  */
 export const AuditActions = {
   // Team Members
-  CREATE_TEAM_MEMBER: "CREATE_TEAM_MEMBER",
+  ADD_TEAM_MEMBER: "ADD_TEAM_MEMBER",
   UPDATE_TEAM_MEMBER: "UPDATE_TEAM_MEMBER",
   DELETE_TEAM_MEMBER: "DELETE_TEAM_MEMBER",
   // Products
   CREATE_PRODUCT: "CREATE_PRODUCT",
   UPDATE_PRODUCT: "UPDATE_PRODUCT",
   DELETE_PRODUCT: "DELETE_PRODUCT",
+  // Freelancers
+  CREATE_FREELANCER: "CREATE_FREELANCER",
+  UPDATE_FREELANCER: "UPDATE_FREELANCER",
+  DELETE_FREELANCER: "DELETE_FREELANCER",
+  // Domains
+  CREATE_DOMAIN: "CREATE_DOMAIN",
+  UPDATE_DOMAIN: "UPDATE_DOMAIN",
+  DELETE_DOMAIN: "DELETE_DOMAIN",
+  // Blog
+  CREATE_BLOG: "CREATE_BLOG",
+  UPDATE_BLOG: "UPDATE_BLOG",
+  DELETE_BLOG: "DELETE_BLOG",
   // Requests
   CREATE_REQUEST: "CREATE_REQUEST",
   UPDATE_REQUEST: "UPDATE_REQUEST",
-  // Authentication
-  USER_LOGIN: "USER_LOGIN",
-  USER_LOGOUT: "USER_LOGOUT",
+ 
 } as const;
 
 /**
@@ -71,6 +81,9 @@ export const AuditActions = {
 export const AuditSections = {
   TEAM_MEMBERS: "Team Members",
   PRODUCTS: "Products",
+  FREELANCERS: "Freelancers",
+  DOMAINS: "Domains",
+  BLOG: "Blog",
   REQUESTS: "Requests",
   AUTH: "Authentication",
 } as const;
@@ -83,12 +96,12 @@ export async function logTeamMemberAction({
   user,
   memberName,
 }: {
-  action: "CREATE_TEAM_MEMBER" | "UPDATE_TEAM_MEMBER" | "DELETE_TEAM_MEMBER";
+  action: "ADD_TEAM_MEMBER" | "UPDATE_TEAM_MEMBER" | "DELETE_TEAM_MEMBER";
   user: { id: string; email: string };
   memberName: string;
 }) {
   const details =
-    action === "CREATE_TEAM_MEMBER"
+    action === "ADD_TEAM_MEMBER"
       ? `Created team member: ${memberName}`
       : action === "UPDATE_TEAM_MEMBER"
       ? `Updated team member: ${memberName}`
@@ -125,6 +138,90 @@ export async function logProductAction({
   await logAudit({
     action,
     section: AuditSections.PRODUCTS,
+    details,
+    user_id: user.id,
+    user_email: user.email,
+  });
+}
+
+/**
+ * Helper to log freelancer actions
+ */
+export async function logFreelancerAction({
+  action,
+  user,
+  freelancerName,
+}: {
+  action: "CREATE_FREELANCER" | "UPDATE_FREELANCER" | "DELETE_FREELANCER";
+  user: { id: string; email: string };
+  freelancerName: string;
+}) {
+  const details =
+    action === "CREATE_FREELANCER"
+      ? `Created freelancer: ${freelancerName}`
+      : action === "UPDATE_FREELANCER"
+      ? `Updated freelancer: ${freelancerName}`
+      : `Deleted freelancer: ${freelancerName}`;
+
+  await logAudit({
+    action,
+    section: AuditSections.FREELANCERS,
+    details,
+    user_id: user.id,
+    user_email: user.email,
+  });
+}
+
+/**
+ * Helper to log domain actions
+ */
+export async function logDomainAction({
+  action,
+  user,
+  domainName,
+}: {
+  action: "CREATE_DOMAIN" | "UPDATE_DOMAIN" | "DELETE_DOMAIN";
+  user: { id: string; email: string };
+  domainName: string;
+}) {
+  const details =
+    action === "CREATE_DOMAIN"
+      ? `Created domain: ${domainName}`
+      : action === "UPDATE_DOMAIN"
+      ? `Updated domain: ${domainName}`
+      : `Deleted domain: ${domainName}`;
+
+  await logAudit({
+    action,
+    section: AuditSections.DOMAINS,
+    details,
+    user_id: user.id,
+    user_email: user.email,
+  });
+}
+
+/**
+ * Helper to log blog actions
+ */
+export async function logBlogAction({
+  action,
+  user,
+  blogTitle,
+}: {
+  action: "CREATE_BLOG" | "UPDATE_BLOG" | "DELETE_BLOG";
+  user: { id: string; email: string };
+  blogTitle: string;
+}) {
+  const details =
+    action === "CREATE_BLOG"
+      ? `Created blog: ${blogTitle}`
+      : action === "UPDATE_BLOG"
+      ? `Updated blog: ${blogTitle}`
+      : `Deleted blog: ${blogTitle}`;
+
+  await logAudit({
+    action,
+    section: AuditSections.BLOG,
     details,
     user_id: user.id,
     user_email: user.email,

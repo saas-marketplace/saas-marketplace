@@ -24,6 +24,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { IconSelector, getIconComponent } from "@/components/ui/icon-selector";
+import { logAudit, AuditActions, AuditSections } from '@/lib/services/audit';
 
 interface Domain {
   id: string;
@@ -50,6 +51,7 @@ export default function DomainsPage() {
     description: "",
     icon: "",
   });
+  const [user, setUser] = useState<any>(null);
 
   const supabase = createClient();
 
@@ -69,6 +71,15 @@ export default function DomainsPage() {
   useEffect(() => {
     fetchDomains();
   }, []);
+
+  // Fetch current user on mount
+  useEffect(() => {
+    async function fetchUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    }
+    fetchUser();
+  }, [supabase]);
 
   // Now safe to do early returns - all hooks have been called
   if (isLoading) {
@@ -144,9 +155,27 @@ export default function DomainsPage() {
           .update(domainData)
           .eq("id", editingDomain.id);
         if (error) throw error;
+
+        // ✅ Log audit event for updating domain
+        await logAudit({
+          action: AuditActions.UPDATE_DOMAIN,
+          section: AuditSections.DOMAINS,
+          details: `Updated domain: ${domainData.name}`,
+          user_id: user?.id || '',
+          user_email: user?.email || '',
+        });
       } else {
         const { error } = await supabase.from("domains").insert([domainData]);
         if (error) throw error;
+
+        // ✅ Log audit event for creating domain
+        await logAudit({
+          action: AuditActions.CREATE_DOMAIN,
+          section: AuditSections.DOMAINS,
+          details: `Created domain: ${domainData.name}`,
+          user_id: user?.id || '',
+          user_email: user?.email || '',
+        });
       }
 
       await fetchDomains();
@@ -177,6 +206,16 @@ export default function DomainsPage() {
     try {
       const { error } = await supabase.from("domains").delete().eq("id", id);
       if (error) throw error;
+
+      // ✅ Log audit event for deleting domain
+      await logAudit({
+        action: AuditActions.DELETE_DOMAIN,
+        section: AuditSections.DOMAINS,
+        details: `Deleted domain: ${id}`,
+        user_id: user?.id || '',
+        user_email: user?.email || '',
+      });
+      
       await fetchDomains();
     } catch (error) {
       console.error("Error deleting domain:", error);

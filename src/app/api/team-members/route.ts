@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
 
     // ✅ Log audit event for creating team member
     await logAudit({
-      action: AuditActions.CREATE_TEAM_MEMBER,
+      action: AuditActions.ADD_TEAM_MEMBER,
       section: AuditSections.TEAM_MEMBERS,
       details: `Created team member: ${display_name}`,
       user_id: user.id,
@@ -398,9 +398,7 @@ export async function DELETE(request: NextRequest) {
       user_email: user.email,
     });
 
-    return NextResponse.json({ success: true });
-
-    if (error) throw error;
+    
 
     // ✅ Create notification for super_admin when team member is removed
     try {
