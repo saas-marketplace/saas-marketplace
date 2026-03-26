@@ -338,6 +338,13 @@ export default function FreelancersPage() {
     }
     
     try {
+      // Fetch freelancer name before deleting
+      const { data: freelancer } = await supabase
+        .from("freelancers")
+        .select('display_name')
+        .eq("id", id)
+        .single();
+
       const { error } = await supabase.from("freelancers").delete().eq("id", id);
       
       if (error) throw error;
@@ -346,7 +353,7 @@ export default function FreelancersPage() {
       await logAudit({
         action: AuditActions.DELETE_FREELANCER,
         section: AuditSections.FREELANCERS,
-        details: `Deleted freelancer: ${id}`,
+        details: `Deleted freelancer: ${freelancer?.display_name || id}`,
         user_id: user?.id || '',
         user_email: user?.email || '',
       });

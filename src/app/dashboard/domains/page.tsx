@@ -204,6 +204,13 @@ export default function DomainsPage() {
     }
     
     try {
+      // Fetch domain name before deleting
+      const { data: domain } = await supabase
+        .from("domains")
+        .select('name')
+        .eq("id", id)
+        .single();
+
       const { error } = await supabase.from("domains").delete().eq("id", id);
       if (error) throw error;
 
@@ -211,7 +218,7 @@ export default function DomainsPage() {
       await logAudit({
         action: AuditActions.DELETE_DOMAIN,
         section: AuditSections.DOMAINS,
-        details: `Deleted domain: ${id}`,
+        details: `Deleted domain: ${domain?.name || id}`,
         user_id: user?.id || '',
         user_email: user?.email || '',
       });

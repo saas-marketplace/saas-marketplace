@@ -266,6 +266,13 @@ export default function BlogPage() {
     }
     
     try {
+      // Fetch blog title before deleting
+      const { data: blog } = await supabase
+        .from("blogs")
+        .select('title')
+        .eq("id", id)
+        .single();
+
       const { error } = await supabase.from("blogs").delete().eq("id", id);
       
       if (error) throw error;
@@ -274,7 +281,7 @@ export default function BlogPage() {
       await logAudit({
         action: AuditActions.DELETE_BLOG,
         section: AuditSections.BLOG,
-        details: `Deleted blog: ${id}`,
+        details: `Deleted blog: ${blog?.title || id}`,
         user_id: user?.id || '',
         user_email: user?.email || '',
       });

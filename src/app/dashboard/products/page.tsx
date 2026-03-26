@@ -352,6 +352,13 @@ export default function ProductsPage() {
     if (!confirm('Are you sure you want to delete this product?')) return;
 
     try {
+      // Fetch product title before deleting
+      const { data: product } = await supabase
+        .from('products')
+        .select('title')
+        .eq('id', id)
+        .single();
+
       const { error } = await supabase
         .from('products')
         .delete()
@@ -363,7 +370,7 @@ export default function ProductsPage() {
       await logAudit({
         action: AuditActions.DELETE_PRODUCT,
         section: AuditSections.PRODUCTS,
-        details: `Deleted product: ${id}`,
+        details: `Deleted product: ${product?.title || id}`,
         user_id: user?.id || '',
         user_email: user?.email || '',
       });
