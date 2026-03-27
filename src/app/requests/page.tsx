@@ -352,7 +352,15 @@ function UserRequestsContent() {
     window.addEventListener('keydown', handleActivity);
     window.addEventListener('click', handleActivity);
 
+    // ── HEARTBEAT: Keep user online even when idle ──
+    // Updates status every 30 seconds to prevent "last seen" fallback
+    const heartbeatInterval = setInterval(() => {
+      updateUserStatus(true);
+    }, 30000);
+
     return () => {
+      // Clear heartbeat interval
+      clearInterval(heartbeatInterval);
       window.removeEventListener('mousemove', handleActivity);
       window.removeEventListener('keydown', handleActivity);
       window.removeEventListener('click', handleActivity);
