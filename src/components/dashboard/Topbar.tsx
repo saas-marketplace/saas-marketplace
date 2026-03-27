@@ -360,6 +360,21 @@ export default function Topbar() {
     setLocalProfile(null);
     setNotifications([]); setNotificationCount(0);
     setIsProfileOpen(false); setIsNotificationsOpen(false);
+    
+    // Update admin online status on logout
+    if (user && (user.role === 'admin' || user.role === 'super_admin')) {
+      try {
+        await supabase.from('user_status').upsert({
+          user_id: user.id,
+          is_online: false,
+          last_seen: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      } catch (err) {
+        console.error('[Logout] Error updating admin status:', err);
+      }
+    }
+    
     try { signOut(); } catch {}
     localStorage.removeItem("supabase.auth.token");
     sessionStorage.clear();

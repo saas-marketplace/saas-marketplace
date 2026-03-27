@@ -537,6 +537,12 @@ export default function AdminRequestsPage() {
     window.addEventListener('keydown', handleActivity);
     window.addEventListener('click', handleActivity);
 
+    // ── HEARTBEAT: Keep admin online even when idle ──
+    // Updates status every 30 seconds to prevent "last seen" fallback
+    const heartbeatInterval = setInterval(() => {
+      updateAdminStatus(true);
+    }, PRESENCE_THROTTLE_MS);
+
     const handleBeforeUnload = async () => {
       await presenceChannel.untrack();
       await supabase.from('user_status').upsert({
@@ -576,6 +582,8 @@ export default function AdminRequestsPage() {
         clearTimeout(presenceThrottleRef.current);
         presenceThrottleRef.current = null;
       }
+      // Clear heartbeat interval
+      clearInterval(heartbeatInterval);
       window.removeEventListener('mousemove', handleActivity);
       window.removeEventListener('keydown', handleActivity);
       window.removeEventListener('click', handleActivity);
@@ -1045,7 +1053,12 @@ export default function AdminRequestsPage() {
 
     const userStatus = onlineStatus[selectedRequest.user_id];
 
-    if (userStatus?.online) {
+    // Check if user is online (within last 60 seconds)
+    const isOnline = userStatus?.online && 
+      userStatus?.lastSeen &&
+      (Date.now() - new Date(userStatus.lastSeen).getTime() < 60000);
+
+    if (isOnline) {
       return <span className="text-xs text-green-500 dark:text-green-400">Online</span>;
     }
 

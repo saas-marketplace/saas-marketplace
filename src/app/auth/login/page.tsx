@@ -96,6 +96,20 @@ export default function LoginPage() {
     if (data?.user) {
       const { role, status } = await getUserStatus(supabase, data.user.id);
       
+      // Update admin online status on login
+      if (role === 'admin' || role === 'super_admin') {
+        try {
+          await supabase.from('user_status').upsert({
+            user_id: data.user.id,
+            is_online: true,
+            last_seen: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'user_id' });
+        } catch (err) {
+          console.error('[Login] Error updating admin status:', err);
+        }
+      }
+      
       // Get returnUrl from URL search params
       const returnUrl = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("returnUrl") : null;
       
