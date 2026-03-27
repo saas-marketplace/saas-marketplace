@@ -292,9 +292,9 @@ function UserRequestsContent() {
           ...prev,
           [adminUserId]: {
             online: isAdminOnline,
-            lastSeen: !isAdminOnline
-              ? (new Date().toISOString())
-              : prev[adminUserId]?.lastSeen,
+            // Keep the existing lastSeen from database when admin is offline
+            // Don't overwrite it with current time
+            lastSeen: prev[adminUserId]?.lastSeen,
           },
         }));
       })
