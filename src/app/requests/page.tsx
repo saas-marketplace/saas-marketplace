@@ -274,59 +274,50 @@ function UserRequestsContent() {
     setupAdmin();
   }, [supabase]);
 
-  // ── PRESENCE: join shared channel, track own ID, watch admin ──
+  // ── PRESENCE: subscribe to admin status via DB real-time changes ──
+  //
+  // WHY NOT PRESENCE CHANNEL:
+  // The previous approach used 'chat_presence' to detect the admin, but the
+  // admin only joins that channel when actively on the dashboard/requests page.
+  // The Supabase 'sync' event would fire immediately with the admin absent,
+  // overwriting the correct `is_online: true` value we just fetched from the DB.
+  //
+  // CORRECT APPROACH:
+  // Subscribe directly to `user_status` row changes for the admin. This works
+  // regardless of which dashboard page the admin is currently on, and perfectly
+  // mirrors how UserStatusProvider tracks users on the admin side.
   useEffect(() => {
-    if (!currentUserId || !adminUserId) return;
+    if (!adminUserId) return;
 
-    const presenceChannel = supabase.channel('chat_presence', {
-      config: { presence: { key: currentUserId } },
-    });
-
-    presenceChannel
-      .on('presence', { event: 'sync' }, () => {
-        const state = presenceChannel.presenceState();
-        const onlineUserIds = Object.keys(state);
-        const isAdminOnline = onlineUserIds.includes(adminUserId);
-        
-        setOnlineStatus(prev => ({
-          ...prev,
-          [adminUserId]: {
-            online: isAdminOnline,
-            // Keep the existing lastSeen from database when admin is offline
-            // Don't overwrite it with current time
-            lastSeen: prev[adminUserId]?.lastSeen,
-          },
-        }));
-      })
-      .on('presence', { event: 'join' }, ({ key }: { key: string }) => {
-        if (key === adminUserId) {
-          setOnlineStatus(prev => ({
-            ...prev,
-            [adminUserId]: { online: true, lastSeen: prev[adminUserId]?.lastSeen },
-          }));
+    const adminStatusChannel = supabase
+      .channel(`admin_status_${adminUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_status',
+          filter: `user_id=eq.${adminUserId}`,
+        },
+        (payload: any) => {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const status = payload.new as { is_online: boolean; last_seen: string };
+            setOnlineStatus(prev => ({
+              ...prev,
+              [adminUserId]: {
+                online: status.is_online,
+                lastSeen: status.last_seen,
+              },
+            }));
+          }
         }
-      })
-      .on('presence', { event: 'leave' }, ({ key }: { key: string }) => {
-        if (key === adminUserId) {
-          const now = new Date().toISOString();
-          setOnlineStatus(prev => ({
-            ...prev,
-            [adminUserId]: { online: false, lastSeen: now },
-          }));
-        }
-      })
-      .subscribe(async (status: string) => {
-        if (status === 'SUBSCRIBED') {
-          await presenceChannel.track({ online_at: new Date().toISOString() });
-        }
-      });
+      )
+      .subscribe();
 
     return () => {
-      if (presenceChannel && typeof presenceChannel.unsubscribe === 'function') {
-        supabase.removeChannel(presenceChannel);
-      }
+      supabase.removeChannel(adminStatusChannel);
     };
-  }, [supabase, currentUserId, adminUserId]);
+  }, [supabase, adminUserId]);
 
   // ── PRESENCE: update user_status table ──
   useEffect(() => {
