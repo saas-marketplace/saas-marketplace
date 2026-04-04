@@ -692,8 +692,14 @@ function UserRequestsContent() {
       return <span className="text-xs text-slate-400">Offline</span>;
     }
 
-    // Show "Online" if ANY admin is online
-    const anyAdminOnline = adminUsers.some(admin => onlineStatus[admin.id]?.online);
+    // Show "Online" if ANY admin is RECENTLY online (within 2 minutes)
+    const now = Date.now();
+    const anyAdminOnline = adminUsers.some(admin => {
+      const status = onlineStatus[admin.id];
+      if (!status?.online || !status.lastSeen) return false;
+      const lastSeenTime = new Date(status.lastSeen).getTime();
+      return (now - lastSeenTime) < 120000; // 2 minutes
+    });
     if (anyAdminOnline) {
       return <span className="text-xs text-green-500 dark:text-green-400">Online</span>;
     }
