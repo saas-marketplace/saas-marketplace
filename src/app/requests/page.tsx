@@ -146,23 +146,20 @@ function UserRequestsContent() {
   // Wrapped in requestAnimationFrame so it always runs after the DOM has painted
   // the new message / typing bubble — avoiding the "one message behind" problem.
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    // Cancel any pending RAF to avoid stacking
+    // Cancel pending RAF
     if (scrollRafRef.current !== null) {
       cancelAnimationFrame(scrollRafRef.current);
     }
     scrollRafRef.current = requestAnimationFrame(() => {
       scrollRafRef.current = null;
-
-      // Primary: scroll the container element directly — works on all devices/keyboards
-      if (chatContainerRef.current) {
-        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-        return;
-      }
-
-      // Fallback: scroll the anchor into view
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({ behavior, block: 'end' });
-      }
+      const container = chatContainerRef.current;
+      if (!container) return;
+      
+      // Wait for DOM/microtask queue
+      queueMicrotask(() => {
+        // Direct scrollTop = mobile-safe, instant
+        container.scrollTop = container.scrollHeight;
+      });
     });
   }, []);
 
@@ -543,12 +540,10 @@ function UserRequestsContent() {
     fetchMessages();
   }, [selectedRequest?.id]);
 
-  // ── AUTO-SCROLL: messages or typing indicator changed ──
-  // No early return guard on messagesLoading — we want to scroll after load completes too.
-  // RAF ensures the DOM has painted the new node before we measure scrollHeight.
+  // ── AUTO-SCROLL: messages or typing changed ── RAF throttled
   useEffect(() => {
     scrollToBottom('smooth');
-  }, [messages, adminIsTyping, scrollToBottom]);
+  }, [messages.length, adminIsTyping, scrollToBottom]);
 
   // ── AUTO-SCROLL: initial load — jump instantly (no animation) ──
   useEffect(() => {

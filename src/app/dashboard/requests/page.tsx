@@ -775,10 +775,10 @@ export default function AdminRequestsPage() {
     };
   }, [selectedRequest?.id, supabase]);
 
-  // ── AUTO-SCROLL: messages or typing indicator changed ──
+  // ── AUTO-SCROLL: messages or typing changed ── RAF throttled
   useEffect(() => {
     scrollToBottom('smooth');
-  }, [messages, userIsTyping, scrollToBottom]);
+  }, [messages.length, userIsTyping, scrollToBottom]);
 
   // ── AUTO-SCROLL: initial load — jump instantly ──
   useEffect(() => {
