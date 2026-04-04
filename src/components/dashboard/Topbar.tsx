@@ -181,14 +181,60 @@ export default function Topbar() {
     return () => window.removeEventListener("profile-updated", handler);
   }, []);
 
-  // Logout redirect
-  const previousUserRef = useRef(user);
+  // ── ADMIN PRESENCE: manage is_online across ALL dashboard pages ──
+  //
+  // Previously, admin online status was managed only inside dashboard/requests/page.tsx.
+  // That caused is_online to be set FALSE every time the admin navigated away from
+  // that one page (useEffect cleanup), making them appear offline on the user side.
+  //
+  // The Topbar is mounted for the entire dashboard session, so it's the correct
+  // place to maintain admin presence: set online on mount, heartbeat every 30s,
+  // and set offline only on real tab-close / logout (not on page navigation).
   useEffect(() => {
-    if (previousUserRef.current && !user && isLoggingOut) {
-      window.location.href = "/auth/login";
-    }
-    previousUserRef.current = user;
-  }, [user, isLoggingOut]);
+    if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) return;
+
+    const adminId = user.id;
+
+    const updateOnlineStatus = async (isOnline: boolean) => {
+      try {
+        await supabase.from('user_status').upsert({
+          user_id: adminId,
+          is_online: isOnline,
+          last_seen: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      } catch (err) {
+        console.error('[Topbar Admin Status] Error:', err);
+      }
+    };
+
+    // Mark online immediately on mount
+    updateOnlineStatus(true);
+
+    // Heartbeat every 30s so the DB value stays fresh
+    const heartbeat = setInterval(() => updateOnlineStatus(true), 30_000);
+
+    const handleBeforeUnload = () => updateOnlineStatus(false);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        updateOnlineStatus(false);
+      } else if (document.visibilityState === 'visible') {
+        updateOnlineStatus(true);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(heartbeat);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      // Do NOT call updateOnlineStatus(false) here — this cleanup runs whenever
+      // the Topbar re-renders due to prop changes, not only on real logout/tab-close.
+      // Logout sets offline explicitly in handleLogout below.
+    };
+  }, [user?.id, user?.role]);
 
   // Browser notification permission
   useEffect(() => {

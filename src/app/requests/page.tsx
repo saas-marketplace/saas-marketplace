@@ -126,7 +126,7 @@ function UserRequestsContent() {
   const [typingStatus, setTypingStatus] = useState<TypingStatus>({});
   const [onlineStatus, setOnlineStatus] = useState<OnlineStatus>({});
   const [adminIsTyping, setAdminIsTyping] = useState(false);
-  const [adminUserId, setAdminUserId] = useState<string | null>(null);
+  const [adminUsers, setAdminUsers] = useState<Array<{id: string, online: boolean, lastSeen?: string}> | null>(null);
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
   // ── SCROLL: single anchor div always rendered as the absolute last child ──
@@ -240,71 +240,56 @@ function UserRequestsContent() {
     fetchRequests();
   }, [supabase, router, searchParams]);
 
-  // ── PRESENCE: fetch admin ID and initial status ──
+  // ── PRESENCE: fetch ALL admin IDs and initial status ──
   useEffect(() => {
-    const setupAdmin = async () => {
-      const { data: adminUsers } = await supabase
-        .from('users')
-        .select('id')
-        .in('role', ['admin', 'super_admin'])
-        .limit(1);
+    const setupAdmins = async () => {
+      try {
+        const res = await fetch('/api/admin-status');
+        if (!res.ok) return;
 
-      if (!adminUsers || adminUsers.length === 0) return;
+        const { admins } = await res.json();
+        if (!admins || admins.length === 0) return;
 
-      const adminId = adminUsers[0].id;
-      setAdminUserId(adminId);
-
-      const { data: statusData } = await supabase
-        .from('user_status')
-        .select('is_online, last_seen')
-        .eq('user_id', adminId)
-        .maybeSingle();
-
-      if (statusData) {
-        setOnlineStatus(prev => ({
-          ...prev,
-          [adminId]: {
-            online: statusData.is_online,
-            lastSeen: statusData.last_seen,
-          },
-        }));
+        setAdminUsers(admins);
+        // Initialize onlineStatus for all admins
+        const initialStatus: OnlineStatus = {};
+        admins.forEach((admin: any) => {
+          initialStatus[admin.id] = {
+            online: admin.online,
+            lastSeen: admin.lastSeen ?? undefined,
+          };
+        });
+        setOnlineStatus(initialStatus);
+      } catch (err) {
+        console.error('[setupAdmins] Failed to fetch admin status:', err);
       }
     };
 
-    setupAdmin();
-  }, [supabase]);
+    setupAdmins();
+  }, []);
 
-  // ── PRESENCE: subscribe to admin status via DB real-time changes ──
-  //
-  // WHY NOT PRESENCE CHANNEL:
-  // The previous approach used 'chat_presence' to detect the admin, but the
-  // admin only joins that channel when actively on the dashboard/requests page.
-  // The Supabase 'sync' event would fire immediately with the admin absent,
-  // overwriting the correct `is_online: true` value we just fetched from the DB.
-  //
-  // CORRECT APPROACH:
-  // Subscribe directly to `user_status` row changes for the admin. This works
-  // regardless of which dashboard page the admin is currently on, and perfectly
-  // mirrors how UserStatusProvider tracks users on the admin side.
+  // ── PRESENCE: subscribe to ALL admins status via DB real-time changes ──
   useEffect(() => {
-    if (!adminUserId) return;
+    if (!adminUsers || adminUsers.length === 0) return;
 
+    const adminIds = adminUsers.map(a => a.id).join(',');
+    
     const adminStatusChannel = supabase
-      .channel(`admin_status_${adminUserId}`)
+      .channel(`admin_status_all`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'user_status',
-          filter: `user_id=eq.${adminUserId}`,
+          filter: `user_id=in.(${adminIds})`,
         },
         (payload: any) => {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const status = payload.new as { is_online: boolean; last_seen: string };
+            const status = payload.new as { user_id: string; is_online: boolean; last_seen: string };
             setOnlineStatus(prev => ({
               ...prev,
-              [adminUserId]: {
+              [status.user_id]: {
                 online: status.is_online,
                 lastSeen: status.last_seen,
               },
@@ -317,7 +302,7 @@ function UserRequestsContent() {
     return () => {
       supabase.removeChannel(adminStatusChannel);
     };
-  }, [supabase, adminUserId]);
+  }, [supabase, adminUsers]);
 
   // ── PRESENCE: update user_status table ──
   useEffect(() => {
@@ -703,18 +688,27 @@ function UserRequestsContent() {
   };
 
   const getAdminStatus = () => {
-    if (!adminUserId) return <span className="text-xs text-slate-400">Offline</span>;
+    if (!adminUsers || adminUsers.length === 0) {
+      return <span className="text-xs text-slate-400">Offline</span>;
+    }
 
-    const adminStatus = onlineStatus[adminUserId];
-
-    if (adminStatus?.online) {
+    // Show "Online" if ANY admin is online
+    const anyAdminOnline = adminUsers.some(admin => onlineStatus[admin.id]?.online);
+    if (anyAdminOnline) {
       return <span className="text-xs text-green-500 dark:text-green-400">Online</span>;
     }
 
-    if (adminStatus?.lastSeen) {
+    // Show most recent lastSeen among all admins
+    const recentStatuses = adminUsers
+      .map(admin => onlineStatus[admin.id])
+      .filter(Boolean)
+      .filter(status => status.lastSeen)
+      .sort((a, b) => new Date(b.lastSeen!).getTime() - new Date(a.lastSeen!).getTime());
+
+    if (recentStatuses.length > 0) {
       return (
         <span className="text-xs text-slate-500 dark:text-slate-400">
-          {"last seen " + formatLastSeen(adminStatus.lastSeen)}
+          {"last seen " + formatLastSeen(recentStatuses[0].lastSeen!)}
         </span>
       );
     }

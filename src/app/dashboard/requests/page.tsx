@@ -595,7 +595,13 @@ export default function AdminRequestsPage() {
       if (presenceChannel && typeof presenceChannel.unsubscribe === 'function') {
         supabase.removeChannel(presenceChannel);
       }
-      updateAdminStatus(false);
+      // ── DO NOT call updateAdminStatus(false) here ──
+      // This cleanup runs on every page navigation (component unmount), NOT only
+      // on tab close. Calling it here was writing is_online: false to the DB
+      // every time the admin navigated away from this page, making them appear
+      // offline to users even while still actively using the dashboard.
+      // Tab-close / app-exit is handled by the beforeunload listener above,
+      // and the Topbar manages the admin's persistent online status app-wide.
     };
   }, [supabase, currentUserId, isAdmin]);
 
