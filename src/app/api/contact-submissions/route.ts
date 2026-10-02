@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { sendContactResponseEmail } from "@/lib/email-service";
+import { sendContactResponseEmail, COMPANY_NAME } from "@/lib/email-service";
 
 // GET - Fetch all contact submissions (Super Admin only)
 export async function GET(request: NextRequest) {
@@ -232,7 +232,7 @@ export async function POST(request: NextRequest) {
 
       // Get company email from system settings
       let companyEmail = "support@company.com";
-      let companyName = "Support Team";
+      let companyName = COMPANY_NAME;
       try {
         const { data: settings } = await supabase
           .from("system_settings")

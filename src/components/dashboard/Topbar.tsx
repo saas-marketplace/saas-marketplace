@@ -18,7 +18,7 @@ import EditProfileModal from "@/components/dashboard/EditProfileModal";
 import {
   Search, Bell, LogOut, User, ChevronDown, Menu, X,
   Loader2, Check, Trash2, MessageSquare, AlertTriangle,
-  Users, FileText, Package, Star, ChevronRight,
+  Users, FileText, Package, Star, ChevronRight, CreditCard, Home,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +62,8 @@ const NOTIFICATION_TYPES: Record<string, NotificationTypeConfig> = {
   system_alert:   { type: "system_alert",   label: "System Alerts",   icon: <AlertTriangle  className="w-4 h-4" />, color: "text-amber-500 bg-amber-50" },
   blog_comment:   { type: "blog_comment",   label: "Blog Comments",   icon: <FileText       className="w-4 h-4" />, color: "text-pink-500 bg-pink-50"   },
   product_update: { type: "product_update", label: "Product Updates", icon: <Package        className="w-4 h-4" />, color: "text-cyan-500 bg-cyan-50"   },
+  payment:       { type: "payment",       label: "Payments",        icon: <CreditCard    className="w-4 h-4" />, color: "text-green-600 bg-green-50" },
+  payment_success: { type: "payment_success", label: "Payments",    icon: <CreditCard    className="w-4 h-4" />, color: "text-green-600 bg-green-50" },
 };
 
 const getTypeConfig = (type: string): NotificationTypeConfig =>
@@ -445,6 +447,7 @@ export default function Topbar() {
   const userEmail = displayProfile?.email ?? "";
   const userAvatarUrl = displayProfile?.avatar_url ?? null;
   const isSuperAdmin = displayProfile?.role === "super_admin";
+  const isAdminOrSuperAdmin = displayProfile?.role === "admin" || displayProfile?.role === "super_admin";
 
   return (
     <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 flex justify-between items-center shadow-sm relative z-50">
@@ -528,7 +531,7 @@ export default function Topbar() {
                       const isExpanded = expandedGroups.has(key);
                       return (
                         <div key={key} className="border-b border-gray-50">
-                          <button onClick={() => setExpandedGroups((prev) => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s; })}
+                          <button onClick={() => setExpandedGroups((prev) => { const s = new Set(prev); if (s.has(key)) { s.delete(key); } else { s.add(key); } return s; })}
                             className="w-full px-4 py-2 flex items-center justify-between hover:bg-gray-50">
                             <div className="flex items-center gap-2">
                               <span className={cn("p-1.5 rounded-lg", cfg.color)}>{cfg.icon}</span>
@@ -596,6 +599,12 @@ export default function Topbar() {
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
                 <User className="w-4 h-4 text-gray-400" /> Edit Profile
               </button>
+              {isAdminOrSuperAdmin && (
+                <button onClick={() => { setIsProfileOpen(false); router.push("/"); }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                  <Home className="w-4 h-4 text-gray-400" /> Home
+                </button>
+              )}
               <button onClick={handleLogout} disabled={isLoggingOut}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50">
                 <LogOut className="w-4 h-4" /> {isLoggingOut ? "Logging out..." : "Logout"}

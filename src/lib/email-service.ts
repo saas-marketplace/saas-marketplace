@@ -3,7 +3,12 @@ import nodemailer from 'nodemailer';
 /**
  * Email service for sending contact response emails
  * Configure SMTP settings in environment variables
+ *
+ * BRANDING: every outgoing email presents the sender as "Frilansiha Company".
+ * COMPANY_NAME is the single source of truth for that display name so the
+ * sender name, template header and footer can never drift apart.
  */
+export const COMPANY_NAME = 'Frilansiha Company';
 
 // Create reusable transporter
 function createTransporter() {
@@ -34,19 +39,21 @@ function generateHtmlEmail({
   contactName,
   originalMessage,
   adminResponse,
-  companyName,
+  companyName=COMPANY_NAME,
 }: {
   contactName: string;
   originalMessage: string;
   adminResponse: string;
   companyName: string;
 }): string {
-  // Sanitize content for safe HTML display
+  // Sanitize content for safe HTML display. The previous version replaced each
+  // character with itself (e.g. '&' -> '&'), so raw markup from a contact form
+  // was injected straight into the email. Escape the entities properly.
   const sanitize = (text: string) => text
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;')
     .replace(/\n/g, '<br>');
   
@@ -186,7 +193,7 @@ export async function sendContactResponseEmail({
   contactName,
   originalMessage,
   adminResponse,
-  companyName = 'Support Team',
+  companyName = COMPANY_NAME,
   companyEmail = 'support@company.com',
 }: SendContactResponseEmailParams): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
@@ -258,5 +265,56 @@ export async function sendTestEmail(to: string): Promise<boolean> {
   } catch (error) {
     console.error('Error sending test email:', error);
     return false;
+  }
+}
+
+/**
+ * Send the D17 payment confirmation email after an admin marks the payment as received.
+ */
+export async function sendD17PaymentSuccessEmail({
+  toEmail,
+  productName,
+  amount,
+  companyName = COMPANY_NAME,
+  companyEmail,
+}: {
+  toEmail: string;
+  productName: string;
+  amount: number;
+  companyName?: string;
+  companyEmail?: string;
+}): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const fromEmail = companyEmail || process.env.SMTP_USER || 'support@company.com';
+
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      console.log('SMTP not configured, logging D17 payment email instead:');
+      console.log('=== EMAIL TO BE SENT ===');
+      console.log('To:', toEmail);
+      console.log('Subject:', 'Payment Successful - D17 payment verified');
+      console.log('Product:', productName, '| Amount:', amount, 'TND');
+      console.log('=========================');
+      return { success: true, messageId: 'console-log-only' };
+    }
+
+    const transporter = createTransporter();
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Payment Successful</title></head><body style="margin:0;padding:0;font-family:Arial,sans-serif;background-color:#f3f4f6;"><table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;padding:20px 0;"><tr><td align="center"><table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;"><tr><td style="padding:24px 20px;background-color:#22c55e;text-align:center;"><h1 style="margin:0;font-size:22px;color:#ffffff;font-weight:600;">Payment Successful</h1></td></tr><tr><td style="padding:24px 20px;"><p style="margin:0 0 16px 0;font-size:16px;color:#374151;">Your payment for:</p><p style="margin:0 0 16px 0;font-size:18px;color:#111827;font-weight:700;">${esc(productName)}</p><p style="margin:0 0 16px 0;font-size:16px;color:#374151;">Amount: <strong>${amount} TND</strong></p><p style="margin:0 0 16px 0;font-size:16px;color:#374151;">has been successfully verified. Your product/access details are available.</p><p style="margin:0;font-size:16px;color:#374151;">Check your account or use the information below according to the product delivery system.</p></td></tr><tr><td style="padding:0 20px 20px 20px;"><hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 16px 0;"><p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p></td></tr></table></td></tr></table></body></html>`;
+    const nl = "\n";
+    const text = `Payment Successful` + nl + `` + nl + `Your payment for:` + nl + nl + `${productName}` + nl + nl + `Amount:` + nl + `${amount} TND` + nl + nl + `has been successfully verified.` + nl + `Your product/access details are available.` + nl + `Check your account or use the information below according to the product delivery system.` + nl + nl + `- ${companyName}`;
+
+    const info = await transporter.sendMail({
+      from: `"${companyName}" <${fromEmail}>`,
+      to: toEmail,
+      subject: 'Payment Successful - your D17 payment has been verified',
+      html,
+      text,
+    });
+
+    console.log('D17 payment email sent:', info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('Error sending D17 payment email:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to send email' };
   }
 }

@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       if (freelancer) {
         freelancerName = freelancer.display_name;
         // Build complete freelancer data object
-        // @ts-ignore - Supabase join types are complex
+        // @ts-expect-error - Supabase join types are complex
         const domainObj = freelancer.domains;
         const domainName = Array.isArray(domainObj) ? domainObj[0]?.name : null;
         freelancerData = {
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Use the message as-is - freelancer info is now in freelancer_data
-    let fullMessage = message;
+    const fullMessage = message;
 
     // Create the request in the requests table
     const { data: newRequest, error: requestError } = await supabase

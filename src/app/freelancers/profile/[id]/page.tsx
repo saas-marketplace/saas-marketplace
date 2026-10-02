@@ -72,11 +72,14 @@ export default function FreelancerProfilePage() {
       let avgRating = freelancerData.rating || 0;
       let reviewCount = freelancerData.review_count || 0;
       
-      let { data: newReviews, error: newReviewsError } = await supabase
+      let newReviews;
+      const { data: fetchedNewReviews, error: newReviewsError } = await supabase
         .from("reviews")
         .select("*")
         .eq("freelancer_id", freelancerData.id)
         .order("created_at", { ascending: false });
+
+      newReviews = fetchedNewReviews;
 
       if (!newReviewsError && newReviews && newReviews.length > 0) {
         // Fetch user data for each review from public.users table
@@ -86,7 +89,7 @@ export default function FreelancerProfilePage() {
             .from("users")
             .select("id, full_name, email")
             .in("id", userIds);
-          
+
           // Merge user data into reviews - use email prefix as fallback for full_name
           newReviews = (newReviews as any[]).map((review: any) => {
             const user = usersData?.find((u: any) => u.id === review.user_id);

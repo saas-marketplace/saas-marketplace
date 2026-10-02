@@ -44,6 +44,24 @@ export interface Freelancer {
   domain?: Domain;
 }
 
+/** A subscription plan that can be purchased via Flouci recurring subscriptions. */
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  description: string | null;
+  price_tnd: number;
+  currency: string;
+  interval: "month" | "year";
+  interval_count: number;
+  features: string[];
+  active: boolean;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ProductType = "one_time" | "subscription";
+
 export interface Product {
   id: string;
   title: string;
@@ -68,6 +86,8 @@ export interface Product {
   author_avatar: string | null;
   created_at: string;
   updated_at: string;
+  product_type?: ProductType;
+  subscription_plans?: SubscriptionPlan[];
 }
 
 export interface CartItem {
@@ -82,8 +102,8 @@ export interface CartItem {
 export interface Order {
   id: string;
   user_id: string | null;
-  stripe_session_id: string | null;
-  stripe_payment_intent: string | null;
+  payment_provider: "flouci" | null;
+  payment_reference: string | null;
   status: "pending" | "processing" | "completed" | "cancelled" | "refunded";
   total_amount: number;
   currency: string;
@@ -92,6 +112,58 @@ export interface Order {
   customer_name: string | null;
   created_at: string;
   updated_at: string;
+  paid_at?: string | null;
+}
+
+export interface Subscription {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  flouci_subscription_id: string | null;
+  developer_tracking_id: string | null;
+  flouci_client_id: string | null;
+  status: "incomplete" | "incomplete_expired" | "active" | "past_due" | "unpaid" | "canceled";
+  price_tnd: number;
+  amount_millimes: number;
+  currency: string;
+  interval: "month" | "year";
+  interval_count: number;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  next_charge_at: string | null;
+  cancel_at_period_end: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Payment {
+  id: string;
+  user_id: string;
+  subscription_id: string | null;
+  plan_id: string | null;
+  flouci_payment_id: string | null;
+  flouci_subscription_id: string | null;
+  amount_millimes: number;
+  amount_tnd: number;
+  currency: string;
+  status: "success" | "pending" | "expired" | "failure" | "preauth_success" | "system_failure";
+  payment_type: "subscription_create" | "subscription_cycle" | "subscription_retry" | "one_time";
+  billing_reason: string | null;
+  settlement_status: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FlouciWebhookEvent {
+  id: string;
+  event_id: string;
+  event_type: string;
+  subscription_id: string | null;
+  payment_id: string | null;
+  payload: Record<string, unknown>;
+  received_at: string;
+  processed_at: string | null;
+  processing_status: "pending" | "processed" | "failed";
 }
 
 export interface FreelancerReview {
@@ -112,7 +184,6 @@ export interface Review {
   rating: number;
   comment: string | null;
   created_at: string;
-  // Joined user data
   user?: {
     id: string;
     full_name: string | null;
@@ -161,7 +232,6 @@ export interface UserRequest {
   status: 'pending' | 'received' | 'answered';
   created_at: string;
   updated_at: string;
-  // Joined fields
   freelancer?: {
     id: string;
     display_name: string;
@@ -211,7 +281,6 @@ export interface ContactSubmission {
   phone?: string;
 }
 
-// Team Member with permissions
 export interface TeamMember {
   id: string;
   user_id: string;
@@ -222,9 +291,7 @@ export interface TeamMember {
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  // Custom avatar URL for team member
   avatar_url?: string | null;
-  // Joined user data
   user?: {
     id: string;
     email: string;

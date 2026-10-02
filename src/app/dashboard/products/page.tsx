@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { createClient } from '@/lib/supabase/client';
 import { useEffect, useState, useRef, useCallback } from 'react';
@@ -29,9 +29,24 @@ import {
   Image as ImageIcon,
   File,
   ShoppingCart,
-  Tag
+  Tag,
+  CreditCard,
+  AlertTriangle
 } from 'lucide-react';
 import { logAudit, AuditActions, AuditSections } from '@/lib/services/audit';
+import { formatTnd } from '@/lib/money';
+import SubscriptionPlansEditor, { type PlanDraft } from '@/components/dashboard/SubscriptionPlansEditor';
+
+
+interface SubscriptionPlanRow {
+  id: string;
+  name: string;
+  price: number;
+  billingPeriod: string;
+  description: string | null;
+    isActive: boolean;
+}
+
 
 interface Product {
   id: number;
@@ -56,6 +71,8 @@ interface Product {
   author_name: string | null;
   author_avatar: string | null;
   created_at?: string;
+  product_type?: 'one_time' | 'subscription';
+  subscription_plans?: SubscriptionPlanRow[] | null;
 }
 
 export default function ProductsPage() {
@@ -94,8 +111,12 @@ export default function ProductsPage() {
     category: 'templates',
     tags: '',
     is_featured: false,
-    is_active: true
+    is_active: true,
+    product_type: 'one_time' as 'one_time' | 'subscription',
   });
+
+  const [plans, setPlans] = useState<PlanDraft[]>([]);
+  const [saveError, setSaveError] = useState<string | null>(null);
   
   const [imageUrl, setImageUrl] = useState<string>('');
   const [fileUrl, setFileUrl] = useState<string>('');
@@ -175,8 +196,11 @@ export default function ProductsPage() {
       category: 'templates',
       tags: '',
       is_featured: false,
-      is_active: true
-    });
+      is_active: true,
+      product_type: 'one_time',
+          });
+    setPlans([]);
+    setSaveError(null);
     setImageUrl('');
     setFileUrl('');
     setNewImageFile(null);
@@ -200,8 +224,21 @@ export default function ProductsPage() {
       category: product.category || 'templates',
       tags: Array.isArray(product.tags) ? product.tags.join(', ') : '',
       is_featured: product.is_featured || false,
-      is_active: product.is_active || false
+      is_active: product.is_active || false,
+      product_type: product.product_type === 'subscription' ? 'subscription' : 'one_time',
     });
+    setPlans(
+      (product.subscription_plans || []).map((plan, index) => ({
+        id: plan.id || `plan_${index + 1}`,
+        name: plan.name ?? '',
+        price: plan.price != null ? String(plan.price) : '',
+        billingPeriod: plan.billingPeriod || 'monthly',
+
+        description: plan.description || '',
+        isActive: plan.isActive !== false,
+      })),
+    );
+    setSaveError(null);
     setImageUrl(product.image_url || '');
     setFileUrl(product.file_url || '');
     setNewImageFile(null);
@@ -287,11 +324,14 @@ export default function ProductsPage() {
 
       const tagsArray = formData.tags.split(',').map(t => t.trim()).filter(Boolean);
 
+      // Product data is re-validated on the server before anything is
+      // written to the database.
       const productData = {
+        id: editingProduct?.id,
         title: formData.title,
         slug: formData.slug || generateSlug(formData.title),
         description: formData.description || null,
-        price: parseFloat(formData.price),
+        price: formData.price === '' ? undefined : parseFloat(formData.price),
         sale_price: formData.sale_price ? parseFloat(formData.sale_price) : null,
         category: formData.category,
         tags: tagsArray,
@@ -299,42 +339,45 @@ export default function ProductsPage() {
         file_url: finalFileUrl || null,
         is_featured: formData.is_featured,
         is_active: formData.is_active,
-        like_count: 0,
-        download_count: 0
+        product_type: formData.product_type,
+        subscription_plans: formData.product_type === 'subscription'
+          ? plans.map((p) => ({
+              id: p.id,
+              name: p.name,
+              price: p.price,
+              billingPeriod: p.billingPeriod,
+
+              description: p.description,
+              isActive: p.isActive,
+            }))
+          : [],
       };
 
-      if (editingProduct) {
-        const { error } = await supabase
-          .from('products')
-          .update(productData)
-          .eq('id', editingProduct.id);
+      const isUpdate = Boolean(editingProduct);
 
-        if (error) throw error;
+      // Server-validated save — permissions and price sanity checks all
+      // happen on the backend, not in the browser.
+      const response = await fetch('/api/products', {
+        method: isUpdate ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(productData),
+      });
 
-        // ✅ Log audit event for updating product
-        await logAudit({
-          action: AuditActions.UPDATE_PRODUCT,
-          section: AuditSections.PRODUCTS,
-          details: `Updated product: ${productData.title}`,
-          user_id: user?.id || '',
-          user_email: user?.email || '',
-        });
-      } else {
-        const { error } = await supabase
-          .from('products')
-          .insert([productData]);
+      const result = await response.json().catch(() => ({}));
 
-        if (error) throw error;
-
-        // ✅ Log audit event for creating product
-        await logAudit({
-          action: AuditActions.CREATE_PRODUCT,
-          section: AuditSections.PRODUCTS,
-          details: `Created product: ${productData.title}`,
-          user_id: user?.id || '',
-          user_email: user?.email || '',
-        });
+      if (!response.ok) {
+        setSaveError(result?.error || 'Failed to save product');
+        return;
       }
+
+      // ✅ Log audit event (create or update)
+      await logAudit({
+        action: isUpdate ? AuditActions.UPDATE_PRODUCT : AuditActions.CREATE_PRODUCT,
+        section: AuditSections.PRODUCTS,
+        details: `${isUpdate ? 'Updated' : 'Created'} product: ${productData.title}`,
+        user_id: user?.id || '',
+        user_email: user?.email || '',
+      });
 
       await fetchProducts();
       setIsDialogOpen(false);
@@ -382,12 +425,8 @@ export default function ProductsPage() {
     }
   }
 
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(price);
-  };
+  const formatPrice = (price: number) => formatTnd(price);
+
 
   return (
     <div className="space-y-6 mx-auto px-4 max-w-7xl py-8">
@@ -493,6 +532,49 @@ export default function ProductsPage() {
                   />
                 </div>
               </div>
+
+              {/* Billing */}
+              <div className="border border-slate-700 rounded-lg p-4 space-y-4 bg-slate-900/40">
+                <div>
+                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-cyan-400" />
+                    Billing
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    One-time products are purchased directly. Subscription products bill
+                    through Flouci recurring subscriptions created from their plans.
+                  </p>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-200">Product type</label>
+                    <Select
+                      value={formData.product_type}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, product_type: value as 'one_time' | 'subscription' })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select product type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="one_time">One-time purchase</SelectItem>
+                        <SelectItem value="subscription">Subscription</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {formData.product_type === 'subscription' && (
+                          <SubscriptionPlansEditor plans={plans} onChange={setPlans} />
+                        )}
+                      </div>
+                    </div>
+
+                    {saveError && (
+                <div className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 p-3">
+                  <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                  <p className="text-sm text-red-300">{saveError}</p>
+                </div>
+              )}
               
                 <div className="flex items-center gap-2">
                   <input
@@ -643,6 +725,7 @@ export default function ProductsPage() {
                  <th className="text-left py-3 px-4 font-semibold">Product</th>
                 <th className="text-left py-3 px-4 font-semibold">Price</th>
                 <th className="text-left py-3 px-4 font-semibold">Category</th>
+                <th className="text-left py-3 px-4 font-semibold">Payment</th>
                 <th className="text-left py-3 px-4 font-semibold">Featured</th>
                 <th className="text-left py-3 px-4 font-semibold">Status</th>
                 <th className="text-right py-3 px-4 font-semibold">Actions</th>
@@ -697,6 +780,28 @@ export default function ProductsPage() {
                     </Badge>
                   </td>
                   <td className="py-3 px-4">
+                    {(() => {
+                      const isSubscription = product.product_type === 'subscription';
+                      const planCount = product.subscription_plans?.filter(p => p.isActive !== false).length ?? 0;
+                      const ready = isSubscription ? planCount > 0 : true;
+                      return (
+                        <div className="flex flex-col gap-1">
+                          <Badge variant="outline" className="w-fit border-slate-400 text-slate-600 bg-slate-50">
+                            <CreditCard className="w-3 h-3 mr-1" />
+                            {isSubscription ? 'Subscription' : 'One-time'}
+                          </Badge>
+                          {ready ? (
+                            <span className="text-xs text-green-600">
+                              {isSubscription ? `${planCount} plan${planCount === 1 ? '' : 's'}` : 'Ready'}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-amber-600">Not ready</span>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </td>
+                  <td className="py-3 px-4">
                     {product.is_featured ? (
                       <Badge className="bg-yellow-500 text-white">Featured</Badge>
                     ) : (
@@ -747,3 +852,6 @@ export default function ProductsPage() {
     </div>
   );
 }
+
+
+

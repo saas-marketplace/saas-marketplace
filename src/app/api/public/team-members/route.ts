@@ -1,21 +1,34 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Make this route dynamic since it doesn't need static rendering
 export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
 
-// GET - Fetch team members for public display (home page)
-// No authentication required - returns only public team member info
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+let _supabaseClient: ReturnType<typeof createClient> | null = null;
+function getSupabaseClient() {
+  if (!_supabaseClient) {
+    _supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+  }
+  return _supabaseClient;
+}
+
+interface TeamMemberRow {
+  id: string;
+  display_name: string | null;
+  role_label: string | null;
+  avatar_url: string | null;
+  is_active: boolean;
+}
+
 export async function GET() {
   try {
-    // Use service role key to bypass RLS for public API
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    const supabase = getSupabaseClient();
 
-
-    
     const { data, error } = await supabase
       .from('team_members')
       .select(`
@@ -28,15 +41,12 @@ export async function GET() {
       .order('created_at', { ascending: false })
       .limit(20);
 
-   
-
     if (error) {
       console.error('Error fetching public team members:', error);
       return NextResponse.json({ error: 'Failed to fetch team members', details: error.message }, { status: 500 });
     }
 
-    // Transform data to match expected format
-    const teamMembers = (data || []).map((member) => ({
+    const teamMembers = (data as TeamMemberRow[] || []).map((member) => ({
       name: member.display_name || 'Team Member',
       role: member.role_label || 'Team Member',
       avatar_url: member.avatar_url || null,
@@ -50,7 +60,6 @@ export async function GET() {
   }
 }
 
-// Helper function to get initials from name
 function getInitials(name: string): string {
   if (!name) return 'TM';
   const parts = name.trim().split(' ');

@@ -113,7 +113,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         // SIGNED_IN is handled by the authData effect above
       }
     );
-    return () => subscription.unsubscribe();
+    return () => { subscription?.unsubscribe?.(); };
   }, []);
 
   const addToCart = useCallback(

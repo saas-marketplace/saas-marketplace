@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { withYield } from "@/lib/yieldToMain";
 import {
   Settings as SettingsIcon, Loader2, ArrowLeft, Save,
-  Database, Globe, Palette, Zap, Server, AlertTriangle, Key,
+  Database, Globe, Palette, Zap, Server, AlertTriangle, Key, CreditCard,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -45,14 +45,39 @@ export default function SystemSettingsPage() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [integrations, setIntegrations] = useState<Integration[]>([
     { id: "supabase",   name: "Supabase",  description: "Database & Authentication", connected: true,  hasApiKey: false },
-    { id: "stripe",     name: "Stripe",    description: "Payment Processing",        connected: true,  hasApiKey: true  },
+    { id: "flouci",     name: "Flouci",    description: "Payment Processing",        connected: false, hasApiKey: false },
     { id: "sendgrid",   name: "SendGrid",  description: "Email Service",             connected: false, hasApiKey: false },
     { id: "s3",         name: "AWS S3",    description: "File Storage",              connected: false, hasApiKey: false },
     { id: "analytics",  name: "Analytics", description: "Usage Analytics",           connected: false, hasApiKey: false },
   ]);
 
+  // ── Payment provider status ──────────────────────────────────────────────
+  // Only non-secret status is ever fetched. The Flouci private key lives in the
+  // server environment (.env.local) and can never be typed, read or saved here.
+  const [paymentStatus, setPaymentStatus] = useState<{
+    loading: boolean;
+    configured: boolean;
+  }>({ loading: true, configured: false });
+
+  const loadPaymentStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/flouci/status");
+      if (res.ok) {
+        const { configured } = await res.json();
+        setPaymentStatus({ loading: false, configured: Boolean(configured) });
+        return;
+      }
+    } catch {}
+    setPaymentStatus({ loading: false, configured: false });
+  }, []);
+
   // ✅ isSuperAdmin derived from cached auth — no extra getUser/users query
   const isSuperAdmin = !authLoading && user?.role === "super_admin";
+
+  useEffect(() => {
+    if (isSuperAdmin) loadPaymentStatus();
+    else setPaymentStatus((s) => ({ ...s, loading: false }));
+  }, [isSuperAdmin, loadPaymentStatus]);
 
   useEffect(() => {
     if (settings.site_name) document.title = settings.site_name;
@@ -216,6 +241,49 @@ export default function SystemSettingsPage() {
           </div>
         </div>
 
+        {/* Payments — Flouci */}
+        <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-cyan-500" /> Payments (Flouci)
+          </h2>
+
+          {paymentStatus.loading ? (
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading payment status…
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <StatusChip
+                  label="API credentials"
+                  ok={paymentStatus.configured}
+                  okText="Configured"
+                  offText="Not configured"
+                />
+                <StatusChip
+                  label="Webhook endpoint"
+                  ok={paymentStatus.configured}
+                  okText="Enabled"
+                  offText="Needs credentials"
+                />
+              </div>
+
+              <p className="text-xs text-gray-500">
+                Configure the webhook URL in your Flouci business dashboard:
+                <code className="text-gray-700"> https://&lt;your-domain&gt;/api/flouci/webhook</code>.
+              </p>
+
+              <p className="text-xs text-gray-500 flex items-start gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                The Flouci keys are environment variables (<code className="text-gray-700">FLOUCI_PUBLIC_KEY</code>{" "}
+                / <code className="text-gray-700">FLOUCI_PRIVATE_KEY</code>). They are never stored in the
+                database and never sent to the browser. A subscription is activated only when a
+                signed Flouci webhook event or payment verification confirms the first charge.
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* Branding */}
         <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -265,6 +333,21 @@ export default function SystemSettingsPage() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function StatusChip({ label, ok, okText, offText }: {
+  label: string; ok: boolean; okText: string; offText: string;
+}) {
+  return (
+    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
+      <span className="text-sm text-gray-700">{label}</span>
+      <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
+        ok ? "bg-green-100 text-green-800" : "bg-gray-200 text-gray-600"
+      }`}>
+        {ok ? okText : offText}
+      </span>
     </div>
   );
 }

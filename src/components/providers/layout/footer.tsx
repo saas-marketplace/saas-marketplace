@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -88,11 +88,18 @@ export function Footer() {
               </div>
             </Link>
 
-            <p className="text-[#525252] dark:text-gray-400 text-sm leading-relaxed max-w-xs mb-6">
+            <p className="text-[#525252] dark:text-gray-400 text-sm leading-relaxed max-w-xs mb-4">
               The ultimate platform for digital services, products, and
               freelance talent. Build, grow, and scale your business with
-              Milit Company.
+              Frilansiha Company.
             </p>
+
+            <a
+              href="tel:+21628481862"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors mb-6"
+            >
+              <span className="text-base">+216 28 481 862</span>
+            </a>
 
             <div className="flex items-center gap-3">
               {socialLinks.map((social) => {

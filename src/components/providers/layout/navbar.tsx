@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense, useRef } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -13,7 +13,6 @@ import {
   Moon,
   User,
   LogOut,
-  Sparkles,
 } from "lucide-react";
 import { Button } from "../../ui/button";
 import {
@@ -27,10 +26,12 @@ import { Badge } from "../../ui/badge";
 import { cn } from "../../../lib/utils";
 import { useCart } from "@/stores/cart-context";
 import { useAuth } from "../auth-provider";
+import NotificationBell from "./NotificationBell";
 
 const navLinks = [
   { href: "/", label: "Home" },
   { href: "/marketplace", label: "Marketplace" },
+  { href: "/plans", label: "Plans" },
   { href: "/freelancers", label: "Freelancers" },
   { href: "/testimonials", label: "Clients" },
   { href: "/contact", label: "Contact" },
@@ -45,6 +46,14 @@ function NavbarContent() {
   const { cartCount } = useCart();
   const { user, loading, signOut } = useAuth();
   const userRole = user?.role || 'user'; // Get actual role from auth provider
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+
+  // The bell reads the SAME `notifications` table the dashboard Topbar uses, so
+  // there is exactly one notification system. It is shown to every signed-in
+  // regular user and simply shows nothing when they have no rows. Admins and
+  // Super Admins already have the bell inside their dashboard, so it is hidden
+  // here to avoid duplicating it on the landing page.
+  const showBell = !loading && !!user && !isAdmin;
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -87,16 +96,17 @@ function NavbarContent() {
       >
       <nav className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 md:h-20">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 group">
-            <motion.div
-              whileHover={{ rotate: 180 }}
-              transition={{ duration: 0.3 }}
-              className="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center"
-            >
-              <Sparkles className="w-4 h-4 text-white" />
-              
-            </motion.div>
+          {/* Logo — FRILANSIHA wordmark with a one-time light sweep.
+              data-brand feeds the CSS ::after glint overlay. */}
+          <Link
+            href="/"
+            aria-label="Frilansiha — home"
+            className="brand-plate shrink-0"
+          >
+            {/* 1.5× larger than the previous text-sm / sm:text-base sizing. */}
+            <span className="brand-word text-xl sm:text-2xl" data-brand="FRILANSIHA">
+              FRILANSIHA
+            </span>
           </Link>
 
           {/* Desktop Navigation - Hidden on mobile, visible on md and above */}
@@ -119,6 +129,9 @@ function NavbarContent() {
 
           {/* Right Section - Desktop */}
           <div className="hidden md:flex items-center gap-4">
+            {/* Notifications — same bell + table as the dashboard */}
+            {showBell && <NotificationBell />}
+
             {/* Theme Toggle */}
             <Button
               variant="ghost"
@@ -163,7 +176,7 @@ function NavbarContent() {
                       <p className="text-sm font-medium">{user.email}</p>
                     </div>
                     <DropdownMenuSeparator />
-                    {userRole === 'admin' || userRole === 'super_admin' ? (
+                    {isAdmin ? (
                       <>
                         <DropdownMenuItem asChild>
                           <Link href="/dashboard">Dashboard</Link>
@@ -212,6 +225,9 @@ function NavbarContent() {
 
           {/* Mobile Right Section - Visible on screens smaller than md */}
           <div className="flex md:hidden items-center gap-1">
+            {/* Notifications — same bell + table as the dashboard */}
+            {showBell && <NotificationBell />}
+
             {/* Cart - Visible on mobile */}
             <Link href="/marketplace/cart">
               <Button variant="ghost" size="icon" className="rounded-full relative text-black dark:text-white">
@@ -315,7 +331,7 @@ function NavbarContent() {
           {/* User Dashboard Link - Only show if logged in */}
           {!loading && user && (
               <>
-                {(userRole === 'admin' || userRole === 'super_admin') && (
+                {isAdmin && (
                   <Link
                     href="/dashboard"
                     onClick={() => setMenuOpen(false)}
@@ -326,7 +342,7 @@ function NavbarContent() {
                 )}
 
           {/* Non-admin users can have their normal links here */}
-          {!(userRole === 'admin' || userRole === 'super_admin') && (
+          {!isAdmin && (
             <>
               <Link
                 href="/profile"

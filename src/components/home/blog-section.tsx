@@ -97,8 +97,7 @@ export function BlogSection() {
                 From our <span className="gradient-text">blog</span>
               </h2>
               <p className="text-lg text-muted-foreground max-w-xl">
-                Stay updated with the latest trends, tips, and insights from
-                industry experts.
+                Find all the latest company news on a weekly or monthly basis.
               </p>
             </ScrollReveal>
             <ScrollReveal delay={0.2}>

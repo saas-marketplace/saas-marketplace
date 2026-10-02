@@ -6,9 +6,18 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "**",
+        hostname: "**.supabase.co",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "*.cloudfront.net",
+        pathname: "/**",
       },
     ],
+    minimumCacheTTL: 3600,
+    deviceSizes: [640, 750, 820, 1080, 1200, 1920, 2048],
+    imageSizes: [16, 48, 96, 128, 256, 384],
   },
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },

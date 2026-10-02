@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { motion } from "framer-motion";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
@@ -20,40 +20,39 @@ export function AboutSection() {
               <span className="gradient-text">digital commerce</span>
             </h2>
             <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
-              Founded in 2022, Milit Company was born from a simple idea: make it
-              effortless for businesses to find premium digital products and
-              world-class freelance talent in one place. Our founder, Sarah
-              Chen, experienced the frustration of juggling multiple platforms
-              and decided to build something better.
+              The idea took shape in 2025, when we noticed that this sector
+              remained unregulated. We therefore decided to establish Milit
+              Company to ensure customers receive the best service easily and
+              at reasonable prices.
             </p>
             <p className="text-muted-foreground leading-relaxed mb-8">
-              Today, we&apos;re proud to serve over 10,000 users worldwide,
-              connecting creative professionals with businesses that need their
-              expertise. Our curated marketplace ensures quality, while our
-              freelancer vetting process guarantees top-tier talent.
+              Today, we connect businesses with premium digital products and
+              world-class freelance talent. Our curated marketplace ensures
+              quality, while our professional freelance services guarantee
+              top-tier results for every project.
             </p>
 
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
               {[
                 {
                   icon: Target,
-                  title: "Our Mission",
-                  desc: "Democratize access to premium digital resources",
+                  title: "Many Options",
+                  desc: "Wide variety of digital products and freelance services for every need",
                 },
                 {
                   icon: Lightbulb,
-                  title: "Innovation",
-                  desc: "Constantly evolving with cutting-edge tech",
+                  title: "Reasonable Prices",
+                  desc: "Competitive pricing that delivers value without compromising quality",
                 },
                 {
                   icon: Rocket,
-                  title: "Growth",
-                  desc: "Helping businesses scale faster",
+                  title: "Professional Services",
+                  desc: "Verified freelancers delivering top-tier work on every project",
                 },
                 {
                   icon: Users,
                   title: "Community",
-                  desc: "Building a global creative community",
+                  desc: "Information updates automatically when users change or new content is added",
                 },
               ].map((item) => (
                 <motion.div
@@ -67,6 +66,18 @@ export function AboutSection() {
                 </motion.div>
               ))}
             </div>
+
+            <div className="flex items-center gap-3 p-4 rounded-xl glass-card">
+              <span className="text-sm font-medium text-muted-foreground">
+                Contact us:
+              </span>
+              <a
+                href="tel:+21628481862"
+                className="text-sm font-bold text-primary hover:text-cyan-600 transition-colors"
+              >
+                +216 28 481 862
+              </a>
+            </div>
           </ScrollReveal>
 
           {/* Right Content - Founder Card */}
@@ -78,14 +89,14 @@ export function AboutSection() {
                   SC
                 </div>
                 <blockquote className="text-lg italic text-muted-foreground mb-6 leading-relaxed">
-                  &ldquo;I built Milit Company because I believe every creator
+                  &ldquo;I built Frilansiha Company because I believe every creator
                   deserves a platform that values quality, transparency, and
                   community. We&apos;re not just a marketplace — we&apos;re a
                   movement to empower digital creators worldwide.&rdquo;
                 </blockquote>
                 <div>
                   <p className="font-semibold text-lg">Yassin zamzem</p>
-                  <p className="text-muted-foreground">Founder & CEO, Milit Company</p>
+                  <p className="text-muted-foreground">Founder & CEO, Frilansiha Company</p>
                 </div>
               </div>
             </div>

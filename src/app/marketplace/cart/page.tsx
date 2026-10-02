@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import {
@@ -12,26 +12,22 @@ import {
   CreditCard,
   ShieldCheck,
   AlertCircle,
+  Smartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { formatPrice } from "@/lib/utils";
 import { useCart } from "@/stores/cart-context";
-import { loadStripe, Stripe } from "@stripe/stripe-js";
-
-interface CheckoutItem {
-  id: string;
-  title: string;
-  price: number;
-  quantity: number;
-}
+import D17PaymentModal from "@/components/marketplace/D17PaymentModal";
+import type { Product } from "@/types";
 
 export default function CartPage() {
   const { cartItems, removeFromCart, updateQuantity, loading: cartLoading, isAuthenticated } = useCart();
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [stripeError, setStripeError] = useState<string | null>(null);
-  const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
+  // Which cart item's D17 payment modal is open (null = closed).
+  // The quantity is kept so the modal charges for every unit in the cart row,
+  // not just one.
+  const [d17Item, setD17Item] = useState<{ product: Product; quantity: number } | null>(null);
 
   // Calculate total from cart items
   const getTotal = () => {
@@ -41,70 +37,21 @@ export default function CartPage() {
     }, 0);
   };
 
-  // Initialize Stripe on mount
-  useEffect(() => {
-    const initStripe = async () => {
-      try {
-        const stripe = loadStripe(
-          process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
-        );
-        setStripePromise(stripe);
-      } catch (error) {
-        console.error("Failed to load Stripe:", error);
-        setStripeError("Failed to load payment system. Please refresh and try again.");
-      }
-    };
-    initStripe();
-  }, []);
-
-  const handleCheckout = async () => {
-    if (!isAuthenticated) {
-      setStripeError("Please sign in to complete your purchase.");
-      return;
-    }
-    
-    setCheckoutLoading(true);
-    setStripeError(null);
-    try {
-      const checkoutItems = cartItems.map((item) => ({
-        id: item.product_id,
-        title: item.product?.title || "Product",
-        price: item.product?.sale_price || item.product?.price || 0,
-        quantity: item.quantity,
-      }));
-
-      const response = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: checkoutItems }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to create checkout session");
-      }
-
-      const { sessionId } = await response.json();
-      
-      if (!stripePromise) {
-        throw new Error("Payment system not loaded");
-      }
-
-      const stripe = await stripePromise;
-      if (stripe) {
-        const { error } = await stripe.redirectToCheckout({ sessionId });
-        if (error) {
-          console.error("Stripe redirect error:", error);
-          setStripeError(error.message || "Payment failed. Please try again.");
-        }
-      } else {
-        setStripeError("Payment system unavailable. Please try again.");
-      }
-    } catch (error: any) {
-      console.error("Checkout error:", error);
-      setStripeError(error.message || "An error occurred during checkout. Please try again.");
-    }
-    setCheckoutLoading(false);
+  /**
+   * Flouci prices the transaction from the product's database price, so each
+   * one-time item is paid on its own checkout page. The server reads the
+   * amount from the database and returns the payment URL.
+   */
+  const canPayDirectly = (productId: string) => {
+    const item = cartItems.find((c) => c.product_id === productId);
+    if (!item?.product) return false;
+    if (item.product.product_type === "subscription") return false;
+    return true;
   };
+
+  const hasSubscription = cartItems.some((c) => c.product?.product_type === "subscription");
+  const payableItems = cartItems.filter((c) => canPayDirectly(c.product_id));
+  const singlePayable = payableItems.length === 1 && cartItems.length === 1;
 
   if (cartLoading) {
     return (
@@ -134,7 +81,7 @@ export default function CartPage() {
           </motion.div>
           <h1 className="text-2xl font-bold">Your cart is empty</h1>
           <p className="text-muted-foreground">
-            {isAuthenticated 
+            {isAuthenticated
               ? "You haven't added any products to your cart yet."
               : "Sign in to start shopping and add items to your cart."}
           </p>
@@ -240,6 +187,43 @@ export default function CartPage() {
                         )}
                       </div>
                     </div>
+
+                    {/* Per-item Flouci purchase */}
+                    {item.product?.product_type === "subscription" ? (
+                      <Link
+                        href={`/marketplace/${item.product.slug}`}
+                        className="inline-flex items-center justify-center gap-2 h-10 px-4 w-full sm:w-auto rounded-lg border border-cyan-600 text-cyan-600 hover:bg-cyan-600 hover:text-white text-sm font-medium transition-colors"
+                      >
+                        <CreditCard className="w-4 h-4" />
+                        Choose a plan
+                      </Link>
+                    ) : canPayDirectly(item.product_id) && item.product ? (
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Button
+                          variant="outline"
+                          className="h-10 px-4 w-full sm:w-auto border-cyan-600 text-cyan-600 hover:bg-cyan-600 hover:text-white"
+                          onClick={() => setD17Item({ product: item.product!, quantity: item.quantity })}
+                        >
+                          <Smartphone className="w-4 h-4 mr-2" />
+                          Pay with D17
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="h-10 px-4 w-full sm:w-auto opacity-60 cursor-not-allowed"
+                          disabled
+                          aria-disabled="true"
+                          title="Online card payment is coming soon — use D17 to pay now"
+                        >
+                          <CreditCard className="w-4 h-4 mr-2" />
+                          Coming soon
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-amber-600 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        Payment unavailable for this product
+                      </p>
+                    )}
                   </div>
                 </motion.div>
               ))}
@@ -266,46 +250,49 @@ export default function CartPage() {
                 </div>
               </div>
 
-              <Button
-                className="w-full h-12 gradient-bg text-white border-0 hover:opacity-90 rounded-xl"
-                onClick={handleCheckout}
-                disabled={checkoutLoading || !!stripeError || !isAuthenticated}
+<Button
+                className="w-full h-12 gradient-bg text-white border-0 opacity-60 cursor-not-allowed rounded-xl"
+                disabled
+                aria-disabled="true"
+                title="Online card payment is coming soon — use D17 on an item below"
               >
-                {checkoutLoading ? (
-                  <span className="flex items-center gap-2">
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{
-                        duration: 1,
-                        repeat: Infinity,
-                        ease: "linear",
-                      }}
-                      className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
-                    />
-                    Processing...
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-2">
-                    <CreditCard className="w-5 h-5" />
-                    Checkout with Stripe
-                  </span>
-                )}
+                <span className="flex items-center gap-2">
+                  <CreditCard className="w-5 h-5" />
+                  Online payment coming soon
+                </span>
               </Button>
 
-              {stripeError && (
-                <div className="flex items-center gap-2 text-xs text-destructive justify-center bg-destructive/10 p-2 rounded-lg">
-                  <AlertCircle className="w-4 h-4" />
-                  {stripeError}
-                </div>
+              {!singlePayable && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Each product is paid on its own, so a cart with several items
+                  is paid item by item. Use “Pay with D17” on any item below.
+                </p>
+              )}
+
+              {hasSubscription && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Subscriptions are purchased on the product page, where you choose a plan.
+                </p>
               )}
 
               <div className="flex items-center gap-2 text-xs text-muted-foreground justify-center">
                 <ShieldCheck className="w-4 h-4" />
-                Secure checkout powered by Stripe
+                Pay by D17 mobile transfer — an admin verifies each payment
               </div>
             </div>
           </div>
         </div>
+
+        {d17Item && (
+          <D17PaymentModal
+            open={d17Item !== null}
+            onOpenChange={(open) => {
+              if (!open) setD17Item(null);
+            }}
+            product={d17Item.product}
+            quantity={d17Item.quantity}
+          />
+        )}
       </div>
     </div>
   );

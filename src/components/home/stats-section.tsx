@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { AnimatedCounter } from "@/components/ui/animated-counter";
@@ -57,7 +57,7 @@ export function StatsSection() {
             Numbers that <span className="gradient-text">speak volumes</span>
           </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Our growing community of creators and businesses trust Milit Company to
+            Our growing community of creators and businesses trust Frilansiha Company to
             power their digital journey.
           </p>
         </ScrollReveal>

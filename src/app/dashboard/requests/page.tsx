@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
@@ -282,7 +282,7 @@ export default function AdminRequestsPage() {
     });
 
     return () => {
-      subscription.unsubscribe();
+      subscription?.unsubscribe?.();
     };
   }, [supabase]);
 
@@ -315,19 +315,6 @@ export default function AdminRequestsPage() {
     const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50;
     setShowScrollButton(!isAtBottom);
   }, []);
-
-  // Access control check - wait for all loading states to complete
-  if (!isLoading && !sessionLoading && !canAccessSection('requests')) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">Access Restricted</h2>
-        <p className="text-slate-500 text-center max-w-md">
-          You don't have permission to view this section. Contact your administrator for access.
-        </p>
-      </div>
-    );
-  }
 
   // ── FETCH GUARD ──
   // Prevents double-fetch on StrictMode double-mount or fast navigation.
@@ -826,6 +813,19 @@ export default function AdminRequestsPage() {
       }
     };
   }, [selectedRequest?.id, scrollToBottom]);
+
+  // Access control check - wait for all loading states to complete
+  if (!isLoading && !sessionLoading && !canAccessSection('requests')) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh]">
+        <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
+        <h2 className="text-xl font-semibold text-slate-900 mb-2">Access Restricted</h2>
+        <p className="text-slate-500 text-center max-w-md">
+          You don't have permission to view this section. Contact your administrator for access.
+        </p>
+      </div>
+    );
+  }
 
   // Send typing status
   const sendTypingStatus = (isTyping: boolean) => {
@@ -1384,7 +1384,7 @@ export default function AdminRequestsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold">{isAdmin ? "All Requests" : "My Requests"}</h1>
         <p className="text-muted-foreground">
-          {isAdmin ? "Manage user requests and communications" : "View your messages to Milit Company"}
+          {isAdmin ? "Manage user requests and communications" : "View your messages to Frilansiha Company"}
         </p>
       </div>
       
@@ -1399,7 +1399,7 @@ export default function AdminRequestsPage() {
           <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-2 text-gray-900">{isAdmin ? "No requests yet" : "No requests yet"}</h3>
           <p className="text-gray-500 mb-4">
-            {isAdmin ? "User requests will appear here" : "Contact Milit Company to start a conversation"}
+            {isAdmin ? "User requests will appear here" : "Contact Frilansiha Company to start a conversation"}
           </p>
           {!isAdmin && (
             <div className="flex gap-2 justify-center">

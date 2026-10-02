@@ -37,29 +37,39 @@ export function TeamSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchTeamMembers() {
-      try {
-        // ✅ FIX: Fetch from the public API route instead of Supabase directly.
-        // This avoids the RLS "permission denied" error for unauthenticated visitors
-        // and also avoids adding another concurrent getSession() call on page load
-        // (which contributed to the Web Lock contention / AbortError cascade).
-        const res = await fetch("/api/public/team-members");
-        if (!res.ok) {
-          throw new Error(`Request failed with status ${res.status}`);
-        }
-        const data: TeamMember[] = await res.json();
-        setTeamMembers(data);
-      } catch (err) {
-        console.log("Error fetching team members:", err);
-        setError(err instanceof Error ? err.message : "Unknown error");
-      } finally {
-        setLoading(false);
-      }
-    }
+    useEffect(() => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    fetchTeamMembers();
-  }, []);
+      async function fetchTeamMembers() {
+        try {
+          const res = await fetch("/api/public/team-members", {
+            signal: controller.signal,
+          });
+          if (!res.ok) {
+            throw new Error(`Request failed with status ${res.status}`);
+          }
+          const data: TeamMember[] = await res.json();
+          setTeamMembers(data);
+        } catch (err: unknown) {
+          const errName = (err as { name?: string })?.name;
+          if (errName === "AbortError") {
+            console.log("Team members fetch timed out");
+          } else {
+            console.log("Error fetching team members:", err);
+            setError(err instanceof Error ? err.message : "Unknown error");
+          }
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      fetchTeamMembers();
+      return () => {
+        clearTimeout(timeoutId);
+        controller.abort();
+      };
+    }, []);
 
   // Show empty state when no team members in database
   if (teamMembers.length === 0) {

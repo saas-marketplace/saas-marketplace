@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ShoppingCart, Download, Eye } from "lucide-react";
+import { ShoppingCart, Download, Eye, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatPrice } from "@/lib/utils";
 import { useCart } from "@/stores/cart-context";
 import { useToast } from "@/components/ui/use-toast";
+import D17PaymentModal from "@/components/marketplace/D17PaymentModal";
 import type { Product } from "@/types";
 
 interface ProductCardProps {
@@ -26,9 +28,15 @@ const categoryLabels: Record<string, string> = {
 export default function ProductCard({ product }: ProductCardProps) {
   const displayPrice = product.sale_price || product.price;
   const isOnSale = product.sale_price && product.sale_price < product.price;
-  const { addToCart, isAuthenticated } = useCart();
+  const { addToCart, isAuthenticated, cartItems } = useCart();
   const { toast } = useToast();
   const router = useRouter();
+  const [d17Open, setD17Open] = useState(false);
+
+  // Once the product is saved to the cart, offer D17 as the payment method
+  // (online card payment is disabled as "coming soon").
+  const isSavedToCart = cartItems.some((i) => i.product_id === product.id);
+  const supportsD17 = product.product_type !== "subscription";
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -120,6 +128,26 @@ export default function ProductCard({ product }: ProductCardProps) {
             <ShoppingCart className="w-4 h-4" />
           </Button>
         </div>
+
+        {/* D17 payment becomes available once the product is saved to the cart. */}
+        {isSavedToCart && supportsD17 && (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full mt-2 border-cyan-600 text-cyan-600 hover:bg-cyan-600 hover:text-white"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setD17Open(true);
+              }}
+            >
+              <Smartphone className="w-4 h-4 mr-1" />
+              Pay with D17
+            </Button>
+            <D17PaymentModal open={d17Open} onOpenChange={setD17Open} product={product} />
+          </>
+        )}
 
         {(product.download_count > 0 || product.like_count > 0) && (
           <div className="mt-3 flex items-center gap-4 text-xs text-[#737373] dark:text-gray-400">

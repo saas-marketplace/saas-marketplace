@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 export const dynamic = 'force-dynamic';
 
@@ -974,7 +974,7 @@ function UserRequestsContent() {
     <div className="p-4 md:p-6 lg:p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">My Requests</h1>
-        <p className="text-muted-foreground">View your messages to Milit Company</p>
+        <p className="text-muted-foreground">View your messages to Frilansiha Company</p>
       </div>
       
       {loading ? (
@@ -987,7 +987,7 @@ function UserRequestsContent() {
         <div className="text-center py-12">
           <MessageSquare className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">No requests yet</h3>
-          <p className="text-gray-500 dark:text-gray-400 mb-4">Contact Milit Company to start a conversation</p>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">Contact Frilansiha Company to start a conversation</p>
           <div className="flex gap-2 justify-center">
             <Button variant="outline" asChild>
               <a href="/contact">Contact Us</a>

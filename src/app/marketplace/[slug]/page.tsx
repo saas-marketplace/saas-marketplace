@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { ArrowLeft, Heart, ShoppingCart, Download, Check, Share2, Package } from "lucide-react";
+import { ArrowLeft, Heart, ShoppingCart, Download, Check, Share2, Package, CreditCard, AlertTriangle, Loader2, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -12,6 +12,8 @@ import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { formatPrice } from "@/lib/utils";
 import { useCart } from "@/stores/cart-context";
 import { createClient } from "@/lib/supabase/client";
+import { startFlouciCheckout } from "@/lib/flouci-client";
+import D17PaymentModal from "@/components/marketplace/D17PaymentModal";
 import { useToast } from "@/components/ui/use-toast";
 import type { Product } from "@/types";
 
@@ -28,9 +30,55 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
+  const [paymentUnavailable, setPaymentUnavailable] = useState(false);
+  const [paying, setPaying] = useState<string | null>(null);
+  const [d17Open, setD17Open] = useState(false);
   const { addToCart, isAuthenticated } = useCart();
   const { toast } = useToast();
   const supabase = createClient();
+
+  /**
+   * Starts a subscription: the server creates the Flouci subscription from the
+   * plan stored in the database and returns the hosted checkout link, then we
+   * send the customer there.
+   */
+  const buy = async (_productId: string, planId: string) => {
+    const key = planId ?? "product";
+
+    if (!isAuthenticated) {
+      toast({
+        title: "Sign in required",
+        description: "Please sign in to subscribe.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setPaying(key);
+    const result = await startFlouciCheckout({ planId });
+
+    if (!result.ok) {
+      setPaying(null);
+      toast({
+        title: "Payment unavailable",
+        description: result.error,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    window.location.href = result.paymentUrl!;
+  };
+
+  // The subscription endpoints send the customer back here with ?payment=failed
+  // when the checkout cannot be opened (e.g. not signed in, inactive plan).
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setPaymentUnavailable(
+        new URLSearchParams(window.location.search).get("payment") === "failed"
+      );
+    }
+  }, []);
 
   const fetchProduct = useCallback(async () => {
     setLoading(true);
@@ -227,6 +275,142 @@ export default function ProductDetailPage() {
                   ))}
                 </div>
               )}
+
+              <Separator />
+
+              {/* ─────────── Flouci purchase ─────────── */}
+              {paymentUnavailable && (
+                <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+                  <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-medium text-amber-300">Payment unavailable</p>
+                    <p className="text-sm text-amber-200/80">
+                      This product can&apos;t be purchased right now. Please check back later.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {(() => {
+                const isSubscription = product.product_type === "subscription";
+                const plans = (product.subscription_plans ?? []).filter(
+                  (p) => p.isActive !== false
+                );
+
+                if (isSubscription) {
+                  if (plans.length === 0) {
+                    return (
+                      <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+                        <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-medium text-amber-300">Payment unavailable</p>
+                          <p className="text-sm text-amber-200/80">
+                            No subscription plan is available at the moment.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-3">
+                      <h3 className="font-semibold flex items-center gap-2">
+                        <CreditCard className="w-5 h-5 text-primary" />
+                        Choose your plan
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {plans.map((plan) => {
+                          const isPayingThis = paying === plan.id;
+                          return (
+                            <div
+                              key={plan.id}
+                              className="rounded-xl border border-border p-4 flex flex-col gap-2"
+                            >
+                              <div className="flex items-baseline justify-between">
+                                <span className="font-medium">{plan.name}</span>
+                                <span className="text-lg font-bold text-primary">
+                                  {formatPrice(plan.price)}
+                                  <span className="text-xs font-normal text-muted-foreground">
+                                    /{plan.billingPeriod === "one_time" ? "" : plan.billingPeriod}
+                                  </span>
+                                </span>
+                              </div>
+                              {plan.description && (
+                                <p className="text-sm text-muted-foreground">
+                                  {plan.description}
+                                </p>
+                              )}
+                              {plan.billingPeriod === "one_time" ? (
+                                <Button
+                                  disabled
+                                  variant="outline"
+                                  className="w-full mt-auto cursor-not-allowed"
+                                >
+                                  Not available
+                                </Button>
+                              ) : (
+                                <Button
+                                  className="w-full gradient-bg text-white border-0 hover:opacity-90 mt-auto"
+                                  onClick={() => buy(product.id, plan.id)}
+                                  disabled={paying !== null}
+                                >
+                                  {isPayingThis ? (
+                                    <>
+                                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                      Redirecting to Flouci…
+                                    </>
+                                  ) : (
+                                    "Subscribe"
+                                  )}
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                }
+
+// One-time purchase — Flouci checkout is not available yet.
+                const isPayingProduct = paying === "product";
+                return (
+                  <Button
+                    size="lg"
+                    className="w-full h-12 rounded-xl gradient-bg text-white border-0 opacity-60 cursor-not-allowed"
+                    disabled
+                    aria-disabled="true"
+                    title="Online card payment is coming soon — use D17 below to pay now"
+                  >
+                    {isPayingProduct ? (
+                      <>
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                        Redirecting to Flouci…
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="w-5 h-5 mr-2" />
+                        Coming soon
+                      </>
+                    )}
+                  </Button>
+                );
+              })()}
+
+              {/* ─────────── D17 manual payment (additional option, does not replace Flouci) ─────────── */}
+              {product.product_type !== "subscription" && (
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full h-12 rounded-xl"
+                  onClick={() => setD17Open(true)}
+                >
+                  <Smartphone className="w-5 h-5 mr-2" />
+                  Pay with D17
+                </Button>
+              )}
+
+              <D17PaymentModal open={d17Open} onOpenChange={setD17Open} product={product} />
 
               <Separator />
 

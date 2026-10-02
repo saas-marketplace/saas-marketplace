@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -94,7 +94,7 @@ export function RequestModal({
 
   const recipientTitle = requestType === "admin" ? "Admin" : freelancer?.display_name || "Freelancer";
   const recipientSubtitle = requestType === "admin" 
-    ? "Milit Company Support" 
+    ? "Frilansiha Company Support" 
     : freelancer?.title || "Freelancer";
 
   return (

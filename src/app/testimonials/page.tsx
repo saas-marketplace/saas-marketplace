@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -272,7 +272,7 @@ export default function TestimonialsPage() {
                 <MessageSquare className="w-12 h-12 text-primary mx-auto mb-4" />
                 <h2 className="text-2xl font-bold mb-2">Share Your Experience</h2>
                 <p className="text-muted-foreground">
-                  We&apos;d love to hear about your experience with Milit Company.
+                  We&apos;d love to hear about your experience with Frilansiha Company.
                 </p>
               </div>
 

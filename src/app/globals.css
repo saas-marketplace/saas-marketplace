@@ -169,6 +169,100 @@
     @apply bg-gradient-to-r from-[#0AA3C8] via-cyan-400 to-[#0AA3C8] bg-clip-text text-transparent;
   }
   
+  /* ── Navbar wordmark: FRILANSIHA ───────────────────────────────────────
+     Pure-white lettering carrying a subtle theme-cyan gradient, plus a soft
+     cyan glow so the white glyphs keep a readable edge on the white navbar.
+
+     The one-time glint is a ::after overlay of the same text. Animating its
+     background-position (rather than a transform on a duplicated <span>)
+     means the highlight is always clipped to the glyph shapes by
+     background-clip:text, cannot leak outside the word, and cannot drift out
+     of sync with the base layer. Nothing here uses overflow, so the sweep is
+     never clipped by a container. */
+  .brand-plate {
+    @apply relative inline-flex items-center justify-center;
+    /* Keep the glyphs crisp; no clipping of any kind. */
+    overflow: visible;
+  }
+
+  .brand-word {
+    /* Cyan straight from the Tailwind palette: cyan.DEFAULT (light) and
+       accent-dark (dark) — the exact pair .gradient-bg already uses. */
+    --brand-accent: #9aedff;
+    --brand-glow: rgba(154, 237, 255, 0.55);
+
+    @apply relative select-none whitespace-nowrap;
+    font-family: var(--font-brand), "Sora", ui-sans-serif, system-ui, sans-serif;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    line-height: 1;
+
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    /* Static brand gradient — never animated, so the word itself never moves. */
+    background-image: linear-gradient(
+      100deg,
+      #ffffff 0%,
+      #ffffff 34%,
+      var(--brand-accent) 58%,
+      #ffffff 82%,
+      #ffffff 100%
+    );
+    background-size: 100% 100%;
+    filter: drop-shadow(0 0 4px var(--brand-glow));
+  }
+
+  .dark .brand-word {
+    --brand-accent: #0aa3c8;
+    --brand-glow: rgba(10, 163, 200, 0.6);
+  }
+
+  /* The glint: an identical copy of the wordmark whose only visible paint is a
+     narrow, intense white band with a soft falloff. */
+  .brand-word::after {
+    content: attr(data-brand);
+    @apply absolute inset-0 whitespace-nowrap;
+    pointer-events: none;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    background-image: linear-gradient(
+      100deg,
+      rgba(255, 255, 255, 0) 42%,
+      rgba(255, 255, 255, 0.35) 47%,
+      #ffffff 50%,
+      rgba(255, 255, 255, 0.35) 53%,
+      rgba(255, 255, 255, 0) 58%
+    );
+    /* 200% wide so the band can sit fully outside the word before and after. */
+    background-size: 200% 100%;
+    /* Parked off the LEFT edge: the band centre is at x = -1.5 × word width. */
+    background-position: 200% 0;
+    filter: drop-shadow(0 0 6px var(--brand-glow));
+
+    /* 1.35s, single iteration, `both` so it stays parked off the right edge
+       afterwards. Being pure CSS on a static node, it cannot be re-triggered by
+       re-renders, state changes or scrolling. */
+    animation: brandGlint 1.35s cubic-bezier(0.22, 0.61, 0.36, 1) 0.15s 1 both;
+  }
+
+  /* Left → right across the whole word: background-position decreases, which
+     slides the 200%-wide band rightward past the F, across every glyph, and
+     off beyond the final A (band centre ends at x = +1.5 × word width). */
+  @keyframes brandGlint {
+    from { background-position: 200% 0; }
+    to   { background-position: -100% 0; }
+  }
+
+  /* Honour the OS reduced-motion setting: static white wordmark, no glint. */
+  @media (prefers-reduced-motion: reduce) {
+    .brand-word::after {
+      animation: none;
+      content: none;
+    }
+  }
+
   /* Cyan gradient background */
   .gradient-bg {
     @apply bg-gradient-to-r from-cyan-400 to-sky-500;

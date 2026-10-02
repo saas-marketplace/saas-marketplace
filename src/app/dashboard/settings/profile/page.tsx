@@ -256,7 +256,7 @@ export default function ProfileSettingsPage() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event:string) => {
       if (event === "USER_UPDATED" && !redirected) {
         redirected = true;
-        subscription.unsubscribe();
+        subscription?.unsubscribe?.();
         clearTimeout(timeoutId);
         window.location.replace(window.location.pathname + "?pw=updated");
       }
@@ -264,7 +264,7 @@ export default function ProfileSettingsPage() {
 
     const timeoutId = setTimeout(() => {
       if (!redirected) {
-        subscription.unsubscribe();
+        subscription?.unsubscribe?.();
         setPasswordMessage({ type: "error", text: "Request timed out — please try again." });
         setIsUpdatingPassword(false);
       }
@@ -274,7 +274,7 @@ export default function ProfileSettingsPage() {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (!redirected) {
         redirected = true;
-        subscription.unsubscribe();
+        subscription?.unsubscribe?.();
         clearTimeout(timeoutId);
         if (error) throw error;
         window.location.replace(window.location.pathname + "?pw=updated");
@@ -282,7 +282,7 @@ export default function ProfileSettingsPage() {
     } catch (err: any) {
       if (redirected) return;
       redirected = true;
-      subscription.unsubscribe();
+      subscription?.unsubscribe?.();
       clearTimeout(timeoutId);
       setPasswordMessage({ type: "error", text: err.message || "Failed to update password" });
       setIsUpdatingPassword(false);
