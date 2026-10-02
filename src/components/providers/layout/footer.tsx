@@ -98,7 +98,7 @@ export function Footer() {
               href="tel:+21628481862"
               className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors mb-6"
             >
-              <span className="text-base">+216 28 481 862</span>
+              <span className="text-base">+216 27160378</span>
             </a>
 
             <div className="flex items-center gap-3">
