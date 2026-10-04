@@ -4,10 +4,16 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Check, CreditCard, Loader2, AlertTriangle, Sparkles } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/components/providers/auth-provider";
-import { startFlouciCheckout } from "@/lib/flouci-client";
 import { formatTnd } from "@/lib/money";
 
 interface Plan {
@@ -34,7 +40,7 @@ export default function PlansPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [subscribing, setSubscribing] = useState<string | null>(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   const loadPlans = useCallback(async () => {
     setLoading(true);
@@ -56,23 +62,15 @@ export default function PlansPage() {
     loadPlans();
   }, [loadPlans]);
 
-  const subscribe = async (planId: string) => {
+  const subscribe = async (_planId: string) => {
     if (!user) {
       window.location.href = "/auth/login?next=/plans";
       return;
     }
 
-    setSubscribing(planId);
-    const result = await startFlouciCheckout({ planId });
-
-    if (!result.ok) {
-      setSubscribing(null);
-      setError(result.error || "Could not start the subscription.");
-      return;
-    }
-
-    // Redirect to the hosted checkout link returned by Flouci.
-    window.location.href = result.paymentUrl!;
+    // Subscription system is being updated — do NOT start the Flouci checkout
+    // or create any order/payment/subscription. Just show the contact modal.
+    setShowUpdateModal(true);
   };
 
   return (
@@ -149,16 +147,8 @@ export default function PlansPage() {
                 <Button
                   className="w-full gradient-bg text-white border-0 hover:opacity-90 mt-auto"
                   onClick={() => subscribe(plan.id)}
-                  disabled={subscribing !== null}
                 >
-                  {subscribing === plan.id ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Redirecting to Flouci…
-                    </>
-                  ) : (
-                    "Subscribe"
-                  )}
+                  Subscribe
                 </Button>
               </motion.div>
             ))}
@@ -174,6 +164,44 @@ export default function PlansPage() {
             before subscribing.
           </p>
         )}
+
+        {/* Subscription system update modal — shown instead of the old
+            payment flow. No order/payment/subscription is created. */}
+        <Dialog open={showUpdateModal} onOpenChange={setShowUpdateModal}>
+          <DialogContent className="max-w-md w-[calc(100vw-2rem)] sm:w-full">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-cyan-500" />
+                Subscriptions are being updated
+              </DialogTitle>
+              <DialogDescription>
+                We are currently updating our subscription system. Please contact
+                the owner to purchase a subscription.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col sm:flex-row gap-3 mt-2">
+              <Button
+                asChild
+                className="flex-1 gradient-bg text-white border-0 hover:opacity-90"
+              >
+                <a
+                  href="https://wa.me/21627160378"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Contact on WhatsApp
+                </a>
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowUpdateModal(false)}
+              >
+                Close
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

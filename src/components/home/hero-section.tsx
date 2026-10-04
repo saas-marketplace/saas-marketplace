@@ -1,13 +1,53 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { ArrowRight, Play, Sparkles, Zap } from "lucide-react";
+import { ArrowRight, Sparkles, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-const words = ["Products", "Services", "Talent", "Growth"];
+import { createClient } from "@/lib/supabase/client";
 
 export function HeroSection() {
+  // Real counts straight from the database: products and freelancers.
+  // Nothing hardcoded — the hero stats update when records are added/removed.
+  const [productCount, setProductCount] = useState<number | null>(null);
+  const [freelancerCount, setFreelancerCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      try {
+        const [{ count: pCount, error: pError }, { count: fCount, error: fError }] =
+          await Promise.all([
+            supabase.from("products").select("*", { count: "exact", head: true }),
+            supabase.from("freelancers").select("*", { count: "exact", head: true }),
+          ]);
+        if (cancelled) return;
+        if (!pError) setProductCount(pCount ?? 0);
+        if (!fError) setFreelancerCount(fCount ?? 0);
+      } catch {
+        // Leave counts null on failure — the UI shows the loading state.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const stats = [
+    { value: "1K+", label: "Active Users" },
+    {
+      value: productCount === null ? "…" : `${productCount}+`,
+      label: "Digital Products",
+    },
+    {
+      value: freelancerCount === null ? "…" : `${freelancerCount}+`,
+      label: "Freelancers",
+    },
+    { value: "98%", label: "Satisfaction" },
+  ];
+
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-white dark:bg-black">
       {/* Background Effects */}
@@ -131,12 +171,7 @@ export function HeroSection() {
             transition={{ duration: 0.7, delay: 0.8 }}
             className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-8 max-w-3xl mx-auto"
           >
-            {[
-              { value: "10K+", label: "Active Users" },
-              { value: "500+", label: "Digital Products" },
-              { value: "200+", label: "Freelancers" },
-              { value: "98%", label: "Satisfaction" },
-            ].map((stat) => (
+            {stats.map((stat) => (
               <div key={stat.label} className="text-center">
                 <div className="text-2xl sm:text-3xl font-bold gradient-text">
                   {stat.value}

@@ -186,10 +186,12 @@
   }
 
   .brand-word {
-    /* Cyan straight from the Tailwind palette: cyan.DEFAULT (light) and
-       accent-dark (dark) — the exact pair .gradient-bg already uses. */
-    --brand-accent: #9aedff;
-    --brand-glow: rgba(154, 237, 255, 0.55);
+    /* Light mode: dark wordmark so it stays readable on the white navbar.
+       Cyan straight from the Tailwind palette (cyan-600) as the accent — the
+       same family .gradient-bg uses. Dark mode below keeps the original
+       white/sky-blue appearance untouched. */
+    --brand-accent: #0891b2;
+    --brand-glow: rgba(8, 145, 178, 0.4);
 
     @apply relative select-none whitespace-nowrap;
     font-family: var(--font-brand), "Sora", ui-sans-serif, system-ui, sans-serif;
@@ -203,19 +205,29 @@
     /* Static brand gradient — never animated, so the word itself never moves. */
     background-image: linear-gradient(
       100deg,
+      #0f172a 0%,
+      #0f172a 34%,
+      var(--brand-accent) 58%,
+      #0f172a 82%,
+      #0f172a 100%
+    );
+    background-size: 100% 100%;
+    filter: drop-shadow(0 0 4px var(--brand-glow));
+  }
+
+  /* Dark mode: original white / sky-blue logo, exactly as before. */
+  .dark .brand-word {
+    --brand-accent: #0aa3c8;
+    --brand-glow: rgba(10, 163, 200, 0.6);
+
+    background-image: linear-gradient(
+      100deg,
       #ffffff 0%,
       #ffffff 34%,
       var(--brand-accent) 58%,
       #ffffff 82%,
       #ffffff 100%
     );
-    background-size: 100% 100%;
-    filter: drop-shadow(0 0 4px var(--brand-glow));
-  }
-
-  .dark .brand-word {
-    --brand-accent: #0aa3c8;
-    --brand-glow: rgba(10, 163, 200, 0.6);
   }
 
   /* The glint: an identical copy of the wordmark whose only visible paint is a

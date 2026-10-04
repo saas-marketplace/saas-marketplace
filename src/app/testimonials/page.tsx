@@ -1,4 +1,4 @@
-﻿"use client";
+﻿﻿"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -31,7 +31,6 @@ const reviewColorPalettes = [
 export default function TestimonialsPage() {
   const [reviews, setReviews] = useState<ClientReview[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     reviewer_name: "",
     reviewer_title: "",
@@ -51,7 +50,6 @@ export default function TestimonialsPage() {
       .order("created_at", { ascending: false });
 
     if (data) setReviews(data);
-    setLoading(false);
   }, [supabase]);
 
   useEffect(() => {

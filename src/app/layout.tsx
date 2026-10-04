@@ -1,6 +1,6 @@
 ﻿import type { Metadata } from "next";
 import { Sora } from "next/font/google";
-import "./globals.css";
+import "@/globals.css";
 import { Providers } from "@/components/providers";
 import LayoutWithConditionalNavFooter from "@/components/providers/LayoutWithConditionalNavFooter";
 import { cn } from "@/lib/utils";

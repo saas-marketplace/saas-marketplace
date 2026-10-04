@@ -1,50 +1,74 @@
 ﻿"use client";
 
+import { useEffect, useState } from "react";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { AnimatedCounter } from "@/components/ui/animated-counter";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, Users, Package, Star } from "lucide-react";
-
-const stats = [
-  {
-    icon: Users,
-    value: 10500,
-    suffix: "+",
-    label: "Active Users",
-    description: "Creators and businesses worldwide",
-    color: "text-cyan-500",
-    bgColor: "bg-cyan-500/10",
-  },
-  {
-    icon: Package,
-    value: 500,
-    suffix: "+",
-    label: "Digital Products",
-    description: "Curated premium resources",
-    color: "text-cyan-400",
-    bgColor: "bg-cyan-400/10",
-  },
-  {
-    icon: Star,
-    value: 4200,
-    suffix: "+",
-    label: "5-Star Reviews",
-    description: "From satisfied customers",
-    color: "text-yellow-500",
-    bgColor: "bg-yellow-500/10",
-  },
-  {
-    icon: TrendingUp,
-    value: 2800000,
-    prefix: "$",
-    label: "Revenue Generated",
-    description: "For our freelancers",
-    color: "text-green-500",
-    bgColor: "bg-green-500/10",
-  },
-];
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
 
 export function StatsSection() {
+  // Exact COUNT() of rows in the products table — updates when products are
+  // added or removed. Null while loading so the counter stays at 0.
+  const [productCount, setProductCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createBrowserClient();
+        const { count, error } = await supabase
+          .from("products")
+          .select("*", { count: "exact", head: true });
+        if (!cancelled && !error) setProductCount(count ?? 0);
+      } catch {
+        if (!cancelled) setProductCount(0);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const stats = [
+    {
+      icon: Users,
+      value: 1000,
+      suffix: "+",
+      label: "Active Users",
+      description: "Creators and businesses worldwide",
+      color: "text-cyan-500",
+      bgColor: "bg-cyan-500/10",
+    },
+    {
+      icon: Package,
+      value: productCount ?? 0,
+      suffix: productCount === null ? "" : "+",
+      label: "Digital Products",
+      description: "Curated premium resources",
+      color: "text-cyan-400",
+      bgColor: "bg-cyan-400/10",
+    },
+    {
+      icon: Star,
+      value: 200,
+      suffix: "+",
+      label: "5-Star Reviews",
+      description: "From satisfied customers",
+      color: "text-yellow-500",
+      bgColor: "bg-yellow-500/10",
+    },
+    {
+      icon: TrendingUp,
+      value: 1000,
+      prefix: "$",
+      label: "Revenue Generated",
+      description: "For our freelancers",
+      color: "text-green-500",
+      bgColor: "bg-green-500/10",
+    },
+  ];
+
   return (
     <section className="py-24 relative overflow-hidden">
       <div className="absolute inset-0 gradient-bg-subtle" />
