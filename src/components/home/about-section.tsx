@@ -66,18 +66,6 @@ export function AboutSection() {
                 </motion.div>
               ))}
             </div>
-
-            <div className="flex items-center gap-3 p-4 rounded-xl glass-card">
-              <span className="text-sm font-medium text-muted-foreground">
-                Contact us:
-              </span>
-              <a
-                href="tel:+21628481862"
-                className="text-sm font-bold text-primary hover:text-cyan-600 transition-colors"
-              >
-                +216 28 481 862
-              </a>
-            </div>
           </ScrollReveal>
 
           {/* Right Content - Founder Card */}
